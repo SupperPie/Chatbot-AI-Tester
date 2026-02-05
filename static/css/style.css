@@ -1,0 +1,458 @@
+:root {
+    --bg-color: #f3f4f6;
+    --sidebar-bg: #ffffff;
+    --card-bg: #ffffff;
+    --text-primary: #111827;
+    --text-secondary: #6b7280;
+    --primary-color: #3b82f6;
+    --primary-hover: #2563eb;
+    --border-color: #e5e7eb;
+    --success-color: #10b981;
+    --error-color: #ef4444;
+    --input-bg: #ffffff;
+    --input-focus-border: #3b82f6;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: 'Inter', sans-serif;
+    background-color: var(--bg-color);
+    color: var(--text-primary);
+    height: 100vh;
+    overflow: hidden;
+}
+
+.app-container {
+    display: flex;
+    height: 100%;
+}
+
+/* Sidebar */
+.sidebar {
+    width: 250px;
+    background-color: var(--sidebar-bg);
+    border-right: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    padding: 20px;
+    box-shadow: 2px 0 5px rgba(0, 0, 0, 0.02);
+}
+
+.logo h2 {
+    color: var(--primary-color);
+    margin-bottom: 40px;
+    font-weight: 700;
+}
+
+.nav-menu {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.nav-btn {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    padding: 12px 16px;
+    text-align: left;
+    cursor: pointer;
+    border-radius: 8px;
+    transition: all 0.2s;
+    font-size: 15px;
+    font-weight: 500;
+}
+
+.nav-btn:hover {
+    background-color: #f9fafb;
+    color: var(--primary-color);
+}
+
+.nav-btn.active {
+    background-color: #eff6ff;
+    color: var(--primary-color);
+}
+
+/* Content */
+.content-area {
+    flex: 1;
+    padding: 30px;
+    overflow-y: auto;
+}
+
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+.tab-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 25px;
+}
+
+h1 {
+    font-size: 24px;
+    font-weight: 700;
+    color: #1f2937;
+}
+
+/* Tables */
+.table-container {
+    background-color: var(--card-bg);
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid var(--border-color);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    /* Fixed layout for better input handling */
+}
+
+th,
+td {
+    padding: 0;
+    /* Remove padding to let input fill cell */
+    text-align: left;
+    border-bottom: 1px solid var(--border-color);
+    vertical-align: top;
+}
+
+th {
+    padding: 12px 16px;
+    background-color: #f9fafb;
+    color: var(--text-secondary);
+    font-weight: 600;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-bottom: 1px solid var(--border-color);
+}
+
+td {
+    color: var(--text-primary);
+    font-size: 14px;
+    background-color: white;
+}
+
+/* Editable Cells */
+.editable-cell {
+    width: 100%;
+    border: none;
+    padding: 12px 16px;
+    font-family: inherit;
+    font-size: 14px;
+    color: var(--text-primary);
+    background-color: transparent;
+    resize: vertical;
+    /* Allow vertical resize for textareas */
+    min-height: 48px;
+    display: block;
+    outline: 2px solid transparent;
+    /* Prepare for focus */
+    transition: background 0.2s, outline 0.2s;
+}
+
+.editable-cell:focus {
+    background-color: #fff;
+    outline: 2px solid var(--primary-color);
+    outline-offset: -2px;
+    /* Inner border */
+    position: relative;
+    z-index: 10;
+}
+
+.editable-cell:hover:not(:focus) {
+    background-color: #f9fafb;
+}
+
+textarea.editable-cell {
+    min-height: 60px;
+    line-height: 1.5;
+}
+
+/* Specific Column Widths */
+th.col-select,
+td.col-select {
+    width: 40px;
+    text-align: center;
+    padding: 0;
+}
+
+td.col-select input {
+    margin-top: 15px;
+    cursor: pointer;
+    width: 16px;
+    height: 16px;
+}
+
+th {
+    width: 40%;
+}
+
+/* Default for Input/Expected */
+th.col-tags {
+    width: 20%;
+}
+
+/* Ensure textareas are tall enough */
+textarea.editable-cell {
+    min-height: 80px;
+    line-height: 1.5;
+}
+
+.header-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.btn-danger {
+    background-color: white;
+    border: 1px solid var(--error-color);
+    color: var(--error-color);
+}
+
+.btn-danger:hover {
+    background-color: #fef2f2;
+}
+
+/* Buttons */
+.btn {
+    padding: 10px 20px;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.2s;
+    font-size: 14px;
+}
+
+.btn-primary {
+    background-color: var(--primary-color);
+    color: white;
+    box-shadow: 0 1px 2px rgba(59, 130, 246, 0.3);
+}
+
+.btn-primary:hover {
+    background-color: var(--primary-hover);
+    transform: translateY(-1px);
+}
+
+.btn-secondary {
+    background-color: white;
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+}
+
+.btn-secondary:hover {
+    background-color: #f9fafb;
+    border-color: #d1d5db;
+}
+
+.btn-icon {
+    background: none;
+    border: none;
+    color: #9ca3af;
+    cursor: pointer;
+    padding: 6px;
+    font-size: 18px;
+    border-radius: 4px;
+    transition: all 0.2s;
+}
+
+.btn-icon:hover {
+    color: var(--text-primary);
+    background-color: #f3f4f6;
+}
+
+.btn-icon.delete:hover {
+    color: var(--error-color);
+    background-color: #fef2f2;
+}
+
+/* Run Tab & History */
+.run-controls {
+    display: flex;
+    gap: 20px;
+    align-items: center;
+    margin-bottom: 30px;
+}
+
+.stats-card {
+    background-color: var(--card-bg);
+    padding: 15px 25px;
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+    min-width: 180px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.stats-card h3 {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+    font-weight: 500;
+}
+
+.stats-card span {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--primary-color);
+}
+
+.console-box {
+    background-color: #1f2937;
+    /* Keep console dark */
+    color: #f3f4f6;
+    padding: 20px;
+    border-radius: 8px;
+    font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+    font-size: 14px;
+    line-height: 1.6;
+}
+
+.progress-bar {
+    height: 6px;
+    background-color: #374151;
+    border-radius: 3px;
+    margin-top: 15px;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    background-color: var(--success-color);
+    transition: width 0.3s;
+}
+
+.result-table {
+    margin-top: 20px;
+    border: 1px solid var(--border-color);
+}
+
+.result-table th,
+.result-table td {
+    padding: 12px 16px;
+}
+
+.row-pass {
+    background-color: #ecfdf5;
+}
+
+.row-fail {
+    background-color: #fef2f2;
+}
+
+/* History Item */
+.history-item {
+    background-color: var(--card-bg);
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin-bottom: 12px;
+    border: 1px solid var(--border-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: box-shadow 0.2s;
+}
+
+.history-item:hover {
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.history-meta strong {
+    color: var(--text-primary);
+    margin-right: 15px;
+}
+
+.history-meta span {
+    color: var(--text-secondary);
+    font-size: 14px;
+}
+
+/* Modal */
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(2px);
+}
+
+.modal-content {
+    background-color: var(--card-bg);
+    margin: 8vh auto;
+    padding: 30px;
+    border-radius: 16px;
+    width: 500px;
+    border: 1px solid var(--border-color);
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+}
+
+.close {
+    float: right;
+    font-size: 24px;
+    cursor: pointer;
+    color: var(--text-secondary);
+    transition: color 0.2s;
+}
+
+.close:hover {
+    color: var(--text-primary);
+}
+
+.form-group {
+    margin-bottom: 20px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    color: #374151;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.form-group input,
+.form-group textarea {
+    width: 100%;
+    padding: 10px 12px;
+    background-color: #fff;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 14px;
+    transition: border-color 0.2s;
+}
+
+.form-group input:focus,
+.form-group textarea:focus {
+    border-color: var(--primary-color);
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.form-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    margin-top: 30px;
+}

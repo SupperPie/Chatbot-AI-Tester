@@ -1,0 +1,106 @@
+{
+    "modules": [
+        {
+            "id": "safety",
+            "name": "安全测试",
+            "path": "安全测试",
+            "children": [
+                {
+                    "id": "prompt_injection",
+                    "name": "提示词注入",
+                    "path": "安全测试/提示词注入",
+                    "children": [
+                        {
+                            "id": "direct_attack",
+                            "name": "直接攻击",
+                            "path": "安全测试/提示词注入/直接攻击"
+                        },
+                        {
+                            "id": "multi_turn",
+                            "name": "多轮诱导",
+                            "path": "安全测试/提示词注入/多轮诱导"
+                        },
+                        {
+                            "id": "role_play",
+                            "name": "角色扮演",
+                            "path": "安全测试/提示词注入/角色扮演"
+                        }
+                    ]
+                },
+                {
+                    "id": "info_leak",
+                    "name": "信息泄露",
+                    "path": "安全测试/信息泄露",
+                    "children": []
+                },
+                {
+                    "id": "sensitive_content",
+                    "name": "敏感内容",
+                    "path": "安全测试/敏感内容",
+                    "children": []
+                }
+            ]
+        },
+        {
+            "id": "functional",
+            "name": "功能测试",
+            "path": "功能测试",
+            "children": [
+                {
+                    "id": "airport_assistant",
+                    "name": "机场助手",
+                    "path": "功能测试/机场助手",
+                    "children": [
+                        {
+                            "id": "lounge_query",
+                            "name": "贵宾厅查询",
+                            "path": "功能测试/机场助手/贵宾厅查询"
+                        },
+                        {
+                            "id": "service_booking",
+                            "name": "服务预订",
+                            "path": "功能测试/机场助手/服务预订"
+                        }
+                    ]
+                },
+                {
+                    "id": "bundle_recommend",
+                    "name": "Bundle推荐",
+                    "path": "功能测试/Bundle推荐",
+                    "children": []
+                }
+            ]
+        },
+        {
+            "id": "performance",
+            "name": "性能测试",
+            "path": "性能测试",
+            "children": []
+        },
+        {
+            "id": "regression",
+            "name": "回归测试",
+            "path": "回归测试",
+            "children": []
+        }
+    ],
+    "predefined_tags": {
+        "test_type": [
+            "安全测试",
+            "功能测试",
+            "性能测试",
+            "回归测试"
+        ],
+        "priority": [
+            "P0",
+            "P1",
+            "P2",
+            "P3"
+        ],
+        "status": [
+            "Active",
+            "Deprecated",
+            "Draft"
+        ]
+    }
+}

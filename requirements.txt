@@ -1,0 +1,9 @@
+streamlit
+pandas
+openai
+deepeval
+python-dotenv
+nest_asyncio
+requests
+fpdf2
+openpyxl

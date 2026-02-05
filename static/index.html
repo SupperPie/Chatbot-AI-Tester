@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Test Manager</title>
+    <link rel="stylesheet" href="css/style.css?v=4">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="logo">
+                <h2>TestMate</h2>
+            </div>
+            <nav class="nav-menu">
+                <button class="nav-btn active" onclick="showTab('cases-tab', this)">
+                    Dataset
+                </button>
+                <button class="nav-btn" onclick="showTab('run-tab', this)">
+                    Run Tests
+                </button>
+                <button class="nav-btn" onclick="showTab('history-tab', this)">
+                    History
+                </button>
+            </nav>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="content-area">
+
+            <!-- Cases Tab -->
+            <div id="cases-tab" class="tab-content active">
+                <header class="tab-header">
+                    <h1>Test Cases</h1>
+                    <div class="header-actions">
+                        <button class="btn btn-secondary" onclick="runTests()">▶ Run Selected</button>
+                        <button class="btn btn-danger" onclick="deleteSelected()">🗑 Delete Selected</button>
+                    </div>
+                </header>
+                <div class="table-container">
+                    <table id="cases-table">
+                        <thead>
+                            <tr>
+                                <th class="col-select"><input type="checkbox" onchange="toggleSelectAll(this)"></th>
+                                <th>Input</th>
+                                <th>Expected Output</th>
+                                <th class="col-tags">Tags</th>
+                            </tr>
+                        </thead>
+                        <tbody id="cases-body">
+                            <!-- Populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Run Tab -->
+            <div id="run-tab" class="tab-content">
+                <header class="tab-header">
+                    <h1>Run Tests</h1>
+                </header>
+                <div class="run-controls">
+                    <div class="stats-card">
+                        <h3>Selected Cases</h3>
+                        <span id="selected-count">0</span>
+                    </div>
+                    <button class="btn btn-primary btn-lg" onclick="runTests()">Execute Selected</button>
+                </div>
+                <div class="console-box" id="run-console" style="display:none;">
+                    <h3>Execution Status</h3>
+                    <div id="run-status">Waiting...</div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="run-progress" style="width: 0%"></div>
+                    </div>
+                </div>
+                <div id="latest-result-container" style="display:none; margin-top: 20px;">
+                    <h3>Run Results</h3>
+                    <table class="result-table">
+                        <thead>
+                            <tr>
+                                <th>Input</th>
+                                <th>Score</th>
+                                <th>Passed</th>
+                                <th>Reason</th>
+                            </tr>
+                        </thead>
+                        <tbody id="latest-result-body"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- History Tab -->
+            <div id="history-tab" class="tab-content">
+                <header class="tab-header">
+                    <h1>Execution History</h1>
+                </header>
+                <div class="history-list" id="history-container">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modal Form -->
+    <div id="case-modal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal()">&times;</span>
+            <h2 id="modal-title">Add Test Case</h2>
+            <form id="case-form" onsubmit="saveCase(event)">
+                <input type="hidden" id="case-id">
+                <div class="form-group">
+                    <label>Input Question</label>
+                    <textarea id="case-input" required rows="3"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Expected Output</label>
+                    <textarea id="case-expected" required rows="3"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Context (One per line)</label>
+                    <textarea id="case-context" rows="3"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Tags (Comma separated)</label>
+                    <input type="text" id="case-tags">
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="js/app.js?v=4"></script>
+</body>
+
+</html>

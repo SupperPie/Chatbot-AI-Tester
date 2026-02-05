@@ -1,0 +1,5 @@
+input,expected_output,tags,module,type,turn_index,retrieval_context,validation
+"What is the capital of France?","Paris","['Geography']","General","single",,"[]","{'type': 'semantic', 'threshold': 0.7}"
+"2026年F1上海站什么时候举办？","2026年F1上海站将于3月13日至15日在上海国际赛车场举行","['Multi-turn', 'F1']","Sports","multi_turn",1,"[]","{'type': 'semantic', 'threshold': 0.5}"
+"正赛是几点开始？","正赛将于3月15日（周日）15:00开始","['Multi-turn', 'F1']","Sports","multi_turn",2,"[]","{'type': 'semantic', 'threshold': 0.5}"
+"冲刺赛怎么给积分的？","冲刺赛前8名获得积分，分值依次为：10-8-6-5-4-3-2-1","['Multi-turn', 'F1']","Sports","multi_turn",3,"[]","{'type': 'contains', 'keywords': ['前8名', '积分'], 'threshold': 0.5}"
