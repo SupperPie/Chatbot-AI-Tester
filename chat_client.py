@@ -140,7 +140,7 @@ def get_airport_assis_response(message: str, url: str, user_id: str = None, sess
                         if not isinstance(data, dict):
                             continue
                         
-                        # Extract Agent Data
+                        # Extract Agent Data (Legacy / Specific Agents)
                         agent_name = data.get("agent", "unknown_agent")
                         
                         # 1. Customer Service Agent
@@ -254,16 +254,22 @@ def get_skills_response(message: str, url: str, user_id: str = None, session_id:
 
                         # Parse based on event type
                         event_type = data.get("event")
-                        content = data.get("content", "")
+                        # Try to find content in common fields (text/content)
+                        content = data.get("text") or data.get("content") or ""
                         
                         if event_type == "reasoning":
                             # Accumulate thinking
                             if content:
                                 thinking_process.append(content)
                         elif event_type == "text":
-                            # Accumulate final answer
-                            if content:
-                                final_answer += content
+                            if data.get("agent") == "tools":
+                                # Tool output goes to THINKING
+                                if content:
+                                    thinking_process.append(f"**Tool Output:** {content}")
+                            else:
+                                # Regular text goes to FINAL ANSWER
+                                if content:
+                                    final_answer += content
                         else:
                              # Fallback or other events
                              pass
