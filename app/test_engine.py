@@ -137,12 +137,14 @@ class TestEngine:
             
             # Try to parse as structured JSON (with thinking process)
             thinking_process = None
+            inform_base = None
             try:
                 import json
                 resp_data = json.loads(raw_response)
                 if isinstance(resp_data, dict) and "result" in resp_data:
                     actual_output = resp_data["result"]
                     thinking_process = resp_data.get("thinking")
+                    inform_base = resp_data.get("inform_base")
                 else:
                     actual_output = raw_response
             except:
@@ -213,7 +215,9 @@ class TestEngine:
             "faithfulness_reason": faith_reason,
             "faithfulness_reason": faith_reason,
             "passed": passed,
+            "passed": passed,
             "thinking": thinking_process,
+            "inform_base": inform_base,
             "latency": latency
         }
 
@@ -356,12 +360,14 @@ class TestEngine:
                 
                 # Parse thinking process if available
                 turn_thinking = None
+                turn_inform_base = None
                 try:
                     import json
                     resp_data = json.loads(actual_output)
                     if isinstance(resp_data, dict) and "result" in resp_data:
                         actual_output = resp_data["result"]
                         turn_thinking = resp_data.get("thinking")
+                        turn_inform_base = resp_data.get("inform_base")
                 except:
                     pass
 
@@ -414,7 +420,9 @@ class TestEngine:
                 "score": turn_score,
                 "reason": turn_reason,
                 "passed": turn_passed,
+                "passed": turn_passed,
                 "thinking": turn_thinking,
+                "inform_base": turn_inform_base,
                 "latency": turn_latency
             })
             

@@ -161,7 +161,13 @@ def render_report_page():
 
             with ac_col4:
                 # API SELECTOR
-                st.selectbox("API", options=available_apis, key=f"api_sel_{entry_id}", label_visibility="collapsed")
+                # Try to find index of stored api_name
+                stored_api = entry.get("api_name", "Bundle API")
+                default_idx = 0
+                if stored_api in available_apis:
+                    default_idx = available_apis.index(stored_api)
+                
+                st.selectbox("API", options=available_apis, index=default_idx, key=f"api_sel_{entry_id}", label_visibility="collapsed")
             
             st.divider()
 
@@ -193,6 +199,7 @@ def render_report_page():
                         "expected_output": st.column_config.TextColumn("Expected", width="medium"),
                         "actual_output": st.column_config.TextColumn("Actual Output", width="large"),
                         "thinking": st.column_config.TextColumn("Thinking Process", width="large"),
+                        "inform_base": st.column_config.TextColumn("Inform Base (Tools)", width="large"),
                         "passed": st.column_config.CheckboxColumn("Passed", width="small"),
                         "score": st.column_config.NumberColumn("Score", format="%.2f"),
                         "latency": st.column_config.NumberColumn("Response Time", format="%.2f s"),

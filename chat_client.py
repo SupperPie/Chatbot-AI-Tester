@@ -238,6 +238,7 @@ def get_skills_response(message: str, url: str, user_id: str = None, session_id:
         
         final_answer = ""
         thinking_process = []
+        inform_base_process = []
         raw_chunks = []
         
         for line in response.iter_lines():
@@ -263,9 +264,9 @@ def get_skills_response(message: str, url: str, user_id: str = None, session_id:
                                 thinking_process.append(content)
                         elif event_type == "text":
                             if data.get("agent") == "tools":
-                                # Tool output goes to THINKING
+                                # Tool output goes to INFORM BASE
                                 if content:
-                                    thinking_process.append(f"**Tool Output:** {content}")
+                                    inform_base_process.append(content)
                             else:
                                 # Regular text goes to FINAL ANSWER
                                 if content:
@@ -279,7 +280,8 @@ def get_skills_response(message: str, url: str, user_id: str = None, session_id:
                         continue
         
         # Combine thinking
-        thinking_str = "".join(thinking_process) # reasoning content is likely token fragments
+        thinking_str = "".join(thinking_process)
+        inform_base_str = "".join(inform_base_process)
         
         # Fallback if empty
         if not final_answer:
@@ -292,11 +294,11 @@ def get_skills_response(message: str, url: str, user_id: str = None, session_id:
 
         # Add raw chunks to thinking for debug
         full_debug_log = thinking_str
-        # full_debug_log += "\n\n--- RAW API RESPONSE STREAM ---\n" + "\n".join(raw_chunks)
         
         return json.dumps({
             "result": final_answer, 
-            "thinking": full_debug_log
+            "thinking": full_debug_log,
+            "inform_base": inform_base_str
         }, ensure_ascii=False)
 
     except Exception as e:

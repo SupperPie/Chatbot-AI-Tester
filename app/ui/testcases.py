@@ -177,12 +177,12 @@ def render_testcases_page():
                  
     if cases_to_run:
         try:
-            from app.utils import get_job_manager
-            mgr = get_job_manager()
-            job_id = mgr.run_background_job(cases_to_run, api_name=selected_api)
-            
-            st.toast(f"🚀 Job Started! ID: {job_id}", icon="🏃")
-            st.success(f"Background job started with {len(cases_to_run)} cases. \n\nGo to **Test Report** to view progress.")
+            with st.spinner(f"Running {len(cases_to_run)} tests..."):
+                results = run_tests_sync(cases_to_run, api_name=selected_api)
+                # save_history(results) <- Removed: run_tests_sync now saves internally with api_name
+                st.toast(f"Completed! Ran {len(cases_to_run)} tests.", icon="🏃")
+                st.success(f"Successfully ran {len(cases_to_run)} tests. View results in **Test Report**.")
             
         except Exception as e:
-            st.error(f"Failed to start job: {e}")
+            st.error(f"Failed to run tests: {e}")
+

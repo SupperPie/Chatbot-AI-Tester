@@ -72,7 +72,7 @@ def save_data(df: pd.DataFrame):
     
     return to_save_df
 
-def save_history(results: List[Dict]):
+def save_history(results: List[Dict], api_name: str = "Unknown"):
     history = []
     if os.path.exists(HISTORY_JSON):
         try:
@@ -87,6 +87,7 @@ def save_history(results: List[Dict]):
     entry = {
          "id": datetime.datetime.now().strftime("%Y%m%d%H%M%S"),
          "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+         "api_name": api_name,
          "total": total_count,
          "passed": passed_count,
          "failed": total_count - passed_count,
@@ -107,6 +108,7 @@ def run_tests_sync(selected_cases: List[Dict], api_name: str = "Bundle API", pro
             progress_bar.progress(percent, text=f"Running {current}/{total}...")
             
     results = engine.run_batch(selected_cases, api_name=api_name, progress_callback=on_progress)
+    save_history(results, api_name=api_name)
     return results
 
 def delete_reports(report_ids: List[str]):
