@@ -81,126 +81,7 @@ def get_bundle_response(message: str, url: str, user_id: str = None, session_id:
         return f"Error: {e}"
 
 
-def get_airport_assis_response(message: str, url: str, user_id: str = None, session_id: str = None) -> str:
-    """Airport Assistant API client with session support"""
-    # Generate IDs if not provided
-    if user_id is None:
-        user_id = str(uuid.uuid4())
-    if session_id is None:
-        session_id = str(uuid.uuid4())[:8]
-    
-    payload = {
-        "session_id": session_id,
-        "query": message,
-        "stream_mode": "MESSAGE",
-        "step": "",
-        "phone": ""
-    }
-    
-    headers = {
-        "Content-Type": "application/json",
-        "Accept": "application/json"
-    }
 
-    print(f"Sending request to {url} with query: {message}")
-    
-    try:
-        response = requests.post(url, json=payload, headers=headers, stream=True)
-        
-        if not response.ok:
-            print(f"API Error {response.status_code}: {response.text}")
-            return f"❌ SERVER DETAIL ({response.status_code}): {response.text}"
-            
-        response.raise_for_status()
-        
-        final_answer = ""
-        thinking_process = []
-        raw_chunks = [] # For debugging
-        
-        for line in response.iter_lines():
-            if line:
-                decoded_line = line.decode('utf-8')
-                if decoded_line.startswith("data: "):
-                    json_str = decoded_line[6:]
-                    if json_str.strip() == "[DONE]":
-                        break
-                    
-                    try:
-                        data = json.loads(json_str)
-                        
-                        # Capture EVERYTHING for debug
-                        raw_chunks.append(json.dumps(data, ensure_ascii=False))
-                        
-                        # Handle string data (simple message stream)
-                        if isinstance(data, str):
-                            final_answer += data
-                            continue
-
-                        # Ensure data is a dictionary
-                        if not isinstance(data, dict):
-                            continue
-                        
-                        # Extract Agent Data (Legacy / Specific Agents)
-                        agent_name = data.get("agent", "unknown_agent")
-                        
-                        # 1. Customer Service Agent
-                        if agent_name == "customer_service_agent":
-                            reply = data.get("reply", "")
-                            if reply:
-                                thinking_process.append(f"**Customer Service Agent:** {reply}")
-                                
-                        # 2. Membership Guide Agent
-                        elif agent_name == "membership_card_guide_agent":
-                            reason = data.get("reason", "")
-                            card = data.get("membership_card", "")
-                            if reason:
-                                thinking_process.append(f"**Membership Guide Agent ({card}):**\n{reason}")
-                                
-                        # 3. Supervisor Agent
-                        elif agent_name == "supervisor_agent":
-                            answer = data.get("answer", "")
-                            if answer:
-                                final_answer = answer # Overwrite or append? Usually overwrite in this logic
-                            
-                            reason = data.get("reason", "") 
-                            if reason: 
-                                thinking_process.append(f"**Supervisor Agent:** {reason}")
-                        
-                        # 4. Fallback for other agents/fields
-                        else:
-                             # Try to find any common text fields
-                             content = data.get("content") or data.get("reply") or data.get("reason") or data.get("answer")
-                             if content:
-                                 thinking_process.append(f"**{agent_name}:** {content}")
-
-                    except json.JSONDecodeError:
-                        raw_chunks.append(f"Decode Error: {json_str}")
-                        continue
-        
-        # Determine Final Result
-        if not final_answer:
-            # If no explicit answer found, check if we can deduce from thinking or use raw chunks
-            if thinking_process:
-                final_answer = "Refers to thinking process for details."
-            elif raw_chunks:
-                # If we have raw chunks but failed to parse structure
-                final_answer = "Raw data captured (parsing failed). See Thinking Process."
-            else:
-                 final_answer = "Error: No response content found."
-
-        # Combine thinking with RAW log for user visibility (as requested)
-        full_debug_log = "\n\n".join(thinking_process)
-        # full_debug_log += "\n\n--- RAW API RESPONSE STREAM ---\n" + "\n".join(raw_chunks)
-        
-        # Return as a structured JSON string 
-        return json.dumps({
-            "result": final_answer, 
-            "thinking": full_debug_log
-        }, ensure_ascii=False)
-
-    except Exception as e:
-        print(f"Error calling Airport Assistant API: {e}")
-        return f"Error: {e}"
 
 
 def get_skills_response(message: str, url: str, user_id: str = None, session_id: str = None) -> str:
@@ -211,20 +92,22 @@ def get_skills_response(message: str, url: str, user_id: str = None, session_id:
     if session_id is None:
         session_id = str(uuid.uuid4())[:8]
     
+    
+    # Updated payload based on user request (2026-02-09)
     payload = {
         "session_id": session_id,
-        "query": message,
-        "stream_mode": "MESSAGE",
-        "step": "",
-        "phone": ""
+        "message": message,  # Renamed from 'query'
+        "stream_mode": "MESSAGES", # Changed from 'MESSAGE'
+        "anchor": "", # Renamed from 'step'
+        "mobile_no": "13112748887" # Renamed from 'phone' and added default
     }
     
     headers = {
         "Content-Type": "application/json",
-        "Accept": "application/json"
+        "accept": "application/json"
     }
 
-    print(f"Sending request to {url} with query: {message}")
+    print(f"Sending request to {url} with message: {message}")
     
     try:
         # TIMEOUT ADDED: 600s to prevent hanging
@@ -253,16 +136,27 @@ def get_skills_response(message: str, url: str, user_id: str = None, session_id:
                         data = json.loads(json_str)
                         raw_chunks.append(json.dumps(data, ensure_ascii=False))
 
-                        # Parse based on event type
-                        event_type = data.get("event")
+                        # Parse based on message type
+                        msg_type = data.get("type")
                         # Try to find content in common fields (text/content)
                         content = data.get("text") or data.get("content") or ""
                         
-                        if event_type == "reasoning":
+                        if msg_type == "reasoning":
                             # Accumulate thinking
                             if content:
                                 thinking_process.append(content)
-                        elif event_type == "text":
+                        elif msg_type == "tools":
+                             # Handle tools event for inform base
+                             # User mentioned: "type":"tools","event":"load_skills"
+                             # You might want to capture the whole data or specific fields
+                             if content:
+                                 inform_base_process.append(f"[Tool] {content}")
+                             else:
+                                 # If content is empty or structure is different
+                                 # Dump the whole data for tools
+                                 inform_base_process.append(json.dumps(data, ensure_ascii=False))
+
+                        elif msg_type == "text":
                             if data.get("agent") == "tools":
                                 # Tool output goes to INFORM BASE
                                 if content:
@@ -281,7 +175,8 @@ def get_skills_response(message: str, url: str, user_id: str = None, session_id:
         
         # Combine thinking
         thinking_str = "".join(thinking_process)
-        inform_base_str = "".join(inform_base_process)
+        inform_base_str = "\n".join(inform_base_process)
+        raw_full_str = "\n".join(raw_chunks)
         
         # Fallback if empty
         if not final_answer:
@@ -298,7 +193,8 @@ def get_skills_response(message: str, url: str, user_id: str = None, session_id:
         return json.dumps({
             "result": final_answer, 
             "thinking": full_debug_log,
-            "inform_base": inform_base_str
+            "inform_base": inform_base_str,
+            "raw": raw_full_str
         }, ensure_ascii=False)
 
     except Exception as e:
@@ -321,9 +217,7 @@ def get_chat_response(message: str, api_name: str = "Bundle API", user_id: str =
         
     api_type = config.get("type", "bundle") # Default to bundle type if not specified
     
-    if api_type == "airport":
-        return get_airport_assis_response(message, url=url, user_id=user_id, session_id=session_id)
-    elif api_type == "skills":
+    if api_type == "skills":
         return get_skills_response(message, url=url, user_id=user_id, session_id=session_id)
     else:
         # Default to Bundle type structure
@@ -336,11 +230,10 @@ def get_available_apis():
 
 
 if __name__ == "__main__":
+    pass
     # verification
     # print("Testing Bundle API...")
     # resp = get_chat_response("book a car", api_name="Bundle API")
     # print(f"Bundle Response: {resp}")
     
-    print("\nTesting Airport Assistant API...")
-    resp2 = get_chat_response("我想走快一点，但不需要太多服务", api_name="Airport Assistant")
-    print(f"Airport Response: {resp2}")
+

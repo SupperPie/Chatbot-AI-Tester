@@ -138,6 +138,7 @@ class TestEngine:
             # Try to parse as structured JSON (with thinking process)
             thinking_process = None
             inform_base = None
+            raw_data = None
             try:
                 import json
                 resp_data = json.loads(raw_response)
@@ -145,6 +146,7 @@ class TestEngine:
                     actual_output = resp_data["result"]
                     thinking_process = resp_data.get("thinking")
                     inform_base = resp_data.get("inform_base")
+                    raw_data = resp_data.get("raw")
                 else:
                     actual_output = raw_response
             except:
@@ -218,6 +220,7 @@ class TestEngine:
             "passed": passed,
             "thinking": thinking_process,
             "inform_base": inform_base,
+            "raw": raw_data,
             "latency": latency
         }
 

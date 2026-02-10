@@ -49,6 +49,22 @@ def load_data() -> pd.DataFrame:
             df[col] = ""
     if "tags" not in df.columns:
         df["tags"] = [[] for _ in range(len(df))]
+    else:
+        # Sanitize tags column to ensure lists
+        def ensure_list(x):
+            if isinstance(x, list): return x
+            if pd.isna(x) or x == "": return []
+            try:
+                import ast
+                # Handle string representation of list "['a', 'b']"
+                parsed = ast.literal_eval(str(x))
+                if isinstance(parsed, list): return parsed
+            except:
+                pass
+            # Handle plain string "tag" -> ["tag"]
+            return [str(x)] if str(x).strip() else []
+            
+        df["tags"] = df["tags"].apply(ensure_list)
         
     return df
 
@@ -102,12 +118,12 @@ def save_history(results: List[Dict], api_name: str = "Unknown"):
 def run_tests_sync(selected_cases: List[Dict], api_name: str = "Bundle API", progress_bar=None):
     engine = get_test_engine()  # Use cached instance
     
-    def on_progress(current, total):
+    def on_progress(result, current, total):
         if progress_bar:
             percent = min(current / total, 1.0)
             progress_bar.progress(percent, text=f"Running {current}/{total}...")
             
-    results = engine.run_batch(selected_cases, api_name=api_name, progress_callback=on_progress)
+    results = engine.run_batch(selected_cases, api_name=api_name, on_step_complete=on_progress)
     save_history(results, api_name=api_name)
     return results
 
@@ -174,3 +190,37 @@ def export_pdf(df: pd.DataFrame):
 def get_job_manager():
     from app.job_manager import get_job_manager as _get_mgr
     return _get_mgr()
+
+def update_history_entry(entry_id: str, new_results: List[Dict]):
+    """Update a specific history entry with new results (e.g. manual review edits)"""
+    if not os.path.exists(HISTORY_JSON):
+        return False
+    
+    try:
+        with open(HISTORY_JSON, "r", encoding="utf-8") as f:
+            history = json.load(f)
+        
+        updated = False
+        for entry in history:
+            if entry.get("id") == entry_id:
+                entry["results"] = new_results
+                # Recalculate stats
+                passed_count = 0
+                for r in new_results:
+                     if r.get("passed", False):
+                         passed_count += 1
+                
+                entry["passed"] = passed_count
+                entry["total"] = len(new_results)
+                entry["failed"] = len(new_results) - passed_count
+                updated = True
+                break
+        
+        if updated:
+            with open(HISTORY_JSON, "w", encoding="utf-8") as f:
+                json.dump(history, f, indent=4, ensure_ascii=False)
+            return True
+        return False
+    except Exception as e:
+        print(f"Error updating history: {e}")
+        return False

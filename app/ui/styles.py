@@ -51,34 +51,55 @@ def apply_custom_styles():
             box-shadow: 0 0 0 3px rgba(255, 215, 0, 0.3) !important;
         }
         
-        /* Yellow/Gold gradient for ALL sidebar buttons - using more specific selectors */
-        section[data-testid="stSidebar"] button,
-        section[data-testid="stSidebar"] .stButton > button,
-        section[data-testid="stSidebar"] div[data-testid="stButton"] > button,
-        [data-testid="stSidebar"] button[kind="secondary"],
-        [data-testid="stSidebar"] button[kind="primary"] {
-            background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%) !important;
-            background-color: #FFD700 !important;
+        /* --- Sidebar Layout --- */
+        section[data-testid="stSidebar"] {
+            width: 250px !important;
+            min-width: 250px !important;
+            max-width: 250px !important;
+        }
+
+        /* --- Sidebar Navigation Buttons --- */
+        
+        /* ACTIVE State (Primary) - Pale Yellow/Creamy Gold */
+        section[data-testid="stSidebar"] button[kind="primary"] {
+            background: linear-gradient(135deg, #FFF8E1 0%, #FFECB3 100%) !important;
+            border: 1px solid #FFD54F !important;
+            color: #5D4037 !important; /* Brownish text for contrast */
+            font-weight: 700 !important;
+            box-shadow: 0 2px 5px rgba(255, 213, 79, 0.3) !important;
+            transition: all 0.2s ease !important;
+        }
+        
+        section[data-testid="stSidebar"] button[kind="primary"]:hover {
+            background: linear-gradient(135deg, #FFECB3 0%, #FFE082 100%) !important;
+            transform: translateX(2px) !important;
+            box-shadow: 0 3px 8px rgba(255, 213, 79, 0.4) !important;
+        }
+
+        /* INACTIVE State (Secondary) - White with visible border */
+        section[data-testid="stSidebar"] button[kind="secondary"] {
+            background: #FFFFFF !important;
+            border: 1px solid #E0E0E0 !important;
+            color: #555 !important;
+            font-weight: 500 !important;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important;
+        }
+
+        section[data-testid="stSidebar"] button[kind="secondary"]:hover {
+            background: #F5F5F5 !important;
+            border-color: #BDBDBD !important;
             color: #333 !important;
-            border: none !important;
-            border-radius: 8px !important;
-            font-weight: 600 !important;
-            height: 42px !important;
-            transition: all 0.2s !important;
-            box-shadow: 0 2px 8px rgba(255, 215, 0, 0.4) !important;
+            transform: translateX(2px) !important;
         }
-        section[data-testid="stSidebar"] button:hover,
-        section[data-testid="stSidebar"] .stButton > button:hover,
-        [data-testid="stSidebar"] button[kind="secondary"]:hover,
-        [data-testid="stSidebar"] button[kind="primary"]:hover {
-            background: linear-gradient(135deg, #FFC300 0%, #FF8C00 100%) !important;
-            transform: translateY(-1px) !important;
-            box-shadow: 0 4px 12px rgba(255, 195, 0, 0.6) !important;
-        }
-        /* Focus state */
-        section[data-testid="stSidebar"] button:focus {
-            background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%) !important;
-            box-shadow: 0 0 0 3px rgba(255, 215, 0, 0.3) !important;
+        
+        /* Common button properties */
+        section[data-testid="stSidebar"] button {
+             border-radius: 8px !important;
+             height: 45px !important;
+             margin-bottom: 5px !important;
+             width: 100% !important;
+             justify-content: flex-start !important; /* Left align text */
+             padding-left: 20px !important;
         }
 
         /* --- Custom Button Colors for Testcases Actions --- */

@@ -3,7 +3,7 @@ import pandas as pd
 import json
 import os
 import time
-from app.utils import HISTORY_JSON, export_pdf, delete_reports, run_tests_sync, save_history
+from app.utils import HISTORY_JSON, export_pdf, delete_reports, run_tests_sync, save_history, update_history_entry
 from chat_client import get_available_apis
 
 def render_report_page():
@@ -144,21 +144,6 @@ def render_report_page():
                         st.warning("Stopping job... please wait.")
                         time.sleep(1)
                         st.rerun()
-            
-            with ac_col3:
-                # PDF EXPORT (Only if results exist)
-                res_df = pd.DataFrame(entry.get('results', []))
-                if not res_df.empty:
-                    if st.button("📄 PDF", key=f"btn_pdf_{entry_id}"):
-                        pdf_data = export_pdf(res_df) 
-                        st.download_button(
-                             label="Download",
-                             data=pdf_data,
-                             file_name=f"report_{entry_id}.pdf",
-                             mime="application/pdf",
-                             key=f"dl_pdf_{entry_id}"
-                        )
-
             with ac_col4:
                 # API SELECTOR
                 # Try to find index of stored api_name
@@ -191,7 +176,18 @@ def render_report_page():
                     if "turns" in display_res_df.columns:
                         display_res_df["actual_output"] = display_res_df.apply(format_output, axis=1)
 
-                st.data_editor(
+                # Ensure review_comment exists
+                if "review_comment" not in display_res_df.columns:
+                    display_res_df["review_comment"] = ""
+                else:
+                    display_res_df["review_comment"] = display_res_df["review_comment"].fillna("").astype(str)
+
+                # Configure disabled columns
+                all_cols = display_res_df.columns.tolist()
+                editable_cols = ["passed", "review_comment"]
+                disabled_cols = [c for c in all_cols if c not in editable_cols]
+
+                edited_df = st.data_editor(
                     display_res_df,
                     column_config={
                         "case_id": st.column_config.TextColumn("ID", width="small"),
@@ -200,16 +196,50 @@ def render_report_page():
                         "actual_output": st.column_config.TextColumn("Actual Output", width="large"),
                         "thinking": st.column_config.TextColumn("Thinking Process", width="large"),
                         "inform_base": st.column_config.TextColumn("Inform Base (Tools)", width="large"),
-                        "passed": st.column_config.CheckboxColumn("Passed", width="small"),
+                        "raw": st.column_config.TextColumn("Raw Data", width="large"),
                         "score": st.column_config.NumberColumn("Score", format="%.2f"),
+                        "passed": st.column_config.CheckboxColumn("Passed", width="small"),
+                        "review_comment": st.column_config.TextColumn("Review Comment", width="medium"),
                         "latency": st.column_config.NumberColumn("Response Time", format="%.2f s"),
                         "reason": st.column_config.TextColumn("Reason", width="large"),
                     },
                     use_container_width=True,
-                    disabled=True,
+                    disabled=disabled_cols,
                     hide_index=True,
                     key=f"hist_tbl_{entry_id}"
                 )
+
+                # SAVE BUTTON
+                if st.button("💾 Save Changes", key=f"btn_save_{entry_id}"):
+                    try:
+                        current_results = entry.get('results', [])
+                        # Create lookup from edited_df
+                        updates = {}
+                        if not edited_df.empty:
+                            for _, row in edited_df.iterrows():
+                                updates[row['case_id']] = {
+                                    'passed': row.get('passed'),
+                                    'review_comment': row.get('review_comment')
+                                }
+                        
+                        # Apply updates to original results list
+                        updated_count = 0
+                        for res in current_results:
+                            cid = res.get('case_id')
+                            if cid in updates:
+                                res['passed'] = bool(updates[cid].get('passed', False))
+                                res['review_comment'] = str(updates[cid].get('review_comment', ""))
+                                updated_count += 1
+                        
+                        if update_history_entry(entry_id, current_results):
+                            st.success(f"Successfully saved changes for {updated_count} cases!")
+                            time.sleep(1)
+                            st.rerun()
+                        else:
+                            st.error("Failed to save changes to history file.")
+                    except Exception as e:
+                        st.error(f"Error saving changes: {e}")
+            
             else:
                 if status == "running":
                     st.info("Waiting for first result...")

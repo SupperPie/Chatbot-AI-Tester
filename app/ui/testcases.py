@@ -19,10 +19,10 @@ def render_testcases_page():
     if "df_content_sig" not in st.session_state:
         st.session_state.df_content_sig = get_content_signature(st.session_state.df)
 
-    # ------------------
+
     # Filters & Actions
     # ------------------
-    filter_col1, filter_col2, filter_col3 = st.columns([1, 2, 1])
+    filter_col1, filter_col2, filter_col3, filter_col4 = st.columns([1, 1.5, 1, 0.5])
     
     with filter_col1:
         st.selectbox("🔍 Module Filter", options=["All Modules"], index=0, key="page_module_filter")
@@ -42,6 +42,83 @@ def render_testcases_page():
         # API Selection
         available_apis = get_available_apis() if get_available_apis() else ["Bundle API"]
         selected_api = st.selectbox("⚙️ API Endpoint", options=available_apis, index=0, key="page_api_select")
+
+    with filter_col4:
+        # Import / Template Popover
+        st.markdown('<div style="height: 28px;"></div>', unsafe_allow_html=True) # Align with selectbox
+        with st.popover("📤 Import", use_container_width=True):
+             st.markdown("### Import Test Cases")
+             # Download Template
+             try:
+                 with open("docs/import_template.csv", "rb") as f:
+                     st.download_button("📄 Download Template", data=f, file_name="import_template.csv", mime="text/csv", help="Download CSV template")
+             except Exception as e:
+                 st.error(f"Template not found: {e}")
+             
+             st.divider()
+             
+             st.info("Upload CSV/JSON with `input`, `expected_output`.")
+             uploaded_file = st.file_uploader("Upload File", type=["csv", "json"], key="popover_uploader")
+             
+             if uploaded_file is not None:
+                try:
+                    if uploaded_file.name.endswith('.csv'):
+                         try:
+                             import_df = pd.read_csv(uploaded_file, encoding='utf-8')
+                         except UnicodeDecodeError:
+                             uploaded_file.seek(0)
+                             import_df = pd.read_csv(uploaded_file, encoding='gb18030')
+                    else:
+                        import_df = pd.read_json(uploaded_file)
+                    
+                    # Validation
+                    required_cols = ["input", "expected_output"]
+                    if not all(col in import_df.columns for col in required_cols):
+                        st.error(f"Missing columns: {', '.join(required_cols)}")
+                    else:
+                        if st.button(f"Confirm Import", type="primary", key="btn_confirm_import"):
+                            # Prepare data
+                            # Ensure tags are lists
+                            if "tags" in import_df.columns:
+                                def normalize_tags(x):
+                                    if isinstance(x, list): return x
+                                    if pd.isna(x) or x == "": return []
+                                    if isinstance(x, str):
+                                        try:
+                                            # Try to parse string representation of list like "['tag1', 'tag2']"
+                                            import ast
+                                            parsed = ast.literal_eval(x)
+                                            if isinstance(parsed, list): return parsed
+                                            return [x]
+                                        except:
+                                            # Treat string as single tag
+                                            return [x] if x.strip() else []
+                                    return []
+                                import_df["tags"] = import_df["tags"].apply(normalize_tags)
+                            else:
+                                import_df["tags"] = [[] for _ in range(len(import_df))]
+                                
+                            if "id" in import_df.columns:
+                                del import_df["id"]
+                                
+                            # Merge
+                            existing_df = st.session_state.df.drop(columns=["Select"], errors='ignore')
+                            combined_df = pd.concat([existing_df, import_df], ignore_index=True)
+                            
+                            # Save
+                            final_df = save_data(combined_df)
+                            
+                            # Update State
+                            if "Select" not in final_df.columns:
+                                 final_df.insert(0, "Select", False)
+                            st.session_state.df = final_df
+                            st.session_state.df_content_sig = get_content_signature(final_df)
+                            
+                            st.success(f"Imported {len(import_df)} cases!")
+                            st.rerun()
+                            
+                except Exception as e:
+                    st.error(f"Error: {e}")
     
     st.divider()
     
@@ -177,11 +254,73 @@ def render_testcases_page():
                  
     if cases_to_run:
         try:
-            with st.spinner(f"Running {len(cases_to_run)} tests..."):
-                results = run_tests_sync(cases_to_run, api_name=selected_api)
-                # save_history(results) <- Removed: run_tests_sync now saves internally with api_name
+             # Use JobManager (Async) but simulate sync experience with progress bar
+            from app.job_manager import get_job_manager
+            mgr = get_job_manager()
+            
+            # Start Job
+            job_id = mgr.run_background_job(cases_to_run, api_name=selected_api)
+            
+            # Progress UI
+            progress_bar = st.progress(0, text="Initializing...")
+            status_text = st.empty()
+            
+            import time
+            from app.utils import HISTORY_JSON
+            import json
+            import os
+            
+            # Poll for completion
+            while True:
+                time.sleep(1) # Poll interval
+                
+                # Check status from History check
+                # (JobManager updates history.json)
+                job_data = None
+                if os.path.exists(HISTORY_JSON):
+                    try:
+                        with open(HISTORY_JSON, "r", encoding="utf-8") as f:
+                            hist = json.load(f)
+                            for h in hist:
+                                if h.get("id") == job_id:
+                                    job_data = h
+                                    break
+                    except:
+                        pass
+                
+                if job_data:
+                    status = job_data.get("status", "running")
+                    
+                    # Update Progress
+                    started = job_data.get("started_count", 0)
+                    total = job_data.get("total", 1)
+                    if total == 0: total = 1
+                    
+                    pct = min(started / total, 1.0)
+                    progress_bar.progress(pct, text=f"Running... {started}/{total}")
+                    
+                    if status in ["completed", "failed", "cancelled"]:
+                        progress_bar.progress(1.0, text=f"Finished: {status}")
+                        break
+                else:
+                    # Should not happen unless file delete race
+                    status_text.warning("Job data not found...")
+                    break
+            
+            # Show results if completed
+            if job_data and job_data.get("status") == "completed":
                 st.toast(f"Completed! Ran {len(cases_to_run)} tests.", icon="🏃")
-                st.success(f"Successfully ran {len(cases_to_run)} tests. View results in **Test Report**.")
+                st.success(f"Successfully ran {len(cases_to_run)} tests. View details in **Test Report**.")
+                
+                # Show simplified results result
+                results = job_data.get("results", [])
+                res_df = pd.DataFrame(results)
+                cols = ["id", "input", "passed", "score", "reason"]
+                cols = [c for c in cols if c in res_df.columns]
+                st.dataframe(res_df[cols].style.format({"score": "{:.2f}"}), use_container_width=True)
+                
+            elif job_data and job_data.get("status") == "failed":
+                st.error(f"Job failed: {job_data.get('error')}")
             
         except Exception as e:
             st.error(f"Failed to run tests: {e}")

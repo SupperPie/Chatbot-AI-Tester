@@ -1,9 +1,4 @@
 {
-    "Airport Assistant": {
-        "url": "https://air-assis-dev.dragonpass.com.cn/airport_assis/stream",
-        "description": "Airport Assistant API",
-        "type": "airport"
-    },
     "Bundle API": {
         "url": "http://192.168.22.252:12345/bundle/stream",
         "description": "Bundle API",
