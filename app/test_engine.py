@@ -17,7 +17,18 @@ except ImportError:
         # For now assume it's just import path
         print("Warning: Failed to import GEval. Trying legacy import paths.")
         # Attempt to proceed (it will fail later if not imported)
-from deepeval.test_case import LLMTestCase, LLMTestCaseParams
+from deepeval.test_case import LLMTestCase
+try:
+    from deepeval.test_case import LLMTestCaseParams
+except ImportError:
+    # Older versions might not have this Enum
+    class LLMTestCaseParams:
+        INPUT = "input"
+        ACTUAL_OUTPUT = "actual_output"
+        EXPECTED_OUTPUT = "expected_output"
+        CONTEXT = "context"
+        RETRIEVAL_CONTEXT = "retrieval_context"
+        
 from deepeval.models import GPTModel
 from deepeval import assert_test
 from deepeval.models.base_model import DeepEvalBaseLLM
