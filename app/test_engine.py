@@ -4,6 +4,14 @@ import asyncio
 import nest_asyncio
 import pandas as pd
 from typing import List, Dict, Any
+
+# Ensure we can import chat client from root
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from chat_client import get_chat_response
+from dotenv import load_dotenv
+load_dotenv(override=True)
+
 try:
     from deepeval.metrics import GEval, FaithfulnessMetric
 except ImportError:
@@ -64,23 +72,46 @@ import openai
 class SynchronousEvalModel(DeepEvalBaseLLM):
     def __init__(self, model_name, base_url, api_key):
         self.model_name = model_name
-        self.client = openai.OpenAI(
-            base_url=base_url,
-            api_key=api_key
-        )
+        self.base_url = base_url
+        self.api_key = api_key
+        
+        # Check for OpenAI v1.x client availability
+        if hasattr(openai, "OpenAI"):
+            self.client = openai.OpenAI(
+                base_url=base_url,
+                api_key=api_key
+            )
+            self.is_v1 = True
+        else:
+            # Fallback for OpenAI v0.28.x
+            self.client = None
+            self.is_v1 = False
+            # Note: In a multi-threaded app this global setting is risky, 
+            # but for this simple deployment it's acceptable.
+            openai.api_key = api_key
+            openai.api_base = base_url
 
     def load_model(self):
-        return self.client
+        return self.client if self.is_v1 else self
 
     def generate(self, prompt: str) -> str:
         # Synchronous Generation
         try:
-            response = self.client.chat.completions.create(
-                model=self.model_name,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0
-            )
-            return response.choices[0].message.content
+            if self.is_v1:
+                response = self.client.chat.completions.create(
+                    model=self.model_name,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0
+                )
+                return response.choices[0].message.content
+            else:
+                # OpenAI v0.28.x syntax
+                response = openai.ChatCompletion.create(
+                    model=self.model_name,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0
+                )
+                return response['choices'][0]['message']['content']
         except Exception as e:
             return f"Error: {e}"
 
@@ -164,6 +195,11 @@ class TestEngine:
         if not input_text.strip():
              return {"error": "Empty input", "id": case_data.get("id")}
 
+        # Initialize variables to avoid UnboundLocalError if API call fails
+        thinking_process = None
+        inform_base = None
+        raw_data = None
+        
         # Call API
         try:
             start_time = time.time()
@@ -174,9 +210,6 @@ class TestEngine:
             latency = end_time - start_time
             
             # Try to parse as structured JSON (with thinking process)
-            thinking_process = None
-            inform_base = None
-            raw_data = None
             try:
                 import json
                 resp_data = json.loads(raw_response)
