@@ -36,7 +36,12 @@ except ImportError:
     class GPTModel:
         def __init__(self, *args, **kwargs): pass
 
-from deepeval import assert_test
+try:
+    from deepeval import assert_test
+except ImportError:
+    # assert_test is for pytest integration, likely not used in our custom runner
+    # Mock it just in case
+    def assert_test(*args, **kwargs): pass
 
 try:
     from deepeval.models.base_model import DeepEvalBaseLLM
