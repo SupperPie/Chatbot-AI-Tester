@@ -5545,7 +5545,9 @@
         "input": "我的航班去哪值机",
         "expected_output": "请您直接前往 T3 航站楼四层出发大厅哦～ 已线上值机且无托运行李，您直接去四层出发大厅安检通道就好；需要托运或未值机的，麻烦您按国内/国际航班到对应值机岛办理。\n国内航班：A/B 岛：南方航空；C 岛：多家国内航司（含深圳航空）；F/G/H 岛：国航、深圳航空等；K 岛：深圳航空（部分国内航班）；国际及港澳台航班请去 D/E 岛，部分区域还支持边检预检，超省心！\n各值机岛岛头设爱心服务柜台，老人、孕妇、携带婴幼儿及需要协助的旅客可优先办理；出发大厅有自助值机/托运设备，多数航司均可使用，廉航相关要求问对应航司柜台就好。\n现场有清晰的 “值机 / Check-in” 指引牌，不确定具体岛台的话，找就近服务台或工作人员确认就好～",
         "retrieval_context": NaN,
-        "tags": "AI礼遇Q&A",
+        "tags": [
+            "AI礼遇Q&A"
+        ],
         "description": NaN,
         "conversation": NaN,
         "turn_index": NaN,
@@ -5560,7 +5562,9 @@
         "input": "托运行李在哪里办理？（行李在哪托运）",
         "expected_output": "请您前往 T3 航站楼四层出发大厅对应值机岛办理托运哦，很方便的！\n国内航班去 A/B/C/F/G/H/K 岛，国际及港澳台去 D/E 岛，各值机岛旁都有自助行李托运设备，标识特别明显，一眼就能找到。\n找不到具体岛台的话，看“值机 / Check-in”指引牌，或者问就近服务台、工作人员都可以～",
         "retrieval_context": NaN,
-        "tags": "AI礼遇Q&A",
+        "tags": [
+            "AI礼遇Q&A"
+        ],
         "description": NaN,
         "conversation": NaN,
         "turn_index": NaN,
@@ -5575,7 +5579,9 @@
         "input": "哪些物品不能托运",
         "expected_output": "充电宝、锂电池、打火机、管制刀具、易燃易爆品都不能托运哦，大型磁铁、未密封的强刺激气味物品也不行哒～\n酒类要密封原包装，酒精含量 24%-70% 的每人最多托运 5 升，超 70% 就不能托运啦；生鲜、活体宠物这些，记得提前联系航司申请哦。\n不确定的物品，安检前问值机柜台或安检人员就好，别担心～",
         "retrieval_context": NaN,
-        "tags": "AI礼遇Q&A",
+        "tags": [
+            "AI礼遇Q&A"
+        ],
         "description": NaN,
         "conversation": NaN,
         "turn_index": NaN,
@@ -5590,7 +5596,9 @@
         "input": "行李超规怎么办",
         "expected_output": "请您到 T3 四层出发大厅航司柜台，或者安检旁的超规行李柜台办理就好，很简单的！\n行李尺寸、重量超出航司免费托运标准就是超规啦，需要按航司标准付费，大型运动器材等特殊物品记得提前申请，不确定是否超规，先让航司柜台工作人员判断就好。\n找不到超规柜台的话，看“超规行李”指引，或者让现场工作人员带您去都可以～",
         "retrieval_context": NaN,
-        "tags": "AI礼遇Q&A",
+        "tags": [
+            "AI礼遇Q&A"
+        ],
         "description": NaN,
         "conversation": NaN,
         "turn_index": NaN,
@@ -5605,7 +5613,9 @@
         "input": "有违禁品怎么解决",
         "expected_output": "发现行李里有违禁品，必须在安检前处理，不能带着通过安检或托运。\n常见可行的处理方式：\n自弃处理：在安检前将物品放入弃置箱（如液体、喷雾、工具类）\n改为托运：符合托运要求的物品，可返回值机柜台托运\n拆分行李：将不符合随身携带的物品取出，单独处理\n寄存 / 快递：部分机场支持寄存或现场快递服务\n重要提醒：\n易燃易爆、管制刀具等禁止携带和托运，只能弃置\n液体、充电宝等规则较多，以安检现场判定为准\n已到安检口发现问题，处理时间会明显拉长\n如果你愿意告诉我是什么物品，我可以直接帮你判断能不能托运、要不要弃置、有没有替代方案。",
         "retrieval_context": NaN,
-        "tags": "AI礼遇Q&A",
+        "tags": [
+            "AI礼遇Q&A"
+        ],
         "description": NaN,
         "conversation": NaN,
         "turn_index": NaN,
@@ -5620,7 +5630,9 @@
         "input": "我第一次坐飞机，完整流程是怎样的？",
         "expected_output": "请您提前预留足够时间哦，值机、安检建议一共预留1-1.5小时，先到T3航站楼四层出发大厅对应值机岛办值机拿登机牌，有行李就同步托运，超方便！\n值机岛、登机口都有明显标识，一目了然～ 之后拿好登机牌和身份证件过安检，安检后看登机牌上的登机口，去对应区域候机，听广播通知登机就好啦。\n不清楚值机岛和登机口的话，看现场指引牌，或者问就近工作人员都可以～",
         "retrieval_context": NaN,
-        "tags": "AI礼遇Q&A",
+        "tags": [
+            "AI礼遇Q&A"
+        ],
         "description": NaN,
         "conversation": NaN,
         "turn_index": NaN,
@@ -5635,7 +5647,9 @@
         "input": "我有行李要托运，流程是怎样的？",
         "expected_output": "请您携带好本人身份证件，到T3航站楼四层出发大厅对应航司值机岛办理托运，同步办值机拿登机牌就好，记得托运前确认行李无违禁品、包装完好哦～\n托运时工作人员会核对行李，贴好行李条后，您拿好登机牌去安检就行，行李会直接运到您的航班上，放心吧！\n找不到对应值机岛的话，看“值机/Check-in”指引牌，或者咨询现场服务人员都可以～",
         "retrieval_context": NaN,
-        "tags": "AI礼遇Q&A",
+        "tags": [
+            "AI礼遇Q&A"
+        ],
         "description": NaN,
         "conversation": NaN,
         "turn_index": NaN,
@@ -5650,7 +5664,9 @@
         "input": "我可以走快速安检通道吗？",
         "expected_output": "请您前往T3航站楼四层出发大厅的快速安检通道哦，里面包含爱心通道、易安检，出示相关证件/登机牌核验资格，符合条件就能通行啦～\n老弱病残孕、带婴幼儿的旅客，还有持头等舱、公务舱登机牌、航司高端会员的旅客，都可以走这个通道哦。\n找不到快速安检通道的话，看现场“爱心通道/快速安检”标识，或者问安检口工作人员就好～",
         "retrieval_context": NaN,
-        "tags": "AI礼遇Q&A",
+        "tags": [
+            "AI礼遇Q&A"
+        ],
         "description": NaN,
         "conversation": NaN,
         "turn_index": NaN,
@@ -5665,7 +5681,9 @@
         "input": "自助值机和人工值机有什么区别？",
         "expected_output": "请您根据自己的需求选择就好啦，无托运行李选自助值机更快捷，出发大厅各值机岛旁都有设备，标识很明显；有托运行李直接选人工值机就行～\n无成人陪同的儿童、轮椅旅客等特殊情况，建议走人工值机哦。自助值机在机器上就能自行打印登机牌，只需要身份证件；人工值机可以同步办理行李托运，还能咨询航司相关问题，超省心！\n不会操作自助值机的话，找机器旁的工作人员协助，或者直接去人工值机柜台办理都可以～",
         "retrieval_context": NaN,
-        "tags": "AI礼遇Q&A",
+        "tags": [
+            "AI礼遇Q&A"
+        ],
         "description": NaN,
         "conversation": NaN,
         "turn_index": NaN,
@@ -5680,7 +5698,9 @@
         "input": "过安检前需要准备哪些证件？",
         "expected_output": "请您提前准备好本人有效身份证件和登机牌，提前拿在手上哦，这两个是过安检的必备物品，避免排队时耽误时间～\n儿童需要带户口本或出生证明，港澳台及国际航班要带对应通行证、护照等有效证件哦，别遗漏啦！\n要是忘记带证件，或者不清楚证件是否有效，立刻咨询就近的服务台工作人员就好～",
         "retrieval_context": NaN,
-        "tags": "AI礼遇Q&A",
+        "tags": [
+            "AI礼遇Q&A"
+        ],
         "description": NaN,
         "conversation": NaN,
         "turn_index": NaN,
@@ -5695,7 +5715,9 @@
         "input": "什么时候需要办理托运行李？",
         "expected_output": "请您注意哦，要是行李的尺寸、重量超出航班随身行李规定，或者携带了不能随身登机的物品（比如充电宝、打火机、超量液体），就需要办理托运行李啦，超规行李按航司标准付费就好。\n随身行李一般要求体积不超过20×40×55cm，重量不超过5公斤，液体超过100ml且未密封也需要托运哦，记好啦～\n不确定行李是否符合要求的话，到值机柜台让工作人员帮忙核对就好～",
         "retrieval_context": NaN,
-        "tags": "AI礼遇Q&A",
+        "tags": [
+            "AI礼遇Q&A"
+        ],
         "description": NaN,
         "conversation": NaN,
         "turn_index": NaN,
@@ -5710,7 +5732,9 @@
         "input": "国内航班和国际航班流程有什么主要差异？",
         "expected_output": "请您注意哦，国内航班值机安检后直接候机就好，国际航班需要额外办理海关、边检手续，很简单的～\n国内航班带身份证就可以，国际航班需要带护照/对应通行证，值机、边检都在T3航站楼四层国际出发专属区域，标识很明显，一眼就能找到。\n找不到国际出发区域的话，看现场指引牌，或者咨询就近工作人员都可以～",
         "retrieval_context": NaN,
-        "tags": "AI礼遇Q&A",
+        "tags": [
+            "AI礼遇Q&A"
+        ],
         "description": NaN,
         "conversation": NaN,
         "turn_index": NaN,
@@ -5725,7 +5749,9 @@
         "input": "如果已经线上值机，到机场后还需要做什么？",
         "expected_output": "请您根据有无托运行李操作就好啦，无托运直接去四层出发大厅安检，有托运先去对应值机岛托运行李，值机岛标识很明显，很好找～\n无托运行李需要带本人身份证和电子登机牌，电子登机牌直接出示就能用，超方便；有托运的话，额外带好行李，提前确认行李无违禁品哦。\n找不到安检口或值机岛的话，问现场工作人员就好～",
         "retrieval_context": NaN,
-        "tags": "AI礼遇Q&A",
+        "tags": [
+            "AI礼遇Q&A"
+        ],
         "description": NaN,
         "conversation": NaN,
         "turn_index": NaN,
@@ -5740,7 +5766,9 @@
         "input": "没有托运行李的话，流程可以简化到哪一步？",
         "expected_output": "请您提前准备好身份证和电子登机牌哦，流程可以简化成：线上值机后，直接去四层出发大厅安检，安检后候机就好，省去很多麻烦～\n不用去值机柜台打印登机牌，电子登机牌直接就能用于安检、登机，真的超省心！\n找不到安检口或登机口的话，看现场指引牌，或者咨询工作人员都可以～",
         "retrieval_context": NaN,
-        "tags": "AI礼遇Q&A",
+        "tags": [
+            "AI礼遇Q&A"
+        ],
         "description": NaN,
         "conversation": NaN,
         "turn_index": NaN,
@@ -5755,7 +5783,9 @@
         "input": "线上值机和机场值机在流程上有什么差异？",
         "expected_output": "请您记住哦，线上值机提前在家完成，到机场就能直接安检或托运，超省时间；机场值机需要到四层出发大厅对应值机岛现场办理，标识很明显～\n线上值机省时间，机场值机可以现场咨询航司问题、同步托运，按需选择就好～\n不清楚哪种适合您的话，问值机柜台工作人员就好～",
         "retrieval_context": NaN,
-        "tags": "AI礼遇Q&A",
+        "tags": [
+            "AI礼遇Q&A"
+        ],
         "description": NaN,
         "conversation": NaN,
         "turn_index": NaN,
@@ -5770,7 +5800,9 @@
         "input": "值机完成后，一般接下来要做什么？",
         "expected_output": "请您值机完成后，立刻带好本人身份证和登机牌，提前预留安检时间，去四层出发大厅过安检就好啦，别着急～\n安检前记得把随身行李中的液体、电子产品单独拿出来，安检后看登机牌上的登机口，去对应区域候机，等待广播通知登机就好，登机口标识一目了然～\n找不到安检口或登机口的话，问就近工作人员就好～",
         "retrieval_context": NaN,
-        "tags": "AI礼遇Q&A",
+        "tags": [
+            "AI礼遇Q&A"
+        ],
         "description": NaN,
         "conversation": NaN,
         "turn_index": NaN,
@@ -5785,7 +5817,9 @@
         "input": "值机完成是否意味着可以直接过安检？",
         "expected_output": "请您注意哦，无托运行李值机后可以直接过安检，有托运行李的话，先去四层出发大厅对应值机岛（标识很明显）托运，再去安检就好～\n托运时需要带好本人身份证、登机牌和行李，提前确认行李无违禁品，别遗漏啦！\n不清楚是否需要托运的话，问值机柜台工作人员就好～",
         "retrieval_context": NaN,
-        "tags": "AI礼遇Q&A",
+        "tags": [
+            "AI礼遇Q&A"
+        ],
         "description": NaN,
         "conversation": NaN,
         "turn_index": NaN,
@@ -5800,7 +5834,9 @@
         "input": "安检前通常需要准备好哪些东西？",
         "expected_output": "请您提前准备好本人身份证、登机牌哦，随身行李中的液体、电子产品单独拿出来，放进安检筐里就好，配合安检更快捷～\n儿童需要带户口本或出生证明，国际航班带护照/对应通行证，别忘记啦！\n要是忘记带证件，或者不清楚要求，问就近服务台工作人员就好～",
         "retrieval_context": NaN,
-        "tags": "AI礼遇Q&A",
+        "tags": [
+            "AI礼遇Q&A"
+        ],
         "description": NaN,
         "conversation": NaN,
         "turn_index": NaN,
@@ -5815,7 +5851,9 @@
         "input": "随身行李能带多少？",
         "expected_output": "请您注意哦，随身行李体积不超过20×40×55cm（大概一个登机箱大小），重量不超过5公斤，很好判断哒～\n液体单瓶不超过100ml，总量不超过1L，违禁品不能随身携带；要是超规了，到值机柜台办理托运就好～\n不确定是否超规的话，到值机柜台让工作人员帮忙核对就好～",
         "retrieval_context": NaN,
-        "tags": "AI礼遇Q&A",
+        "tags": [
+            "AI礼遇Q&A"
+        ],
         "description": NaN,
         "conversation": NaN,
         "turn_index": NaN,
@@ -5830,7 +5868,9 @@
         "input": "安检通过后还能再返回安检前的区域吗？",
         "expected_output": "安检通过后一般就不能返回安检前区域啦～\n要是有特殊情况，比如不小心遗漏了物品，您直接找身边的安检人员说明，按安检须知要求，走安检专用折返通道处理就好，不麻烦的，处理很快，不会耽误您登机哦。\n不清楚怎么处理的话，问身边的安检或服务台工作人员，他们都会耐心帮您的。",
         "retrieval_context": NaN,
-        "tags": "AI礼遇Q&A",
+        "tags": [
+            "AI礼遇Q&A"
+        ],
         "description": NaN,
         "conversation": NaN,
         "turn_index": NaN,
@@ -5845,7 +5885,9 @@
         "input": "如果安检未通过，一般会进入什么处理流程？",
         "expected_output": "您别紧张哦，安检没通过也没关系，配合安检人员再核查一下，按他们的指引来就好，很简单的！\n就是核对下可疑物品、处理下不合规的小件物品（不合规物品常见弃置或托运哦），或者重新过一遍安检，不会耽误您太久的。\n有任何不懂的，直接问现场的安检人员，他们会一步步跟您说清楚。",
         "retrieval_context": NaN,
-        "tags": "AI礼遇Q&A",
+        "tags": [
+            "AI礼遇Q&A"
+        ],
         "description": NaN,
         "conversation": NaN,
         "turn_index": NaN,
@@ -5860,7 +5902,9 @@
         "input": "机场里哪些位置是流程节点，容易作为判断参考？",
         "expected_output": "您重点记好值机岛、安检口、登机口这三个核心节点就够啦～\n每个节点都有超大超醒目的标识，分别对应值机、安检、登机这三步，航站楼里还有指引牌串着它们，一眼就能找到，比如值机岛在T3四层出发大厅，安检口在值机岛后方哦。\n找不到节点或者拿不准的话，咨询任意一位就近的工作人员，他们立马帮您指引。",
         "retrieval_context": NaN,
-        "tags": "AI礼遇Q&A",
+        "tags": [
+            "AI礼遇Q&A"
+        ],
         "description": NaN,
         "conversation": NaN,
         "turn_index": NaN,
@@ -5875,7 +5919,9 @@
         "input": "什么情况下必须到柜台办理值机？",
         "expected_output": "有这几种情况必须去对应航司柜台值机，很容易区分的～\n比如有托运行李、带无成人陪同的小朋友、需要轮椅协助这些特殊情况，还有部分廉航（像春秋、九元等廉航）、部分国际航班旅客，也得去柜台，记得带好自己的有效证件（含身份证、护照等）哦。\n拿不准自己用不用去柜台的话，问下对应航司的柜台工作人员，他们会直接告诉您。",
         "retrieval_context": NaN,
-        "tags": "AI礼遇Q&A",
+        "tags": [
+            "AI礼遇Q&A"
+        ],
         "description": NaN,
         "conversation": NaN,
         "turn_index": NaN,
@@ -5890,7 +5936,9 @@
         "input": "过安检和登机分别需要出示哪些证件？",
         "expected_output": "过安检的时候，您出示本人有效身份证件和登机牌就好（电子登机牌可直接出示，无需打印）；登机时，出示登机牌就行（国际/港澳台航班登机，需出示护照/通行证）。\n带小朋友的话，过安检、登机都要带好小朋友的户口本或出生证明；外籍朋友要带好护照和有效签证哦。\n不清楚要带什么证件的话，问安检口或登机口的工作人员，他们都会详细跟您说。",
         "retrieval_context": NaN,
-        "tags": "AI礼遇Q&A",
+        "tags": [
+            "AI礼遇Q&A"
+        ],
         "description": NaN,
         "conversation": NaN,
         "turn_index": NaN,
@@ -5905,7 +5953,9 @@
         "input": "如果证件暂时不在身上，流程上通常如何处理？",
         "expected_output": "证件没在身上也能解决，立马去机场警务室办个临时身份证明，办好就能继续值机、安检啦，警务室大概在T3四层出发大厅服务台附近哦。\n办临时证明特别方便，只要提供本人姓名、身份证号等核心身份信息，现场打印立等可取，一点不耽误时间，您放心。\n找不到警务室的话，问任何一个就近的工作人员，他们都会直接带您过去。",
         "retrieval_context": NaN,
-        "tags": "AI礼遇Q&A",
+        "tags": [
+            "AI礼遇Q&A"
+        ],
         "description": NaN,
         "conversation": NaN,
         "turn_index": NaN,
@@ -5920,7 +5970,9 @@
         "input": "家庭出行时，哪些步骤必须本人完成？",
         "expected_output": "家庭出行的话，安检和登机这两步必须本人来，别人代替不了哦～ 不过儿童（无成人陪同除外）可由家长陪同完成安检、登机，无需单独本人办理。\n值机可以让同行的家人代办，只要带齐所有人的身份证件就行；托运行李也能让家人帮忙办，不用本人到场，超省心。\n拿不准哪些步骤必须本人来的话，问值机柜台或安检口的工作人员，他们会帮您核对清楚。",
         "retrieval_context": NaN,
-        "tags": "AI礼遇Q&A",
+        "tags": [
+            "AI礼遇Q&A"
+        ],
         "description": NaN,
         "conversation": NaN,
         "turn_index": NaN,
@@ -5935,7 +5987,9 @@
         "input": "同行人中有人没有行李，流程上是否可以分开走？",
         "expected_output": "同行人里没行李的，完全可以分开走流程，一点不影响～\n没行李的家人，提前线上值机后直接去安检就好；要是没线上值机，可先自助值机再安检；有行李的，先去值机岛托运再安检，最后咱们在登机口集合就成。\n担心走散的话，提前约好登机口集合时间，找不到登机口就问现场工作人员，很快就能找到。",
         "retrieval_context": NaN,
-        "tags": "AI礼遇Q&A",
+        "tags": [
+            "AI礼遇Q&A"
+        ],
         "description": NaN,
         "conversation": NaN,
         "turn_index": NaN,
@@ -5950,7 +6004,9 @@
         "input": "机场里哪些步骤属于“必须完成”的流程？",
         "expected_output": "值机（线上、线下都行）、安检、登机，这三步是乘机必须完成的，缺少任意一步均无法顺利乘机哦～ 国际航班需额外完成海关、边检流程，也是必须完成的。\n要是有托运行李，记得在值机的时候一起办了；没办值机和安检，是进不去候机区的，您记好啦。\n拿不准自己是不是所有流程都办完了，问就近的服务台工作人员，他们帮您核对一下就清楚。\n",
         "retrieval_context": NaN,
-        "tags": "AI礼遇Q&A",
+        "tags": [
+            "AI礼遇Q&A"
+        ],
         "description": NaN,
         "conversation": NaN,
         "turn_index": NaN,
@@ -5965,7 +6021,9 @@
         "input": "哪些流程必须按固定顺序完成，不能调整？",
         "expected_output": "您记好这个顺序就够啦：先值机→再托运行李（有行李才办）→然后过安检→候机→最后登机，这个顺序是固定的，不能乱哦；国际航班需在安检后、候机前，额外完成海关、边检流程。\n必须先值机拿到登机牌，才能过安检；过了安检，才能进候机区等飞机，跟着现场标识走，绝对不会错。\n不清楚流程顺序的话，看航站楼里的乘机指引牌，或者问身边的工作人员，一步就帮您理清。",
         "retrieval_context": NaN,
-        "tags": "AI礼遇Q&A",
+        "tags": [
+            "AI礼遇Q&A"
+        ],
         "description": NaN,
         "conversation": NaN,
         "turn_index": NaN,
@@ -5980,7 +6038,9 @@
         "input": "如何通过周围环境判断自己处于流程的哪个阶段？",
         "expected_output": "看现场标识就知道啦，一眼就能分清自己在哪个阶段～\n看到值机岛、自助值机设备，就是到了值机阶段；看到安检口、安检设备，就是该过安检了；看到登机口和候机座椅，就是到候机、登机阶段啦，还有电子屏显示航班信息，更清楚；\n国际航班看到“国际出发”“海关”“边检”标识，就是处于国际航班专属流程阶段哦。\n拿不准自己在哪个阶段的话，问就近的工作人员，他们立马帮您确认，不绕路。",
         "retrieval_context": NaN,
-        "tags": "AI礼遇Q&A",
+        "tags": [
+            "AI礼遇Q&A"
+        ],
         "description": NaN,
         "conversation": NaN,
         "turn_index": NaN,
@@ -5995,7 +6055,9 @@
         "input": "什么情况下可以使用电子登机牌？",
         "expected_output": "国内航班、没托运行李的话，直接用电子登机牌就好，超方便、省时间！\n电子登机牌在航司APP或小程序上就能领，出示二维码就能过安检、登机，不用特意打印纸质版，特别省心；要是电子登机牌无法正常出示，可到自助值机设备打印纸质版。\n要是国际/港澳台航班，或者有托运行李，建议打印纸质登机牌，部分航司要求必须出示纸质版；拿不准能不能用电子的，问对应航司柜台工作人员就好。",
         "retrieval_context": NaN,
-        "tags": "AI礼遇Q&A",
+        "tags": [
+            "AI礼遇Q&A"
+        ],
         "description": NaN,
         "conversation": NaN,
         "turn_index": NaN,
@@ -6010,7 +6072,9 @@
         "input": "电子登机牌怎么使用",
         "expected_output": "您在航司APP或小程序领取电子登机牌后，过安检、登机时直接出示二维码就好，不用特意找工作人员核验，超省时间哒！\n\n很简单的，您只要确保二维码清晰、没过期，完全不用特意打印，妥妥贴合无纸化乘机需求哦。\n\n要是找不到二维码，或者操作不太顺手，直接问身边的工作人员就好，我们现场帮您指引，绝对不耽误您的行程～",
         "retrieval_context": NaN,
-        "tags": "AI礼遇Q&A",
+        "tags": [
+            "AI礼遇Q&A"
+        ],
         "description": NaN,
         "conversation": NaN,
         "turn_index": NaN,
@@ -6025,7 +6089,9 @@
         "input": "电子登机牌在整个出行流程中通常在哪些环节使用？",
         "expected_output": "电子登机牌主要在过安检和登机这两个核心环节用，只要在这两个环节出示，就能顺利通行，一点不麻烦～\n\n国内航班没行李的话，直接用电子登机牌就OK；国际/港澳台航班建议搭配纸质登机牌使用哦，部分航司有明确要求，您留意下就好。\n\n要是不清楚具体在哪个环节用，问对应航司柜台的工作人员，他们会清清楚楚告诉您哒！",
         "retrieval_context": NaN,
-        "tags": "AI礼遇Q&A",
+        "tags": [
+            "AI礼遇Q&A"
+        ],
         "description": NaN,
         "conversation": NaN,
         "turn_index": NaN,
@@ -6040,7 +6106,9 @@
         "input": "使用电子登机牌，是否还需要打印纸质登机牌？",
         "expected_output": "国内航班没托运行李的话，完全不用打印纸质登机牌，直接用电子登机牌，就能顺利过安检、登机，超省心～\n要是有托运行李，或者是国际/港澳台航班，建议您打印纸质登机牌哦，部分航司要求必须出示，避免影响您的行程，耽误宝贵时间。\n拿不准要不要打印的话，问下航司柜台的工作人员确认下，确保出行顺顺畅畅，没有小插曲～",
         "retrieval_context": NaN,
-        "tags": "AI礼遇Q&A",
+        "tags": [
+            "AI礼遇Q&A"
+        ],
         "description": NaN,
         "conversation": NaN,
         "turn_index": NaN,
@@ -6055,7 +6123,9 @@
         "input": "有电子登机牌后，机场流程上可以省略哪些步骤？",
         "expected_output": "有了电子登机牌，就能直接省略纸质登机牌的打印步骤，省出时间多休息会儿～\n要是没托运行李，还能省略人工值机步骤，直接凭电子登机牌过安检，不用排队等候，超高效！\n要是不清楚能省略哪些步骤，问身边的工作人员就好，我们帮您详细指引，绝对不让您走冤枉路～",
         "retrieval_context": NaN,
-        "tags": "AI礼遇Q&A",
+        "tags": [
+            "AI礼遇Q&A"
+        ],
         "description": NaN,
         "conversation": NaN,
         "turn_index": NaN,
@@ -6070,7 +6140,9 @@
         "input": "电子登机牌和纸质登机牌在流程顺序上有什么差异？",
         "expected_output": "电子登机牌和纸质登机牌的流程顺序完全一样，不用特意调整出行步骤，怎么方便怎么来～\n都是先值机领取、再过安检、最后登机，就只是出示形式不一样，功能完全相同，放心用就好！\n要是记不清流程顺序，看现场的指引牌，或者问身边的工作人员，一步就能帮您理清，超简单～",
         "retrieval_context": NaN,
-        "tags": "AI礼遇Q&A",
+        "tags": [
+            "AI礼遇Q&A"
+        ],
         "description": NaN,
         "conversation": NaN,
         "turn_index": NaN,
@@ -6085,7 +6157,9 @@
         "input": "携带电子登机牌时，过安检前需要额外准备什么？",
         "expected_output": "携带电子登机牌过安检前，提前准备好本人有效身份证件和电子登机牌二维码就好，两者缺一不可哦～\n不用额外准备其他材料，只要确保二维码清晰可识别、没过期，操作特别简单，一点不繁琐！\n要是没准备齐全也别慌，问安检口的工作人员，我们帮您说明，绝对不耽误您的安检进度～",
         "retrieval_context": NaN,
-        "tags": "AI礼遇Q&A",
+        "tags": [
+            "AI礼遇Q&A"
+        ],
         "description": NaN,
         "conversation": NaN,
         "turn_index": NaN,
@@ -6100,7 +6174,9 @@
         "input": "电子登机牌一般在流程中的哪个阶段首次使用？",
         "expected_output": "电子登机牌首次使用，是在值机完成后、过安检的阶段，这就是首次出示的核心环节哦～\n您值机领取电子登机牌后，过安检时首次出示就好，后续登机时再出示一次，两步搞定，超轻松！\n要是不清楚什么时候出示，问身边的工作人员，我们会及时提醒您，绝对不让您错过出示环节～",
         "retrieval_context": NaN,
-        "tags": "AI礼遇Q&A",
+        "tags": [
+            "AI礼遇Q&A"
+        ],
         "description": NaN,
         "conversation": NaN,
         "turn_index": NaN,
@@ -6115,7 +6191,9 @@
         "input": "有电子登机牌但需要托运行李，流程上通常如何衔接？",
         "expected_output": "有电子登机牌但需要托运行李，流程衔接超顺畅，一点不繁琐～ 您先到对应航司值机柜台办理托运行李，再凭电子登机牌过安检就好。\n\n办理托运时只需出示本人有效身份证件，不用额外打印登机牌，省时间又省心，一步就能完成。\n\n要是找不到对应航司的柜台也别慌，看现场标识或者问身边的工作人员，我们帮您快速定位，不耽误您的行程。",
         "retrieval_context": NaN,
-        "tags": "AI礼遇Q&A",
+        "tags": [
+            "AI礼遇Q&A"
+        ],
         "description": NaN,
         "conversation": NaN,
         "turn_index": NaN,
@@ -6130,7 +6208,9 @@
         "input": "电子登机牌与证件核验在流程中如何配合使用？",
         "expected_output": "过安检时，同时出示电子登机牌和本人有效身份证件，配合工作人员完成核验就好，很简单的。\n登机时就不用多准备啦，仅需出示电子登机牌即可；如果是国际航班，记得额外出示护照/通行证，不用重复出示其他证件，省得您反复找。\n要是不清楚具体怎么核验，直接咨询安检口或登机口的工作人员，他们会一步步耐心指引您，不用紧张。\n",
         "retrieval_context": NaN,
-        "tags": "AI礼遇Q&A",
+        "tags": [
+            "AI礼遇Q&A"
+        ],
         "description": NaN,
         "conversation": NaN,
         "turn_index": NaN,
@@ -6145,7 +6225,9 @@
         "input": "使用电子登机牌后，是否仍需要人工柜台操作？",
         "expected_output": "没有托运行李的话，使用电子登机牌完全不用去人工柜台操作，全程无纸化，既便捷又省时间。\n但如果有托运行李，或者是特殊旅客（比如无成人陪同的小朋友、需要轮椅协助的旅客）等情况，就仍需到对应航司的人工柜台办理哦。\n拿不准自己要不要去人工柜台的话，问身边的工作人员确认一下就好，避免白跑一趟，耽误宝贵时间。",
         "retrieval_context": NaN,
-        "tags": "AI礼遇Q&A",
+        "tags": [
+            "AI礼遇Q&A"
+        ],
         "description": NaN,
         "conversation": NaN,
         "turn_index": NaN,
@@ -6160,7 +6242,529 @@
         "input": "如果电子登机牌暂时无法展示，流程上一般如何处理？",
         "expected_output": "电子登机牌暂时无法展示也没关系，有很简单的解决办法，到自助值机设备打印纸质登机牌，就能快速搞定，不耽误事。\n打印的时候只需出示本人有效身份证件，一步就能完成操作，特别快捷，绝对不会耽误您的登机时间。\n要是找不到自助值机设备，直接问身边的工作人员就好，我们帮您指引位置，帮您节省时间，顺利解决问题。",
         "retrieval_context": NaN,
-        "tags": "AI礼遇Q&A",
+        "tags": [
+            "AI礼遇Q&A"
+        ],
+        "description": NaN,
+        "conversation": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": NaN,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0400",
+        "type": NaN,
+        "input": "权益是否可以转赠给他人使用？",
+        "expected_output": "不可以。权益仅限本人使用，不可转赠、转售，且实际使用人必须与填写的权益使用人信息一致，否则无法使用权益。",
+        "retrieval_context": NaN,
+        "tags": [
+            "F1权益产品"
+        ],
+        "description": NaN,
+        "conversation": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": NaN,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0401",
+        "type": NaN,
+        "input": "填写权益使用人信息后还能修改吗？",
+        "expected_output": "不能。填写权益使用人信息后不可修改，请谨慎填写。",
+        "retrieval_context": NaN,
+        "tags": [
+            "F1权益产品"
+        ],
+        "description": NaN,
+        "conversation": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": NaN,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0402",
+        "type": NaN,
+        "input": "2026年2月9日是否还能退订权益？",
+        "expected_output": "不能。2026年2月8日零点后，或已使用任一项权益或赠品，则不接受任何形式的退订。",
+        "retrieval_context": NaN,
+        "tags": [
+            "F1权益产品"
+        ],
+        "description": NaN,
+        "conversation": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": NaN,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0403",
+        "type": NaN,
+        "input": "如果只使用了权益中的酒店服务，还能退订整个权益包吗？",
+        "expected_output": "不能。一旦任一项权益（含赠品）被使用，整包权益将不接受任何形式的退订。",
+        "retrieval_context": NaN,
+        "tags": [
+            "F1权益产品"
+        ],
+        "description": NaN,
+        "conversation": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": NaN,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0404",
+        "type": NaN,
+        "input": "权益是否支持拆分退订？",
+        "expected_output": "不支持。本权益为整包权益，不接受任何形式的拆分退订。",
+        "retrieval_context": NaN,
+        "tags": [
+            "F1权益产品"
+        ],
+        "description": NaN,
+        "conversation": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": NaN,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0405",
+        "type": NaN,
+        "input": "权益过期未使用会怎样？",
+        "expected_output": "所有权益应在指定有效期内使用，逾期未使用自动失效，且不予退款。",
+        "retrieval_context": NaN,
+        "tags": [
+            "F1权益产品"
+        ],
+        "description": NaN,
+        "conversation": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": NaN,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0406",
+        "type": NaN,
+        "input": "观赛座位可以指定位置吗？",
+        "expected_output": "不可以。座位为赛事举办方随机出票，无法指定位置。",
+        "retrieval_context": NaN,
+        "tags": [
+            "F1权益产品"
+        ],
+        "description": NaN,
+        "conversation": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": NaN,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0407",
+        "type": NaN,
+        "input": "观赛出票结果何时通知？",
+        "expected_output": "预计在比赛前24小时告知出票结果，座位信息将通过短信发送至指定手机号码。",
+        "retrieval_context": NaN,
+        "tags": [
+            "F1权益产品"
+        ],
+        "description": NaN,
+        "conversation": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": NaN,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0408",
+        "type": NaN,
+        "input": "在其他平台重复预订同场次门票会有什么后果？",
+        "expected_output": "如发现同一实名观赛人存在重复预订行为，可能导致重复订单失效、退票手续费、票品过期作废、无法入场或无法出票等，相关损失由购票人自行承担。",
+        "retrieval_context": NaN,
+        "tags": [
+            "F1权益产品"
+        ],
+        "description": NaN,
+        "conversation": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": NaN,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0409",
+        "type": NaN,
+        "input": "迪士尼门票需要提前多久预订？",
+        "expected_output": "至少提前7天预订。",
+        "retrieval_context": NaN,
+        "tags": [
+            "F1权益产品"
+        ],
+        "description": NaN,
+        "conversation": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": NaN,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0410",
+        "type": NaN,
+        "input": "酒店权益需要提前多久预约？",
+        "expected_output": "至少提前12天预约。",
+        "retrieval_context": NaN,
+        "tags": [
+            "F1权益产品"
+        ],
+        "description": NaN,
+        "conversation": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": NaN,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0411",
+        "type": NaN,
+        "input": "法定节假日期间接送机服务需提前多久预约？",
+        "expected_output": "法定节假日需提前12小时预约。",
+        "retrieval_context": NaN,
+        "tags": [
+            "F1权益产品"
+        ],
+        "description": NaN,
+        "conversation": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": NaN,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0412",
+        "type": NaN,
+        "input": "上海星级酒店清单在哪里查看？",
+        "expected_output": "以上海星级酒店清单以礼宾管家实时查询为准。",
+        "retrieval_context": NaN,
+        "tags": [
+            "F1权益产品"
+        ],
+        "description": NaN,
+        "conversation": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": NaN,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0413",
+        "type": NaN,
+        "input": "如何联系龙腾客服？",
+        "expected_output": "请拨打龙腾礼宾管家热线400-665-8363咨询或处理。",
+        "retrieval_context": NaN,
+        "tags": [
+            "F1权益产品"
+        ],
+        "description": NaN,
+        "conversation": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": NaN,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0414",
+        "type": NaN,
+        "input": "三岁以下儿童是否可以入场观赛？",
+        "expected_output": "三岁以下儿童不建议入场。儿童按成人计算，需持有电子凭证。",
+        "retrieval_context": NaN,
+        "tags": [
+            "F1权益产品"
+        ],
+        "description": NaN,
+        "conversation": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": NaN,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0415",
+        "type": NaN,
+        "input": "预订观赛权益需要提供哪些证件信息？",
+        "expected_output": "需提供真实姓名、有效身份证件号码及手机号码。支持证件包括：中国公民身份证、护照、港澳居民来往内地通行证、台湾居民来往大陆通行证、外国人永久居留身份证、港澳台居民居住证。",
+        "retrieval_context": NaN,
+        "tags": [
+            "F1权益产品"
+        ],
+        "description": NaN,
+        "conversation": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": NaN,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0416",
+        "type": NaN,
+        "input": "观赛入场时中国公民需要携带什么？",
+        "expected_output": "必须携带实名制绑定的本人有效实名身份证件的实体证件，通过安检并经闸机人脸与证件信息一致核验后方可入场。",
+        "retrieval_context": NaN,
+        "tags": [
+            "F1权益产品"
+        ],
+        "description": NaN,
+        "conversation": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": NaN,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0417",
+        "type": NaN,
+        "input": "非中国公民如何入场观赛？",
+        "expected_output": "需在现场走人工通道，进行观赛人信息核验。",
+        "retrieval_context": NaN,
+        "tags": [
+            "F1权益产品"
+        ],
+        "description": NaN,
+        "conversation": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": NaN,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0418",
+        "type": NaN,
+        "input": "恶劣天气导致比赛取消能否退票？",
+        "expected_output": "不能。赛事为露天比赛，如因暴雨、大风、雷电等恶劣天气导致比赛延时、部分取消或中断，观众已认知并接受不能因此提出退换要求。",
+        "retrieval_context": NaN,
+        "tags": [
+            "F1权益产品"
+        ],
+        "description": NaN,
+        "conversation": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": NaN,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0419",
+        "type": NaN,
+        "input": "一个身份证最多可以预订几张同场次赛票？",
+        "expected_output": "每个身份证最多预订1张同场次同等价格的赛票。",
+        "retrieval_context": NaN,
+        "tags": [
+            "F1权益产品"
+        ],
+        "description": NaN,
+        "conversation": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": NaN,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0420",
+        "type": NaN,
+        "input": "用户在2026年2月5日未使用任何权益，是否可以申请全额退订？",
+        "expected_output": "可以。2026年2月8日零点前且任一项权益未被使用，支持退订。",
+        "retrieval_context": NaN,
+        "tags": [
+            "F1权益产品",
+            "场景性问题"
+        ],
+        "description": NaN,
+        "conversation": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": NaN,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0421",
+        "type": NaN,
+        "input": "用户填写了朋友的信息作为权益使用人，但本人去观赛，能否入场？",
+        "expected_output": "不能。实际使用人必须与填写的权益使用人信息一致，否则无法使用权益。",
+        "retrieval_context": NaN,
+        "tags": [
+            "F1权益产品",
+            "场景性问题"
+        ],
+        "description": NaN,
+        "conversation": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": NaN,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0422",
+        "type": NaN,
+        "input": "用户在比赛当天早上6点想预约当天的接送机服务，是否可行？",
+        "expected_output": "不可行。龙腾境内接送机/站至少需早于用车时间6小时预约（法定节假日需提前12小时）。",
+        "retrieval_context": NaN,
+        "tags": [
+            "F1权益产品",
+            "场景性问题"
+        ],
+        "description": NaN,
+        "conversation": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": NaN,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0423",
+        "type": NaN,
+        "input": "用户在多个平台用同一身份证预订了4张F1门票，是否合规？",
+        "expected_output": "不合规。每个身份证最多预订1张同场次赛票，且不得在多个平台重复多次预订，否则可能造成订单失效等后果。",
+        "retrieval_context": NaN,
+        "tags": [
+            "F1权益产品",
+            "场景性问题"
+        ],
+        "description": NaN,
+        "conversation": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": NaN,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0424",
+        "type": NaN,
+        "input": "用户预订了权益但未在有效期内使用迪士尼门票，是否可退款？",
+        "expected_output": "不可退款。逾期未使用的权益自动失效，且不予退款。",
+        "retrieval_context": NaN,
+        "tags": [
+            "F1权益产品",
+            "场景性问题"
+        ],
+        "description": NaN,
+        "conversation": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": NaN,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0425",
+        "type": NaN,
+        "input": "用户在比赛前30小时仍未收到出票短信，应如何处理？",
+        "expected_output": "出票结果预计在比赛前24小时通知，若临近仍未收到，建议联系龙腾礼宾管家热线400-665-8363咨询。",
+        "retrieval_context": NaN,
+        "tags": [
+            "F1权益产品",
+            "场景性问题"
+        ],
+        "description": NaN,
+        "conversation": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": NaN,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0426",
+        "type": NaN,
+        "input": "外籍用户持护照预订观赛权益，入场时走什么通道？",
+        "expected_output": "需走人工通道进行观赛人信息核验。",
+        "retrieval_context": NaN,
+        "tags": [
+            "F1权益产品",
+            "场景性问题"
+        ],
+        "description": NaN,
+        "conversation": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": NaN,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0427",
+        "type": NaN,
+        "input": "用户预订了权益包中的酒店和观赛，但只使用了酒店，还能退订吗？",
+        "expected_output": "不能。一旦任一项权益被使用，整包权益不接受退订。",
+        "retrieval_context": NaN,
+        "tags": [
+            "F1权益产品",
+            "场景性问题"
+        ],
+        "description": NaN,
+        "conversation": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": NaN,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0428",
+        "type": NaN,
+        "input": "用户想把权益中的迪士尼门票单独退掉，保留其他权益，是否可行？",
+        "expected_output": "不可行。本权益为整包权益，不接受任何形式的拆分退订。",
+        "retrieval_context": NaN,
+        "tags": [
+            "F1权益产品",
+            "场景性问题"
+        ],
+        "description": NaN,
+        "conversation": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": NaN,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0429",
+        "type": NaN,
+        "input": "用户在2026年2月8日零点刚过申请退订，且未使用任何权益，是否可退？",
+        "expected_output": "不可退。2026年2月8日零点后，无论是否使用权益，均不接受退订。",
+        "retrieval_context": NaN,
+        "tags": [
+            "F1权益产品",
+            "场景性问题"
+        ],
         "description": NaN,
         "conversation": NaN,
         "turn_index": NaN,
