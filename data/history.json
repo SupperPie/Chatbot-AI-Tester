@@ -1,5 +1,32 @@
 [
     {
+        "id": "20260211142749",
+        "timestamp": "2026-02-11 14:27:49",
+        "total": 7,
+        "passed": 1,
+        "failed": 0,
+        "status": "running",
+        "results": [
+            {
+                "case_id": "TC0408",
+                "input": "在其他平台重复预订同场次门票会有什么后果？",
+                "actual_output": "根据龙腾出行的相关规定，**在其他平台重复预订同场次F1赛事门票可能会带来以下后果**：\n\n- **重复订单可能失效**：如发现同一实名观赛人存在重复预订行为，相关订单可能被判定为无效。\n- **无法入场或出票**：由于F1赛事采用严格的实名制购票和入场核验机制（需人证一致），重复预订可能导致系统无法正常出票或现场无法通过核验。\n- **票品过期作废**：若因重复预订导致权益冲突，可能造成已购门票无法使用而自动作废。\n- **退票手续费及损失自行承担**：由此产生的一切后果（包括退票手续费、票品作废等）及相关损失，均须由购票人自行承担。\n\n此外，特别提醒：\n- F1赛事门票实行**一人一票一证**，每个身份证最多只能预订1张同场次门票；\n- 门票**不可转赠、转售**，且填写的观赛人信息提交后不可更改；\n- 为避免不必要的损失，请**不要在多个平台重复多次预订**。\n\n如有其他疑问，欢迎随时联系龙腾礼宾管家热线：400-665-8363。",
+                "expected_output": "如发现同一实名观赛人存在重复预订行为，可能导致重复订单失效、退票手续费、票品过期作废、无法入场或无法出票等，相关损失由购票人自行承担。",
+                "score": 0.8,
+                "reason": "The actual output includes all key consequences mentioned in the expected output—such as duplicate orders being invalidated, inability to enter or receive tickets, ticket expiration, and the buyer bearing associated losses—but presents them in a more detailed and structured format with additional context (e.g., one-ticket-per-ID policy, non-transferability). While the core information aligns, the evaluation steps require an exact match, and the actual output contains extra details not present in the expected output, violating step 1. However, it fully satisfies steps 2–4 by including all required elements, matching data types (text), and maintaining factual correctness without discrepancies.",
+                "faithfulness_score": null,
+                "faithfulness_reason": null,
+                "passed": true,
+                "thinking": null,
+                "inform_base": null,
+                "raw": null,
+                "latency": 17.942119121551514
+            }
+        ],
+        "api_name": "Bundle API",
+        "started_count": 1
+    },
+    {
         "id": "20260211110405",
         "timestamp": "2026-02-11 11:04:05",
         "total": 30,
