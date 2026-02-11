@@ -1,7 +1,7 @@
 streamlit
 pandas
-openai==0.28.1
-deepeval==0.20.9
+openai<1.0.0
+deepeval==0.20.8
 python-dotenv
 nest_asyncio
 requests
