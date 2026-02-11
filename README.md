@@ -101,10 +101,30 @@ After cloning the code on the server, copy your local `.env` file directly to th
 scp .env user@<your-server-ip>:/path/to/your/repo/.env
 ```
 Or simply creating it on server:
-```bash
-nano .env
 # Paste your keys -> Ctrl+O -> Enter -> Ctrl+X
 ```
+
+### 6. Managing the Process (Start/Stop)
+
+**Start in Background:**
+```bash
+nohup streamlit run streamlit_app.py --server.port 8501 > app.log 2>&1 &
+```
+
+**View Logs:**
+```bash
+tail -f app.log
+```
+
+**Stop the Application:**
+1. Find the Process ID (PID):
+   ```bash
+   ps -ef | grep streamlit
+   ```
+2. Kill the process (replace `12345` with the actual PID):
+   ```bash
+   kill 12345
+   ```
 
 ### Method B: Docker Volume Mount (Recommended)
 If running with Docker, you don't need to rebuild the image to add keys. You can "mount" the file when running the container.
