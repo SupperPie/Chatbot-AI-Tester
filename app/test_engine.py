@@ -8,18 +8,6 @@ from deepeval.metrics import GEval, FaithfulnessMetric
 from deepeval.test_case import LLMTestCase, LLMTestCaseParams
 from deepeval.models import GPTModel
 from deepeval import assert_test
-from dotenv import load_dotenv
-
-# Apply nest_asyncio to allow nested event loops (needed for Streamlit + deepeval)
-nest_asyncio.apply()
-
-# Ensure we can import chat client from root
-import sys
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from chat_client import get_chat_response
-
-load_dotenv(override=True)
-
 from deepeval.models.base_model import DeepEvalBaseLLM
 import openai
 
