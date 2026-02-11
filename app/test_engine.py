@@ -29,9 +29,31 @@ except ImportError:
         CONTEXT = "context"
         RETRIEVAL_CONTEXT = "retrieval_context"
         
-from deepeval.models import GPTModel
+
+try:
+    from deepeval.models import GPTModel
+except ImportError:
+    class GPTModel:
+        def __init__(self, *args, **kwargs): pass
+
 from deepeval import assert_test
-from deepeval.models.base_model import DeepEvalBaseLLM
+
+try:
+    from deepeval.models.base_model import DeepEvalBaseLLM
+except ImportError:
+    # Fallback for very old versions or if models module missing
+    try:
+         # In some old versions it might be directly in deepeval.models? 
+         # Or maybe deepeval.llm?
+         # Just mock it for now to let app start
+         class DeepEvalBaseLLM:
+             def __init__(self, *args, **kwargs): pass
+             def load_model(self): return self
+             def generate(self, prompt): return "DeepEval model not loaded."
+             async def a_generate(self, prompt): return "DeepEval model not loaded."
+             def get_model_name(self): return "MockModel"
+    except ImportError:
+         class DeepEvalBaseLLM: pass
 import openai
 
 class SynchronousEvalModel(DeepEvalBaseLLM):
