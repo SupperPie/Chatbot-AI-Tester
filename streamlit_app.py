@@ -37,6 +37,9 @@ def main():
         render_report_page()
     elif page == "Settings":
         render_settings_page()
+    elif page == "Blind Review":
+        from app.ui.blind_review import render_blind_review_page
+        render_blind_review_page()
 
 if __name__ == "__main__":
     main()

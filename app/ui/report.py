@@ -153,6 +153,118 @@ def render_report_page():
                     default_idx = available_apis.index(stored_api)
                 
                 st.selectbox("API", options=available_apis, index=default_idx, key=f"api_sel_{entry_id}", label_visibility="collapsed")
+                
+                st.write("") # Spacer
+                
+                # BLIND REVIEW EXPORT
+                with st.popover("🙈 Export to Blind Review", use_container_width=True):
+                    st.markdown("### Export Config")
+                    export_mode = st.radio("Mode", ["Create New Session", "Add to Existing Session"], key=f"br_mode_{entry_id}")
+                    
+                    from app.ui.blind_review import load_reviews, save_reviews
+                    all_reviews = load_reviews()
+                    
+                    target_session_name = ""
+                    if export_mode == "Create New Session":
+                        default_name = f"Review {entry.get('timestamp', 'New')}"
+                        target_session_name = st.text_input("Session Name", value=default_name, key=f"br_name_{entry_id}")
+                    else:
+                        if not all_reviews:
+                             st.warning("No existing sessions.")
+                        else:
+                             session_opts = [r["name"] for r in all_reviews]
+                             target_session_name = st.selectbox("Select Session", session_opts, key=f"br_sel_{entry_id}")
+                    
+                    if st.button("Confirm Export", type="primary", key=f"btn_br_exp_{entry_id}"):
+                        if not target_session_name:
+                            st.error("Session name required.")
+                        else:
+                            # Logic to Prepare Data
+                            report_results = entry.get("results", [])
+                            if not report_results:
+                                st.error("No results to export.")
+                            else:
+                                # Prepare Export Items
+                                # Logic: Group by ID or Input? User said "match input". 
+                                # Input is safer if IDs change, but ID is structurally better.
+                                # Let's use ID as primary match if available, else Input?
+                                # Requirement: "针对同一个问题...把report中的output导过去" -> suggests Input Matching
+                                # But we have IDs. Let's match by Input (Question) as requested to be robust across different executions.
+                                
+                                import uuid
+                                from datetime import datetime
+                                
+                                # Load or Create Session Data
+                                session_data = None
+                                if export_mode == "Add to Existing Session":
+                                    session_data = next((r for r in all_reviews if r["name"] == target_session_name), None)
+                                
+                                if not session_data:
+                                    # Create New
+                                    session_data = {
+                                        "id": str(uuid.uuid4()),
+                                        "name": target_session_name,
+                                        "created_at": datetime.now().isoformat(),
+                                        "items": []
+                                    }
+                                    if export_mode == "Create New Session":
+                                        all_reviews.append(session_data)
+                                
+                                # Merge Logic
+                                updated_count = 0
+                                added_count = 0
+                                
+                                for row in report_results:
+                                    q_input = row.get("input", "")
+                                    actual = row.get("actual_output", "")
+                                    
+                                    # Handle Multi-turn formatting equivalent to report view if needed?
+                                    # Blind review usually compares single final answer? 
+                                    # If multi-turn, actual_output might be a list or we need to format it.
+                                    # report view formats it string. Let's use simple actual object or formatted?
+                                    # Let's check format logic in render_report function.
+                                    # It formats on the fly. We should replicate that or store raw.
+                                    # For blind review, formatted string is best.
+                                    
+                                    if row.get("type") == "multi_turn" and isinstance(row.get("turns"), list):
+                                        # Simple format
+                                        lines = []
+                                        for t in row["turns"]:
+                                            status = "✅" if t.get("passed") else "❌"
+                                            lines.append(f"T{t.get('turn')} {status}: Q: {t.get('user')} | A: {t.get('actual')}")
+                                        actual_text = "\n".join(lines)
+                                    else:
+                                        actual_text = str(actual)
+
+                                    # Find matching item in session
+                                    match = next((item for item in session_data["items"] if item["input"] == q_input), None)
+                                    
+                                    if match:
+                                        # Append option
+                                        # Find next letter
+                                        existing_keys = sorted(match["options"].keys())
+                                        if not existing_keys:
+                                            next_char = "A"
+                                        else:
+                                            last_char = existing_keys[-1]
+                                            next_char = chr(ord(last_char) + 1)
+                                        
+                                        match["options"][next_char] = actual_text
+                                        updated_count += 1
+                                    else:
+                                        # New Item
+                                        new_item = {
+                                            "input": q_input,
+                                            "options": {"A": actual_text},
+                                            "vote": None
+                                        }
+                                        session_data["items"].append(new_item)
+                                        added_count += 1
+                                
+                                # Save
+                                save_reviews(all_reviews)
+                                st.success(f"Exported! Added {added_count} new, Updated {updated_count} existing.")
+
             
             st.divider()
 

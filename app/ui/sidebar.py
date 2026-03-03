@@ -63,6 +63,16 @@ def render_sidebar():
         ):
             st.session_state.current_page = "Settings"
             st.rerun()
+
+        # Blind Review button
+        if st.button(
+            "🙈 Blind Review", 
+            use_container_width=True,
+            type="primary" if st.session_state.current_page == "Blind Review" else "secondary",
+            key="nav_blind_review"
+        ):
+            st.session_state.current_page = "Blind Review"
+            st.rerun()
         
         # Footer
         st.markdown("<br>" * 5, unsafe_allow_html=True)

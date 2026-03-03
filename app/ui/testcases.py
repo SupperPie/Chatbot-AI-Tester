@@ -76,6 +76,8 @@ def render_testcases_page():
                     if not all(col in import_df.columns for col in required_cols):
                         st.error(f"Missing columns: {', '.join(required_cols)}")
                     else:
+                        update_existing = st.checkbox("Update existing cases by ID (if ID matches)", value=False, key="chk_update_cases")
+                        
                         if st.button(f"Confirm Import", type="primary", key="btn_confirm_import"):
                             # Prepare data
                             # Ensure tags are lists
@@ -97,13 +99,80 @@ def render_testcases_page():
                                 import_df["tags"] = import_df["tags"].apply(normalize_tags)
                             else:
                                 import_df["tags"] = [[] for _ in range(len(import_df))]
+
+                            current_df = st.session_state.df.drop(columns=["Select"], errors='ignore')
+                            
+                            if update_existing:
+                                if "id" not in import_df.columns:
+                                    st.error("Column 'id' is required for updating existing cases.")
+                                    st.stop()
                                 
-                            if "id" in import_df.columns:
-                                del import_df["id"]
+                                # Convert IDs to string for comparison
+                                current_df["id"] = current_df["id"].astype(str)
+                                import_df["id"] = import_df["id"].astype(str)
                                 
-                            # Merge
-                            existing_df = st.session_state.df.drop(columns=["Select"], errors='ignore')
-                            combined_df = pd.concat([existing_df, import_df], ignore_index=True)
+                                # Create a dict mapping ID to index in current_df for fast lookup
+                                id_to_index = {row_id: idx for idx, row_id in current_df["id"].items()}
+                                
+                                updated_count = 0
+                                new_count = 0
+                                
+                                for _, row in import_df.iterrows():
+                                    row_id = row.get("id")
+                                    if row_id in id_to_index:
+                                        # Update existing
+                                        idx = id_to_index[row_id]
+                                        for col in row.index:
+                                            val = row[col]
+                                            # Only update if value is not empty/NaN
+                                            # Skip ID update itself
+                                            if col == "id": continue
+                                            
+                                            # Check empty/NaN
+                                            # Using pd.isna(list) returns array of bools which fails if check
+                                            is_empty = False
+                                            
+                                            if isinstance(val, list):
+                                                if not val: is_empty = True
+                                            elif pd.isna(val):
+                                                is_empty = True
+                                            elif isinstance(val, str) and not val.strip():
+                                                is_empty = True
+                                            
+                                            if not is_empty:
+                                                # Special handling for tags: merge or overwrite?
+                                                # Request said "update", usually implies overwrite or list-merge
+                                                # Let's overwrite for simplicity unless user asks otherwise, 
+                                                # or maybe merge unique?
+                                                # "Update non-empty fields" -> Overwrite existing field with new non-empty value
+                                                if col == "tags":
+                                                    # Fix: Ensure logic handles list properly
+                                                    current_df.at[idx, col] = val
+                                                else:
+                                                    current_df.at[idx, col] = val
+                                        updated_count += 1
+                                    else:
+                                        # It's a new ID or ID not present -> Append
+                                        # We can just append to a list and concat later or append to DF
+                                        # Appending to DF row by row is slow, but consistent here.
+                                        # Better: Collect new rows
+                                        pass 
+                                
+                                # Filter import_df for ONLY new rows to concat
+                                existing_ids = set(current_df["id"])
+                                new_rows_df = import_df[~import_df["id"].isin(existing_ids)]
+                                new_count = len(new_rows_df)
+                                
+                                combined_df = pd.concat([current_df, new_rows_df], ignore_index=True)
+                                st.toast(f"Updated {updated_count} cases, Added {new_count} new cases.")
+                                
+                            else:
+                                # Standard Append Mode (Drop ID to regenerate)
+                                if "id" in import_df.columns:
+                                    del import_df["id"]
+                                
+                                combined_df = pd.concat([current_df, import_df], ignore_index=True)
+                                st.toast(f"Imported {len(import_df)} new cases.")
                             
                             # Save
                             final_df = save_data(combined_df)
@@ -114,7 +183,6 @@ def render_testcases_page():
                             st.session_state.df = final_df
                             st.session_state.df_content_sig = get_content_signature(final_df)
                             
-                            st.success(f"Imported {len(import_df)} cases!")
                             st.rerun()
                             
                 except Exception as e:
@@ -164,7 +232,7 @@ def render_testcases_page():
         st.session_state.df,
         column_config={
             "Select": st.column_config.CheckboxColumn("✓", width="small", default=False),
-            "id": st.column_config.TextColumn("ID", width="small", disabled=True),
+            "id": st.column_config.TextColumn("ID", width="small", disabled=False),
             "input": st.column_config.TextColumn("Input Question", width="medium"),
             "expected_output": st.column_config.TextColumn("Expected Output", width="medium"),
             "tags": st.column_config.ListColumn("Tags"),
