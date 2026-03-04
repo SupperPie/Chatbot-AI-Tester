@@ -103,7 +103,7 @@ class SynchronousEvalModel(DeepEvalBaseLLM):
                     messages=[{"role": "user", "content": prompt}],
                     temperature=0
                 )
-                return response.choices[0].message.content
+                content = response.choices[0].message.content
             else:
                 # OpenAI v0.28.x syntax
                 response = openai.ChatCompletion.create(
@@ -111,7 +111,25 @@ class SynchronousEvalModel(DeepEvalBaseLLM):
                     messages=[{"role": "user", "content": prompt}],
                     temperature=0
                 )
-                return response['choices'][0]['message']['content']
+                content = response['choices'][0]['message']['content']
+                
+            # Clean up content to extract JSON for DeepEval
+            import re
+            content = content.strip()
+            # Remove <think>...</think> if model is an R1 variant
+            content = re.sub(r'<think>.*?</think>', '', content, flags=re.DOTALL).strip()
+            
+            # Extract JSON block from markdown if present
+            json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', content, re.DOTALL)
+            if json_match:
+                return json_match.group(1).strip()
+            
+            # fallback: attempt to find the last {} block
+            match = re.search(r'\{.*\}', content, re.DOTALL)
+            if match:
+                return match.group(0).strip()
+                
+            return content
         except Exception as e:
             return f"Error: {e}"
 
@@ -226,56 +244,65 @@ class TestEngine:
             actual_output = f"Error calling API: {str(e)}"
             latency = 0.0
 
+        is_error = actual_output.startswith("Error") or actual_output.startswith("❌ SERVER DETAIL") or "Error calling API:" in actual_output
+        
         test_case = LLMTestCase(
             input=input_text,
             actual_output=actual_output,
             expected_output=expected_output,
-            retrieval_context=context
+            retrieval_context=context if context else None
         )
 
-        try:
-            # deepeval's measure() internally uses asyncio.timeout which requires
-            # running inside an async task. We use a_measure() with asyncio.run()
-            # to create a proper async context.
-            async def run_measure():
-                # Always run correctness metric
-                await self.correctness_metric.a_measure(test_case)
-                correctness_score = self.correctness_metric.score
-                correctness_reason = self.correctness_metric.reason
-                
-                # Run faithfulness metric only if retrieval_context is not empty
-                faithfulness_score = None
-                faithfulness_reason = None
-                if context:  # Only evaluate if context exists
-                    try:
-                        await self.faithfulness_metric.a_measure(test_case)
-                        faithfulness_score = self.faithfulness_metric.score
-                        faithfulness_reason = self.faithfulness_metric.reason
-                    except Exception as e:
-                        faithfulness_reason = f"Faithfulness check failed: {str(e)}"
-                
-                # Calculate combined score
-                if faithfulness_score is not None:
-                    combined_score = (correctness_score + faithfulness_score) / 2
-                else:
-                    combined_score = correctness_score
+        score = 0.0
+        reason = "Error occurred, evaluation skipped."
+        faith_score = None
+        faith_reason = None
+        passed = False
+        
+        if not is_error:
+            try:
+                # deepeval's measure() internally uses asyncio.timeout which requires
+                # running inside an async task. We use a_measure() with asyncio.run()
+                # to create a proper async context.
+                async def run_measure():
+                    # Always run correctness metric
+                    await self.correctness_metric.a_measure(test_case)
+                    correctness_score = self.correctness_metric.score
+                    correctness_reason = self.correctness_metric.reason
                     
-                return (
-                    combined_score,
-                    correctness_reason,
-                    faithfulness_score,
-                    faithfulness_reason,
-                    self.correctness_metric.is_successful()
-                )
-            
-            # Create a new event loop for each measurement to avoid conflicts
-            score, reason, faith_score, faith_reason, passed = asyncio.run(run_measure())
-        except Exception as e:
-            score = 0
-            reason = f"Metric calculation failed: {str(e)}"
-            faith_score = None
-            faith_reason = None
-            passed = False
+                    # Run faithfulness metric only if retrieval_context is not empty
+                    faith_score = None
+                    faith_reason = None
+                    if context:  # Only evaluate if context exists
+                        try:
+                            await self.faithfulness_metric.a_measure(test_case)
+                            faith_score = self.faithfulness_metric.score
+                            faith_reason = self.faithfulness_metric.reason
+                        except Exception as e:
+                            faith_reason = f"Faithfulness check failed: {str(e)}"
+                    
+                    # Calculate combined score
+                    if faith_score is not None:
+                        combined_score = (correctness_score + faith_score) / 2
+                    else:
+                        combined_score = correctness_score
+                        
+                    return (
+                        combined_score,
+                        correctness_reason,
+                        faith_score,
+                        faith_reason,
+                        self.correctness_metric.is_successful()
+                    )
+                
+                # Create a new event loop for each measurement to avoid conflicts
+                score, reason, faith_score, faith_reason, passed = asyncio.run(run_measure())
+            except Exception as e:
+                score = 0
+                reason = f"Metric calculation failed: {str(e)}"
+                faith_score = None
+                faith_reason = None
+                passed = False
 
         return {
             "case_id": case_data.get("id"),
@@ -468,23 +495,31 @@ class TestEngine:
                 turn_reason = "Exact match" if turn_passed else "No exact match"
                 
             else:  # semantic (default)
-                # Use GEval for semantic evaluation
-                test_case = LLMTestCase(
-                    input=user_message,
-                    actual_output=actual_output,
-                    expected_output=expected,
-                    retrieval_context=context if isinstance(context, list) else []
-                )
-                try:
-                    async def eval_turn():
-                        await self.correctness_metric.a_measure(test_case)
-                        return self.correctness_metric.score, self.correctness_metric.reason
-                    
-                    turn_score, turn_reason = asyncio.run(eval_turn())
-                    turn_passed = turn_score >= validation.get("threshold", 0.5)
-                except Exception as e:
-                    turn_score = 0
-                    turn_reason = f"Evaluation failed: {str(e)}"
+                is_error = actual_output.startswith("Error") or actual_output.startswith("❌ SERVER DETAIL") or "Error calling API:" in actual_output
+                if is_error:
+                    turn_score = 0.0
+                    turn_reason = "Error occurred, evaluation skipped."
+                    turn_passed = False
+                else:
+                    # Use GEval for semantic evaluation
+                    test_case = LLMTestCase(
+                        input=user_message,
+                        actual_output=actual_output,
+                        expected_output=expected,
+                        retrieval_context=context if isinstance(context, list) else []
+                    )
+                    try:
+                        async def eval_turn():
+                            await self.correctness_metric.a_measure(test_case)
+                            return self.correctness_metric.score, self.correctness_metric.reason
+                        
+                        # Create a new event loop for each measurement to avoid conflicts
+                        turn_score, turn_reason = asyncio.run(eval_turn())
+                        turn_passed = turn_score >= validation.get("threshold", 0.5)
+                    except Exception as e:
+                        turn_score = 0
+                        turn_reason = f"Metric calculation failed: {str(e)}"
+                        turn_passed = False
             
             turn_results.append({
                 "turn": turn_num,

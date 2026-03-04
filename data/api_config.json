@@ -4,9 +4,19 @@
         "description": "Bundle API",
         "type": "bundle"
     },
-    "Skills API": {
+    "机场礼遇": {
         "url": "https://air-assis-dev.dragonpass.com.cn/skills",
         "description": "Skills API",
         "type": "skills"
+    },
+    "Flight API": {
+        "url": "http://192.168.22.252:12306/flights/invoke",
+        "description": "Filght",
+        "type": "flight"
+    },
+    "Limo API": {
+        "url": "http://192.168.22.252:10089/limo/stream",
+        "description": "Limo",
+        "type": "limo"
     }
 }

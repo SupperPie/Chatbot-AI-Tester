@@ -61,8 +61,6 @@ class JobManager:
             print(f"Job {report_id} cancelled by user.")
 
     def _worker(self, report_id: str, cases: List[Dict], api_name: str):
-        engine = TestEngine()
-        
         # Callback for incremental updates
         def on_step_complete(case_result: Dict, current_count: int, total_count: int):
             self._update_job_progress(report_id, case_result, current_count, total_count)
@@ -74,6 +72,7 @@ class JobManager:
             return False
 
         try:
+            engine = TestEngine()
             # Run the batch
             engine.run_batch(cases, api_name=api_name, on_step_complete=on_step_complete, should_stop=should_stop)
             

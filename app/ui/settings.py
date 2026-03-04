@@ -35,7 +35,7 @@ def render_settings_page():
             "Name": st.column_config.TextColumn("API Name", required=True),
             "URL": st.column_config.TextColumn("Endpoint URL", required=True, width="large"),
             "Description": st.column_config.TextColumn("Description"),
-            "Type": st.column_config.SelectboxColumn("Type", options=["bundle", "airport"], default="bundle")
+            "Type": st.column_config.SelectboxColumn("Type", options=["bundle", "airport", "skills", "flight", "limo"], default="bundle")
         },
         use_container_width=True,
         key="settings_api_editor"

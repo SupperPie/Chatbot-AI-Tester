@@ -202,6 +202,144 @@ def get_skills_response(message: str, url: str, user_id: str = None, session_id:
         return f"Error: {e}"
 
 
+def get_flight_response(message: str, url: str, user_id: str = None, session_id: str = None) -> str:
+    """Flight API client"""
+    # Generate IDs if not provided
+    if user_id is None:
+        user_id = "12345" # Using default as per user request example, or uuid
+    if session_id is None:
+        session_id = str(uuid.uuid4())[:8]
+    
+    payload = {
+        "query": message,
+        "user_id": user_id,
+        "thread_id": session_id,
+        "line_of_business": "dev_lob",
+        "additionalProp1": {}
+    }
+    
+    headers = {
+        "Content-Type": "application/json",
+        "accept": "application/json"
+    }
+
+    print(f"Sending request to {url} with message: {message}")
+    
+    try:
+        response = requests.post(url, json=payload, headers=headers, timeout=600)
+        
+        if not response.ok:
+            print(f"API Error {response.status_code}: {response.text}")
+            return f"❌ SERVER DETAIL ({response.status_code}): {response.text}"
+            
+        data = response.json()
+        
+        # Extract according to user requirements
+        actual_output = data.get("output_response", "")
+        raw_data = ""
+        
+        # Put result_intent_detection into raw_data
+        intent_data = data.get("result_intent_detection")
+        if intent_data:
+            raw_data = json.dumps(intent_data, ensure_ascii=False, indent=2)
+            
+        return json.dumps({
+            "result": actual_output, 
+            "thinking": "", 
+            "inform_base": "",
+            "raw": raw_data
+        }, ensure_ascii=False)
+
+    except requests.exceptions.Timeout:
+        return "Error: API Request Timed Out (600s)"
+    except Exception as e:
+        print(f"Error calling Flight API: {e}")
+        return f"Error: {str(e)}"
+
+def get_limo_response(message: str, url: str, user_id: str = None, session_id: str = None) -> str:
+    """Limo streaming API client"""
+    if user_id is None:
+        user_id = str(uuid.uuid4())
+    if session_id is None:
+        session_id = str(uuid.uuid4())[:8]
+    
+    payload = {
+        "message": message,
+        "thread_id": session_id,
+        "user_id": user_id,
+        "config": {
+            "struc_properties_filter": [
+                "meta.semantic_info.flight_no",
+                "meta.semantic_info.flight_date",
+                "meta.semantic_info.service_type",
+                "meta.semantic_info.address_keywords",
+                "meta.semantic_info.service_time",
+                "meta.semantic_info.arrival_time",
+                "meta.semantic_info.airport_code",
+                "meta.semantic_info.adult",
+                "meta.semantic_info.child",
+                "meta.semantic_info.luggage",
+                "data.flight_info",
+                "data.car_info",
+                "data.address_info"
+            ]
+        }
+    }
+    
+    headers = {
+        "Content-Type": "application/json",
+        "accept": "application/json"
+    }
+
+    print(f"Sending request to {url} with message: {message}")
+    
+    try:
+        response = requests.post(url, json=payload, headers=headers, stream=True, timeout=600)
+        
+        if not response.ok:
+            print(f"API Error {response.status_code}: {response.text}")
+            return f"❌ SERVER DETAIL ({response.status_code}): {response.text}"
+            
+        final_answer = ""
+        raw_chunks = []
+        
+        for line in response.iter_lines():
+            if line:
+                decoded_line = line.decode('utf-8')
+                if decoded_line.startswith("data: "):
+                    json_str = decoded_line[6:]
+                    if json_str.strip() == "[DONE]":
+                        break
+                    
+                    try:
+                        data = json.loads(json_str)
+                        raw_chunks.append(json.dumps(data, ensure_ascii=False))
+                        
+                        if data.get("type") == "token" and data.get("agent") == "main":
+                            content = data.get("content", "")
+                            if content:
+                                final_answer += content
+                                
+                    except json.JSONDecodeError:
+                        raw_chunks.append(f"Decode Error: {json_str}")
+                        continue
+                        
+        if not final_answer:
+            final_answer = "Error: No main token content found."
+            
+        return json.dumps({
+            "result": final_answer, 
+            "thinking": "",
+            "inform_base": "",
+            "raw": "\n".join(raw_chunks)
+        }, ensure_ascii=False)
+
+    except requests.exceptions.Timeout:
+        return "Error: API Request Timed Out (600s)"
+    except Exception as e:
+        print(f"Error calling Limo API: {e}")
+        return f"Error: {str(e)}"
+
 def get_chat_response(message: str, api_name: str = "Bundle API", user_id: str = None, session_id: str = None) -> str:
     """Unified API call function - selects the appropriate API based on api_name"""
     
@@ -219,6 +357,10 @@ def get_chat_response(message: str, api_name: str = "Bundle API", user_id: str =
     
     if api_type == "skills":
         return get_skills_response(message, url=url, user_id=user_id, session_id=session_id)
+    elif api_type == "flight":
+        return get_flight_response(message, url=url, user_id=user_id, session_id=session_id)
+    elif api_type == "limo":
+        return get_limo_response(message, url=url, user_id=user_id, session_id=session_id)
     else:
         # Default to Bundle type structure
         return get_bundle_response(message, url=url, user_id=user_id, session_id=session_id)
