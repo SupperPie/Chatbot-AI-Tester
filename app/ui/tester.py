@@ -72,16 +72,20 @@ Return ONLY a JSON array of test cases, no other text. Example:
 """
                     try:
                         from openai import OpenAI
-                        # Use DashScope API as requested
-                        # Prefer DASHSCOPE_API_KEY if set, otherwise try OPENAI_API_KEY
-                        api_key = os.getenv("DASHSCOPE_API_KEY") or os.getenv("OPENAI_API_KEY")
+                        
+                        api_key = os.getenv("OPENAI_API_KEY")
+                        base_url = os.getenv("OPENAI_BASE_URL")
+                        model_name = os.getenv("OPENAI_MODEL_NAME", "deepseek-chat")
+                        
+                        if not api_key:
+                            st.warning("⚠️ 缺省 OPENAI_API_KEY 环境变量，本次自动生成可能会失败。")
                         
                         client = OpenAI(
                             api_key=api_key,
-                            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1"
+                            base_url=base_url
                         )
                         completion = client.chat.completions.create(
-                            model="qwen3-max", 
+                            model=model_name, 
                             messages=[
                                 {"role": "system", "content": "You are a helpful QA assistant."},
                                 {"role": "user", "content": prompt}
@@ -89,10 +93,8 @@ Return ONLY a JSON array of test cases, no other text. Example:
                         )
                         response = completion.choices[0].message.content
                     except Exception as e:
-                        # Fallback to logic in chat_client.py if DashScope fails
-                        st.warning(f"⚠️ DashScope (compatible-mode) 调用失败，将降级使用 Bundle API。\n\n错误信息: {e}\n\n建议检查 .env 文件中是否有正确配置 `DASHSCOPE_API_KEY`（或 `OPENAI_API_KEY` 是否适用于阿里云 DashScope）。")
-                        from chat_client import get_chat_response
-                        response = get_chat_response(prompt)
+                        st.error(f"⚠️ 大模型调用失败 (请检查 .env 中的 API_KEY / BASE_URL 配置):\n\n{e}")
+                        response = ""
                     
                     # Parse the response
                     # Try to extract JSON array from response
