@@ -114,21 +114,54 @@ def render_report_page():
                     if st.button("▶ Rerun Report", key=f"btn_rerun_{entry_id}"):
                         res_df_curr = pd.DataFrame(entry.get('results', []))
                         if not res_df_curr.empty:
+                            from app.utils import load_data
+                            main_df = load_data()
+                            
                             cases_to_rerun = []
                             for _, row in res_df_curr.iterrows():
-                                 cases_to_rerun.append({
-                                     "id": row.get("case_id"),
-                                     "input": row.get("input", ""),
-                                     "expected_output": row.get("expected_output", ""),
-                                     "type": row.get("type", "single_turn"),
-                                     "turns": row.get("turns", []) 
-                                 })
+                                cid = row.get("case_id")
+                                # Find master definitions to get the freshest expected_output and criteria
+                                mask = (main_df['id'] == cid)
+                                
+                                if mask.any():
+                                    live_rows = main_df[mask]
+                                    
+                                    # Handle Multi-turn grouping natively like test_engine run_batch expects
+                                    if len(live_rows) > 1:
+                                        # It's a reconstructed multi-turn array from live database
+                                        for _, m_row in live_rows.iterrows():
+                                            cases_to_rerun.append(m_row.to_dict())
+                                            # We only want to process the multi-turn group once per CID
+                                        # To prevent duplicating if report had multiple turns listed as rows, 
+                                        # break out if we've already added this CID (we must deduplicate CIDs in report loop first)
+                                    else:
+                                        cases_to_rerun.append(live_rows.iloc[0].to_dict())
+                                else:
+                                    # Fallback to historical snapshot if deleted from master testcases
+                                    cases_to_rerun.append({
+                                        "id": cid,
+                                        "input": row.get("input", ""),
+                                        "expected_output": row.get("expected_output", ""),
+                                        "type": row.get("type", "single_turn"),
+                                        "turns": row.get("turns", []) 
+                                    })
+                                    
+                            # Remove duplicate dictionaries if CID had multiple lines in the old report parsing logic
+                            # (Python dicts aren't hashable, so we filter by unique ID + turn_index)
+                            seen = set()
+                            unique_cases_to_rerun = []
+                            for c in cases_to_rerun:
+                                t_idx = str(c.get("turn_index", "0"))
+                                unique_key = f"{c.get('id')}_{t_idx}"
+                                if unique_key not in seen:
+                                    seen.add(unique_key)
+                                    unique_cases_to_rerun.append(c)
                             
                             try:
                                 from app.utils import get_job_manager
                                 mgr = get_job_manager()
                                 target_api = st.session_state.get(f"api_sel_{entry_id}", "Bundle API")
-                                job_id = mgr.run_background_job(cases_to_rerun, api_name=target_api)
+                                job_id = mgr.run_background_job(unique_cases_to_rerun, api_name=target_api)
                                 
                                 st.success(f"Rerun started! Job ID: {job_id}")
                                 time.sleep(1)
