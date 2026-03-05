@@ -227,12 +227,16 @@ def render_testcases_page():
         st.text_input("From TC", value="TC0001", help="Starting test case ID", key="start_tc")
     with range_col2:
         st.text_input("To TC", value="TC0001", help="Ending test case ID", key="end_tc")
-    with range_col3:
-        st.write("")
     with btn_col1:
+        st.markdown('<div style="height: 28px;"></div>', unsafe_allow_html=True)
         run_range_clicked = st.button("▶ Run Range", use_container_width=True, type="primary", key="btn_run_range")
     with btn_col2:
+        st.markdown('<div style="height: 28px;"></div>', unsafe_allow_html=True)
         run_selected_clicked = st.button("▶ Run Selected", use_container_width=True, type="primary", key="btn_run_selected")
+    with range_col3:
+        st.markdown('<div style="height: 28px;"></div>', unsafe_allow_html=True)
+        # Delete Selected 
+        delete_selected_clicked = st.button("🗑️ Delete Selected", use_container_width=True, key="btn_delete_selected")
     
     # Action row 2 (Tags)
     def get_all_tags(df):
@@ -327,6 +331,32 @@ def render_testcases_page():
             st.warning("Please select cases to run.")
         else:
              cases_to_run = selected_rows.drop(columns=["Select"]).to_dict(orient="records")
+             
+    elif delete_selected_clicked:
+        selected_rows = edited_df[edited_df["Select"] == True]
+        if selected_rows.empty:
+            st.warning("Please select cases to delete.")
+        else:
+            # Drop selected rows from the original DF
+            current_df = st.session_state.df
+             
+            # Identify the IDs to delete 
+            ids_to_delete = selected_rows["id"].tolist()
+            
+            # Keep rows whose IDs are NOT in the deletion list
+            new_df = current_df[~current_df["id"].isin(ids_to_delete)]
+            
+            # Save the new filtered df to disk
+            final_df = save_data(new_df)
+            
+            # Update session state and refresh
+            if "Select" not in final_df.columns:
+                 final_df.insert(0, "Select", False)
+            st.session_state.df = final_df
+            st.session_state.df_content_sig = get_content_signature(final_df)
+            
+            st.toast(f"🗑️ Deleted {len(ids_to_delete)} cases successfully!")
+            st.rerun()
     
     elif run_range_clicked:
         start_id = st.session_state.start_tc

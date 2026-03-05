@@ -66,7 +66,7 @@ def render_tester_page():
             with st.spinner("🤖 AI is generating test cases..."):
                 try:
                     prompt = f"""You are a testcase generator. Generate test cases based on the requirements and knowledge.
-CRITICAL: You MUST output ONLY a valid JSON array of test case objects. Each test case MUST explicitly be of type "multi_turn" and contain a "conversation" array, even if it's just 1 turn.
+CRITICAL: You MUST output ONLY a valid JSON array of test case objects. Unless requested otherwise, all "input", "expected", and "user" messages MUST be generated in Chinese (中文).
 
 Requirements:
 {requirements}
@@ -77,26 +77,26 @@ Knowledge Base:
 The JSON format MUST strictly follow this schema:
 [
   {{
-    "type": "multi_turn",
-    "tags": [],
+    "type": "multi_turn", // ONLY use "multi_turn" IF the user explicitly requested a multi-turn conversation. Otherwise, leave this string EMPTY like this: ""
+    "tags": [], // CRITICAL: This MUST ALWAYS be an empty list []. Do not generate tags.
     "description": "Short description of the test case",
-    "input": "Summary or title of the user's overall goal",
-    "expected_output": "Summary of the final expected state",
-    "conversation": [
+    "input": "Summary or title of the user's overall goal (in Chinese)",
+    "expected_output": "Summary of the final expected state (in Chinese)",
+    "conversation": [ // CRITICAL: Only generate this array if the user explicitly requested multi-turn. If it's a standard single question/answer, leave it as an empty list [].
       {{
         "turn": 1,
-        "user": "First user message",
-        "expected": "Expected AI response",
+        "user": "First user message (in Chinese)",
+        "expected": "Expected AI response (in Chinese)",
         "validation": {{"type": "semantic", "threshold": 0.5}}
       }},
       {{
         "turn": 2,
-        "user": "Follow up message",
-        "expected": "Expected follow up response",
+        "user": "Follow up message (in Chinese)",
+        "expected": "Expected follow up response (in Chinese)",
         "validation": {{"type": "semantic", "threshold": 0.5}}
       }}
     ],
-    "overall_criteria": {{"must_complete_all_turns": true, "min_success_rate": 0.8}}
+    "overall_criteria": {{"must_complete_all_turns": true, "min_success_rate": 0.8}} // Omit or leave empty if not multi-turn
   }}
 ]
 
