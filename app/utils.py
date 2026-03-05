@@ -31,13 +31,41 @@ def load_data() -> pd.DataFrame:
             
     if not data:
         # Return empty structure with Select column
-        return pd.DataFrame(columns=["Select", "id", "input", "expected_output", "tags"])
+        return pd.DataFrame(columns=["Select", "id", "turn_index", "input", "expected_output", "tags"])
 
     df = pd.DataFrame(data)
     
-    # FORCE ID Regeneration to match requested format TCxxxx for ALL rows
+    # ID Generation logic: Only generate for explicitly missing IDs.
+    # If a row is missing an ID, but it's part of a multi-turn sequence (turn_index > 1), assign it the same ID as the row before it.
     if "id" not in df.columns:
-         df["id"] = [generate_tc_id(i) for i in range(len(df))]
+        df["id"] = ""
+        
+    current_max_id_num = 0
+    # Find existing max TCxxxx to avoid collisions
+    for existing_id in df["id"].dropna():
+        if str(existing_id).startswith("TC"):
+            try:
+                num = int(str(existing_id)[2:])
+                current_max_id_num = max(current_max_id_num, num)
+            except:
+                pass
+
+    last_assigned_id = None
+    for idx, row in df.iterrows():
+        row_id = str(row.get("id", "")).strip()
+        if not row_id or row_id.lower() == "nan":
+            turn_idx = row.get("turn_index")
+            # If it's a continuing turn, try to use the last assigned ID
+            if turn_idx and not pd.isna(turn_idx) and int(turn_idx) > 1 and last_assigned_id:
+                df.at[idx, "id"] = last_assigned_id
+            else:
+                # Generate new ID
+                current_max_id_num += 1
+                new_id = generate_tc_id(current_max_id_num - 1) # fn adds 1
+                df.at[idx, "id"] = new_id
+                last_assigned_id = new_id
+        else:
+            last_assigned_id = row_id
     
     # Add Select column if not present (for row selection in UI)
     if "Select" not in df.columns:
@@ -72,14 +100,33 @@ def save_data(df: pd.DataFrame):
     # Remove 'Select' column before saving (it's only for UI)
     to_save_df = df.drop(columns=["Select"], errors='ignore').copy()
     
-    should_regenerate = False
-    
-    # Check: Missing IDs
-    if "id" not in to_save_df.columns or to_save_df["id"].isnull().any() or (to_save_df["id"] == "").any():
-        should_regenerate = True
-    
-    if should_regenerate:
-        to_save_df["id"] = [generate_tc_id(i) for i in range(len(to_save_df))]
+    if "id" not in to_save_df.columns:
+        to_save_df["id"] = ""
+        
+    # Find existing max TCxxxx to avoid collisions
+    current_max_id_num = 0
+    for existing_id in to_save_df["id"].dropna():
+        if str(existing_id).startswith("TC"):
+            try:
+                num = int(str(existing_id)[2:])
+                current_max_id_num = max(current_max_id_num, num)
+            except:
+                pass
+
+    last_assigned_id = None
+    for idx, row in to_save_df.iterrows():
+        row_id = str(row.get("id", "")).strip()
+        if not row_id or row_id.lower() == "nan":
+            turn_idx = row.get("turn_index")
+            if turn_idx and not pd.isna(turn_idx) and float(turn_idx) > 1 and last_assigned_id:
+                to_save_df.at[idx, "id"] = last_assigned_id
+            else:
+                current_max_id_num += 1
+                new_id = generate_tc_id(current_max_id_num - 1)
+                to_save_df.at[idx, "id"] = new_id
+                last_assigned_id = new_id
+        else:
+            last_assigned_id = row_id
     
     to_save = to_save_df.to_dict(orient="records")
             

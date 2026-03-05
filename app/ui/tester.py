@@ -205,10 +205,7 @@ ONLY return the highly-structured JSON array. Do not include markdown blocks lik
                     case["overall_criteria"] = json.loads(case["overall_criteria"]) if isinstance(case["overall_criteria"], str) else case.get("overall_criteria", {})
                 except Exception:
                     pass # Keep as string if parsing fails
-                
-                # Delete generated ID to let system assign real one
-                if "id" in case:
-                    del case["id"]
+                # Do NOT delete generated ID anymore, we want to retain multi-turn groupings based on same ID
                     
                 clean_new_cases.append(case)
 
