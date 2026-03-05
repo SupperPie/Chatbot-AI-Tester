@@ -4,8 +4,39 @@ from app.utils import load_data, save_data, run_tests_sync, save_history
 from chat_client import get_available_apis
 
 def render_testcases_page():
-    st.title("📋 Test Cases Management")
-    st.markdown("Manage, edit, and run your test cases.")
+    title_col, manual_col = st.columns([5, 1])
+    with title_col:
+        st.title("📋 Test Cases Management")
+        st.markdown("Manage, edit, and run your test cases.")
+    with manual_col:
+        st.markdown("<br>", unsafe_allow_html=True)
+        with st.popover("📖 参数说明手册", use_container_width=True):
+            st.markdown("""
+### 📖 测评参数使用手册
+
+#### 1. 字段说明
+- **retrieval_context** (检索上下文): 
+  提供给大模型评估时的背景事实或参考知识。主要用于验证 AI 回答有没有胡编乱造（幻觉检测）。填入具体的参考文本片段即可。
+- **conversation** (多轮对话): 
+  仅在多轮测试(`multi_turn`)时生效的 JSON 数组配置。**单轮测试时此列无用，保持空白即可。**
+
+#### 2. Validation (验证规则配置)
+用于控制具体某道题的评分标准，填写 JSON 格式。可用类型（`type`）：
+- **`semantic` *(默认)***: 语义验证。通过大模型（GEval）比较意思是否一致，不拘泥于字眼。
+  - **`threshold`** (通过阈值): 取值 0.0 ~ 1.0。`0.5` 为宽松模式（意思大概对就行），`0.8` 以上为严格模式（意思必须高度完全对应）。
+  - *示例*: `{"type": "semantic", "threshold": 0.5}`
+- **`contains`**: 包含验证。确保实际回答里必定包含某些指定词汇。
+  - **`keywords`**: 必须包含的词组。
+  - *示例*: `{"type": "contains", "keywords": ["不能退款", "违约金"]}`
+- **`exact`**: 精确验证。大模型实际输出必须和预期输出一字不差。
+  - *示例*: `{"type": "exact"}`
+
+#### 3. Overall Criteria (多轮/全局评价标准)
+主要用于多轮测试，约束整题成败的全局判断：
+- **`must_complete_all_turns`** (bool): 如果设为 true，那么多轮对话中只要中间一轮 AI 答错了或提前结束了，就算这整道题 Fail。
+- **`min_success_rate`** (float): 最低通过率。如 0.8 表示必须答对 80% 的轮次，这题才算总评 Pass。
+- *示例*: `{"must_complete_all_turns": true, "min_success_rate": 1.0}`
+            """)
     
     # Initialize df in session state
     if "df" not in st.session_state:
