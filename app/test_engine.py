@@ -145,9 +145,9 @@ class TestEngine:
     def __init__(self):
         # Use our custom Synchronous Model
         self.custom_model = SynchronousEvalModel(
-            model_name=os.getenv("OPENAI_MODEL_NAME", "deepseek-chat"), 
-            base_url=os.getenv("OPENAI_BASE_URL", "https://api.deepseek.com"),
-            api_key=os.getenv("OPENAI_API_KEY")
+            model_name=os.getenv("COMPATIBLE_MODEL", "qwen3-max"), 
+            base_url=os.getenv("COMPATIBLE_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
+            api_key=os.getenv("COMPATIBLE_API_KEY")
         )
 
         self.correctness_metric = GEval(
@@ -430,14 +430,19 @@ class TestEngine:
             expected = turn.get("expected", "")
             context = turn.get("retrieval_context", case_data.get("retrieval_context", []))
             
-            # Fix: Parse validation if it's a string (JSON)
+            # Fix: Parse validation if it's a string (JSON), handle NaN
             validation = turn.get("validation", {"type": "semantic", "threshold": 0.5})
-            if isinstance(validation, str):
+            if isinstance(validation, float):
+                validation = {"type": "semantic", "threshold": 0.5}
+            elif isinstance(validation, str):
                 try:
                     import json
                     validation = json.loads(validation.replace("'", "\"")) # Basic fix for single quotes
-                except:
+                except Exception:
                      validation = {"type": "semantic", "threshold": 0.5}
+                     
+            if not isinstance(validation, dict):
+                validation = {"type": "semantic", "threshold": 0.5}
             
             if not user_message:
                 turn_results.append({
@@ -548,14 +553,19 @@ class TestEngine:
         input_text = case_data.get("input") # First turn input as representative
         
         # Check overall criteria
-        # Fix: Parse criteria if it's a string
+        # Fix: Parse criteria if it's a string, handle NaN floats
         criteria = case_data.get("overall_criteria", {})
-        if isinstance(criteria, str):
+        if isinstance(criteria, float): # Handle Pandas NaN
+            criteria = {}
+        elif isinstance(criteria, str):
             try:
                 import json
                 criteria = json.loads(criteria.replace("'", "\""))
-            except:
+            except Exception:
                 criteria = {}
+        
+        if not isinstance(criteria, dict):
+            criteria = {}
                 
         min_success_rate = criteria.get("min_success_rate", 1.0)
         success_rate = passed_turns / num_turns if num_turns > 0 else 0
