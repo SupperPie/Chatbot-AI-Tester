@@ -274,35 +274,35 @@ def render_report_page():
             res_df = pd.DataFrame(entry.get('results', []))
             
             if not res_df.empty:
-                display_res_df = res_df.copy()
+                # Unroll any multi-turn results into separate rows
+                unrolled_rows = []
+                for _, row in res_df.iterrows():
+                    if "turns" in row and isinstance(row["turns"], list) and len(row["turns"]) > 0:
+                        for idx, t in enumerate(row["turns"]):
+                            new_row = row.copy().to_dict()
+                            new_row["turn_index"] = t.get("turn", idx + 1)
+                            new_row["input"] = t.get("user", "")
+                            new_row["expected_output"] = t.get("expected", "")
+                            new_row["actual_output"] = t.get("actual", "")
+                            new_row["passed"] = t.get("passed", False)
+                            new_row["latency"] = t.get("latency", 0)
+                            new_row["ttft"] = t.get("ttft", 0)
+                            new_row["thinking"] = t.get("thinking", "")
+                            new_row["inform_base"] = t.get("inform_base", "")
+                            new_row["retrieval_context"] = str(t.get("retrieval_context", ""))
+                            unrolled_rows.append(new_row)
+                    else:
+                        row_dict = row.to_dict()
+                        row_dict["turn_index"] = None
+                        unrolled_rows.append(row_dict)
+                
+                display_res_df = pd.DataFrame(unrolled_rows)
                 
                 # Format retrieval_context to a plain string
                 if "retrieval_context" in display_res_df.columns:
                     display_res_df["retrieval_context"] = display_res_df["retrieval_context"].apply(
                         lambda x: ", ".join(x) if isinstance(x, list) else str(x)
                     )
-                
-                if "type" in display_res_df.columns:
-                    def format_actual(row):
-                         if row.get("type") == "multi_turn" and isinstance(row.get("turns"), list):
-                             summary = []
-                             for t in row["turns"]:
-                                 status = "✅" if t.get("passed") else "❌"
-                                 summary.append(f"T{t.get('turn')} {status}: Q: {t.get('user')} | A: {t.get('actual')}")
-                             return "\n".join(summary)
-                         return row.get("actual_output")
-                         
-                    def format_expect(row):
-                         if row.get("type") == "multi_turn" and isinstance(row.get("turns"), list):
-                             summary = []
-                             for t in row["turns"]:
-                                 summary.append(f"T{t.get('turn')}: {t.get('expected')}")
-                             return "\n".join(summary)
-                         return row.get("expected_output")
-                    
-                    if "turns" in display_res_df.columns:
-                        display_res_df["actual_output"] = display_res_df.apply(format_actual, axis=1)
-                        display_res_df["expected_output"] = display_res_df.apply(format_expect, axis=1)
 
                 # Ensure review_comment exists
                 if "review_comment" not in display_res_df.columns:
@@ -312,7 +312,7 @@ def render_report_page():
 
                 # Configure standard columns order
                 target_cols = [
-                    "case_id", "input", "expected_output", "actual_output", "retrieval_context",
+                    "case_id", "turn_index", "input", "expected_output", "actual_output", "retrieval_context",
                     "score", "passed", "ttft", "latency", "reason", 
                     "review_comment", "thinking", "inform_base", "raw"
                 ]
@@ -330,6 +330,7 @@ def render_report_page():
                     display_res_df,
                     column_config={
                         "case_id": st.column_config.TextColumn("ID", width="small"),
+                        "turn_index": st.column_config.NumberColumn("Turn", width="small"),
                         "input": st.column_config.TextColumn("Input", width="medium"),
                         "expected_output": st.column_config.TextColumn("Expected", width="medium"),
                         "actual_output": st.column_config.TextColumn("Actual Output", width="large"),

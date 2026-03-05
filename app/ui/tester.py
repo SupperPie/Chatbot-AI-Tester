@@ -66,7 +66,7 @@ def render_tester_page():
             with st.spinner("🤖 AI is generating test cases..."):
                 try:
                     prompt = f"""You are a testcase generator. Generate test cases based on the requirements and knowledge.
-CRITICAL: You MUST output ONLY a valid JSON array of test case objects. Unless requested otherwise, all "input", "expected", and "user" messages MUST be generated in Chinese (中文).
+CRITICAL: You MUST output ONLY a valid JSON array of test case objects. Unless requested otherwise, all "input", "expected_output", and messages MUST be generated in Chinese (中文).
 
 Requirements:
 {requirements}
@@ -74,29 +74,25 @@ Requirements:
 Knowledge Base:
 {knowledge_base if knowledge_base.strip() else "No additional knowledge provided."}
 
-The JSON format MUST strictly follow this schema:
+The JSON format MUST strictly follow this flat schema. If generating a multi-turn conversation, DO NOT use a nested "conversation" array. Instead, output one distinct object per turn. Each turn object for the same conversation MUST have the exact same "description" and "type", but an incrementing "turn_index" starting at 1.
+
 [
   {{
-    "type": "multi_turn", // ONLY use "multi_turn" IF the user explicitly requested a multi-turn conversation. Otherwise, leave this string EMPTY like this: ""
+    "type": "multi_turn", // Use "multi_turn" if testing a sequence, else "single"
+    "turn_index": 1, // Only use turn_index if multi_turn. 1 for first turn, 2 for second, etc.
     "tags": [], // CRITICAL: This MUST ALWAYS be an empty list []. Do not generate tags.
     "description": "Short description of the test case",
-    "input": "Summary or title of the user's overall goal (in Chinese)",
-    "expected_output": "The detailed context or knowledge reference expected to answer this query (in Chinese)",
-    "conversation": [ // CRITICAL: Only generate this array if the user explicitly requested multi-turn. If it's a standard single question/answer, leave it as an empty list [].
-      {{
-        "turn": 1,
-        "user": "First user message (in Chinese)",
-        "expected": "Expected AI response (in Chinese)",
-        "validation": {{"type": "semantic", "threshold": 0.5}}
-      }},
-      {{
-        "turn": 2,
-        "user": "Follow up message (in Chinese)",
-        "expected": "Expected follow up response (in Chinese)",
-        "validation": {{"type": "semantic", "threshold": 0.5}}
-      }}
-    ],
-    "overall_criteria": {{"must_complete_all_turns": true, "min_success_rate": 0.8}} // Omit or leave empty if not multi-turn
+    "input": "User's message or goal for this specific turn (in Chinese)",
+    "expected_output": "The detailed context, knowledge reference, or expected AI response for this turn (in Chinese)",
+    "overall_criteria": {{"must_complete_all_turns": true, "min_success_rate": 0.8}} // Omit if not multi_turn
+  }},
+  {{
+    "type": "multi_turn",
+    "turn_index": 2, // Second turn continues the same conversation
+    "tags": [],
+    "description": "Short description of the test case", // Must be IDENTICAL to turn 1's description
+    "input": "User's follow up message (in Chinese)",
+    "expected_output": "Expected follow up response (in Chinese)"
   }}
 ]
 
@@ -135,18 +131,30 @@ ONLY return the highly-structured JSON array. Do not include markdown blocks lik
                         
                         # Create DataFrame with generated cases
                         if cases_json:
-                            # We flatten it slightly for the UI editor, but keep conversation intact
+                            # We flatten it for the UI editor, distributing IDs correctly
                             flat_cases = []
-                            for i, case in enumerate(cases_json):
+                            current_id_counter = 0
+                            last_description = None
+                            current_id = None
+                            
+                            for case in cases_json:
+                                desc = case.get("description", "Generated Test")
+                                
+                                # Assign new ID if description changes or it's turn 1 of single/new multi
+                                if desc != last_description or case.get("turn_index", 1) == 1 or case.get("type", "single") == "single":
+                                    current_id_counter += 1
+                                    current_id = f"GEN_{str(current_id_counter).zfill(3)}"
+                                    last_description = desc
+                                    
                                 flat_cases.append({
-                                    "id": f"GEN_MULTI_{str(i+1).zfill(3)}",
-                                    "type": "multi_turn",
+                                    "id": current_id,
+                                    "type": case.get("type", "single"),
+                                    "turn_index": case.get("turn_index", 1),
                                     "input": case.get("input", "N/A"),
                                     "expected_output": "",
                                     "retrieval_context": case.get("expected_output", "N/A"),
-                                    "description": case.get("description", f"Generated Test {i+1}"),
-                                    "tags": case.get("tags", []),
-                                    "conversation": json.dumps(case.get("conversation", []), ensure_ascii=False),
+                                    "description": desc,
+                                    "tags": [],
                                     "overall_criteria": json.dumps(case.get("overall_criteria", {"must_complete_all_turns": True, "min_success_rate": 0.8}), ensure_ascii=False)
                                 })
                             
@@ -173,12 +181,12 @@ ONLY return the highly-structured JSON array. Do not include markdown blocks lik
             column_config={
                 "id": st.column_config.TextColumn("ID", width="small", disabled=True),
                 "type": st.column_config.TextColumn("Type", disabled=True),
+                "turn_index": st.column_config.NumberColumn("Turn", width="small", disabled=True),
                 "input": st.column_config.TextColumn("Input Goal", width="medium"),
                 "expected_output": st.column_config.TextColumn("Expected Goal", width="medium"),
                 "retrieval_context": st.column_config.TextColumn("Retrieval Context", width="large"),
                 "description": st.column_config.TextColumn("Description", width="medium"),
                 "tags": st.column_config.ListColumn("Tags"),
-                "conversation": st.column_config.TextColumn("Conversation (JSON)", width="large"),
                 "overall_criteria": st.column_config.TextColumn("Criteria", disabled=True)
             },
             num_rows="dynamic",
@@ -190,11 +198,10 @@ ONLY return the highly-structured JSON array. Do not include markdown blocks lik
         if st.button("💾 Save to Library", type="primary"):
             new_cases = edited_generated.to_dict(orient="records")
             
-            # Format back to real JSON from string for conversation/criteria
+            # Format back to real JSON from string for criteria
             clean_new_cases = []
             for case in new_cases:
                 try:
-                    case["conversation"] = json.loads(case["conversation"]) if isinstance(case["conversation"], str) else case["conversation"]
                     case["overall_criteria"] = json.loads(case["overall_criteria"]) if isinstance(case["overall_criteria"], str) else case.get("overall_criteria", {})
                 except Exception:
                     pass # Keep as string if parsing fails
@@ -218,7 +225,7 @@ ONLY return the highly-structured JSON array. Do not include markdown blocks lik
             final_df = save_data(combined_df)
             
             # Clear generated cases
-            st.session_state.generated_cases = pd.DataFrame(columns=["id", "input", "expected_output", "retrieval_context", "description", "tags", "conversation"])
+            st.session_state.generated_cases = pd.DataFrame(columns=["id", "type", "turn_index", "input", "expected_output", "retrieval_context", "description", "tags"])
             
             # Update main df in session state
             if "df" in st.session_state:

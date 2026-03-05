@@ -341,11 +341,6 @@ class TestEngine:
                 if case_id not in grouped_cases:
                     grouped_cases[case_id] = []
                 grouped_cases[case_id].append(case)
-            # If it has a 'conversation' list field (old format), handle directly
-            elif case.get("conversation") and isinstance(case.get("conversation"), list):
-                 # This is a legacy multi-turn case passed as single object
-                 result = self.run_multi_turn_case(case, api_name=api_name)
-                 results.append(result)
             else:
                 single_cases.append(case)
         
@@ -384,14 +379,19 @@ class TestEngine:
             conversation_turns = []
             for i, row in enumerate(group):
                 conversation_turns.append({
-                    "turn": i + 1,
+                    "turn": row.get("turn_index", i + 1),
                     "user": row.get("input", ""),
                     "expected": row.get("expected_output", ""),
                     "validation": row.get("validation", {"type": "semantic", "threshold": 0.5}),
-                    "retrieval_context": row.get("retrieval_context", [])
+                    "retrieval_context": row.get("retrieval_context", []),
+                    "case_id": case_id # pass along case id for report rendering matching
                 })
             
             base_case["conversation"] = conversation_turns
+            
+            # Remove any artifacts from the first row that don't apply to the whole group
+            base_case["turn_index"] = None
+            base_case["input"] = group[0].get("input", "") # For ID title purpose
             
             # Result depends on group execution
             res = self.run_multi_turn_case(base_case, api_name=api_name)

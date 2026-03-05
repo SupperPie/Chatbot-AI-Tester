@@ -290,6 +290,10 @@ def render_testcases_page():
     # ------------------
     # Data Editor
     # ------------------
+    if "turn_index" in st.session_state.df.columns:
+        st.session_state.df = st.session_state.df.sort_values(by=["id", "turn_index"], na_position="first").reset_index(drop=True)
+    elif "id" in st.session_state.df.columns:
+        st.session_state.df = st.session_state.df.sort_values(by="id").reset_index(drop=True)
     edited_df = st.data_editor(
         st.session_state.df,
         column_config={
@@ -301,7 +305,7 @@ def render_testcases_page():
             "retrieval_context": st.column_config.Column("Retrieval Context", help="为大模型提供的参考上下文文件。用于验证模型的回答是否基于给定的知识库 (Faithfulness)。"),
             "overall_criteria": st.column_config.Column("Overall Criteria", help="用于评估打分的特殊判定要求或全局自定义标准。"),
             "validation": st.column_config.Column("Validation", help="验证规则 (JSON格式)。例: {\"type\": \"contains\", \"keywords\": [\"正确\"]} 或 {\"type\": \"semantic\"}。"),
-            "conversation": st.column_config.Column("Conversation", help="多轮对话的测试轮次设置 (JSON 数组格式，包含每一轮的 user, expected, validation 等字段)。"),
+            "turn_index": st.column_config.NumberColumn("Turn", width="small", help="多轮对话的顺序编号"),
         },
         num_rows="dynamic",
         use_container_width=True,
