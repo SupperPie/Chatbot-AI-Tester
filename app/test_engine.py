@@ -217,6 +217,7 @@ class TestEngine:
         thinking_process = None
         inform_base = None
         raw_data = None
+        ttft = 0.0
         
         # Call API
         try:
@@ -236,9 +237,10 @@ class TestEngine:
                     thinking_process = resp_data.get("thinking")
                     inform_base = resp_data.get("inform_base")
                     raw_data = resp_data.get("raw")
+                    ttft = float(resp_data.get("ttft", 0.0))
                 else:
                     actual_output = raw_response
-            except:
+            except Exception:
                 actual_output = raw_response
         except Exception as e:
             actual_output = f"Error calling API: {str(e)}"
@@ -319,7 +321,8 @@ class TestEngine:
             "thinking": thinking_process,
             "inform_base": inform_base,
             "raw": raw_data,
-            "latency": latency
+            "latency": latency,
+            "ttft": ttft
         }
 
     def run_batch(self, cases: List[Dict[str, Any]], api_name: str = "Bundle API", on_step_complete=None, should_stop=None) -> List[Dict[str, Any]]:
@@ -467,6 +470,7 @@ class TestEngine:
                 # Parse thinking process if available
                 turn_thinking = None
                 turn_inform_base = None
+                ttft = 0.0
                 try:
                     import json
                     resp_data = json.loads(actual_output)
@@ -474,7 +478,8 @@ class TestEngine:
                         actual_output = resp_data["result"]
                         turn_thinking = resp_data.get("thinking")
                         turn_inform_base = resp_data.get("inform_base")
-                except:
+                        ttft = float(resp_data.get("ttft", 0.0))
+                except Exception:
                     pass
 
             except Exception as e:
@@ -537,7 +542,8 @@ class TestEngine:
                 "passed": turn_passed,
                 "thinking": turn_thinking,
                 "inform_base": turn_inform_base,
-                "latency": turn_latency
+                "latency": turn_latency,
+                "ttft": ttft
             })
             
             total_score += turn_score
@@ -587,6 +593,7 @@ class TestEngine:
             "overall_passed": overall_passed,
             "passed": overall_passed,
             "latency": sum(t.get("latency", 0) for t in turn_results),
+            "ttft": sum(t.get("ttft", 0) for t in turn_results),
             "turns": turn_results,
             "user_id": user_id,
             "session_id": session_id

@@ -44,10 +44,13 @@ def get_bundle_response(message: str, url: str, user_id: str = None, session_id:
     print(f"Sending request to {url} with message: {message}")
     
     try:
+        start_time = time.time()
         response = requests.post(url, json=payload, headers=headers, stream=True)
         response.raise_for_status()
         
         full_response_text = ""
+        ttft = 0.0
+        got_first_token = False
         
         for line in response.iter_lines():
             if line:
@@ -63,18 +66,34 @@ def get_bundle_response(message: str, url: str, user_id: str = None, session_id:
                         if data.get("type") == "message" and data.get("agent") == "bundle":
                             content_obj = data.get("content", {})
                             if isinstance(content_obj, dict) and content_obj.get("type") == "ai":
-                                return content_obj.get("content")
+                                ttft = time.time() - start_time
+                                return json.dumps({
+                                    "result": content_obj.get("content"),
+                                    "thinking": "",
+                                    "inform_base": "",
+                                    "raw": "",
+                                    "ttft": ttft
+                                }, ensure_ascii=False)
                                 
                         if data.get("type") == "token" and data.get("agent") == "main":
+                             if not got_first_token:
+                                 ttft = time.time() - start_time
+                                 got_first_token = True
                              full_response_text += data.get("content", "")
 
                     except json.JSONDecodeError:
                         continue
 
         if full_response_text:
-            return full_response_text
+            return json.dumps({
+                "result": full_response_text,
+                "thinking": "",
+                "inform_base": "",
+                "raw": "",
+                "ttft": ttft
+            }, ensure_ascii=False)
             
-        return "Error: No response content found."
+        return json.dumps({"result": "Error: No response content found.", "ttft": 0.0}, ensure_ascii=False)
 
     except Exception as e:
         print(f"Error calling Bundle API: {e}")
@@ -110,6 +129,7 @@ def get_skills_response(message: str, url: str, user_id: str = None, session_id:
     print(f"Sending request to {url} with message: {message}")
     
     try:
+        start_time = time.time()
         # TIMEOUT ADDED: 600s to prevent hanging
         response = requests.post(url, json=payload, headers=headers, stream=True, timeout=600)
         
@@ -123,6 +143,9 @@ def get_skills_response(message: str, url: str, user_id: str = None, session_id:
         thinking_process = []
         inform_base_process = []
         raw_chunks = []
+        
+        ttft = 0.0
+        got_first_token = False
         
         for line in response.iter_lines():
             if line:
@@ -164,6 +187,9 @@ def get_skills_response(message: str, url: str, user_id: str = None, session_id:
                             else:
                                 # Regular text goes to FINAL ANSWER
                                 if content:
+                                    if not got_first_token:
+                                        ttft = time.time() - start_time
+                                        got_first_token = True
                                     final_answer += content
                         else:
                              # Fallback or other events
@@ -194,7 +220,8 @@ def get_skills_response(message: str, url: str, user_id: str = None, session_id:
             "result": final_answer, 
             "thinking": full_debug_log,
             "inform_base": inform_base_str,
-            "raw": raw_full_str
+            "raw": raw_full_str,
+            "ttft": ttft
         }, ensure_ascii=False)
 
     except Exception as e:
@@ -226,6 +253,7 @@ def get_flight_response(message: str, url: str, user_id: str = None, session_id:
     print(f"Sending request to {url} with message: {message}")
     
     try:
+        start_time = time.time()
         response = requests.post(url, json=payload, headers=headers, timeout=600)
         
         if not response.ok:
@@ -233,6 +261,7 @@ def get_flight_response(message: str, url: str, user_id: str = None, session_id:
             return f"❌ SERVER DETAIL ({response.status_code}): {response.text}"
             
         data = response.json()
+        ttft = time.time() - start_time # No stream, so ttft equals latency
         
         # Extract according to user requirements
         actual_output = data.get("output_response", "")
@@ -247,7 +276,8 @@ def get_flight_response(message: str, url: str, user_id: str = None, session_id:
             "result": actual_output, 
             "thinking": "", 
             "inform_base": "",
-            "raw": raw_data
+            "raw": raw_data,
+            "ttft": ttft
         }, ensure_ascii=False)
 
     except requests.exceptions.Timeout:
@@ -294,6 +324,7 @@ def get_limo_response(message: str, url: str, user_id: str = None, session_id: s
     print(f"Sending request to {url} with message: {message}")
     
     try:
+        start_time = time.time()
         response = requests.post(url, json=payload, headers=headers, stream=True, timeout=600)
         
         if not response.ok:
@@ -302,6 +333,8 @@ def get_limo_response(message: str, url: str, user_id: str = None, session_id: s
             
         final_answer = ""
         raw_chunks = []
+        ttft = 0.0
+        got_first_token = False
         
         for line in response.iter_lines():
             if line:
@@ -318,6 +351,9 @@ def get_limo_response(message: str, url: str, user_id: str = None, session_id: s
                         if data.get("type") == "token" and data.get("agent") == "main":
                             content = data.get("content", "")
                             if content:
+                                if not got_first_token:
+                                    ttft = time.time() - start_time
+                                    got_first_token = True
                                 final_answer += content
                                 
                     except json.JSONDecodeError:
@@ -331,7 +367,8 @@ def get_limo_response(message: str, url: str, user_id: str = None, session_id: s
             "result": final_answer, 
             "thinking": "",
             "inform_base": "",
-            "raw": "\n".join(raw_chunks)
+            "raw": "\n".join(raw_chunks),
+            "ttft": ttft
         }, ensure_ascii=False)
 
     except requests.exceptions.Timeout:

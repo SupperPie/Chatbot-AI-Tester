@@ -275,6 +275,13 @@ def render_report_page():
             
             if not res_df.empty:
                 display_res_df = res_df.copy()
+                
+                # Format retrieval_context to a plain string
+                if "retrieval_context" in display_res_df.columns:
+                    display_res_df["retrieval_context"] = display_res_df["retrieval_context"].apply(
+                        lambda x: ", ".join(x) if isinstance(x, list) else str(x)
+                    )
+                
                 if "type" in display_res_df.columns:
                     def format_actual(row):
                          if row.get("type") == "multi_turn" and isinstance(row.get("turns"), list):
@@ -305,8 +312,8 @@ def render_report_page():
 
                 # Configure standard columns order
                 target_cols = [
-                    "case_id", "input", "expected_output", "actual_output", 
-                    "score", "passed", "latency", "reason", 
+                    "case_id", "input", "expected_output", "actual_output", "retrieval_context",
+                    "score", "passed", "ttft", "latency", "reason", 
                     "review_comment", "thinking", "inform_base", "raw"
                 ]
                 # Only keep columns that exist in the dataframe to prevent KeyError
@@ -326,13 +333,15 @@ def render_report_page():
                         "input": st.column_config.TextColumn("Input", width="medium"),
                         "expected_output": st.column_config.TextColumn("Expected", width="medium"),
                         "actual_output": st.column_config.TextColumn("Actual Output", width="large"),
+                        "retrieval_context": st.column_config.TextColumn("Retrieval Context", width="large"),
                         "thinking": st.column_config.TextColumn("Thinking Process", width="large"),
                         "inform_base": st.column_config.TextColumn("Inform Base (Tools)", width="large"),
                         "raw": st.column_config.TextColumn("Raw Data", width="large"),
                         "score": st.column_config.NumberColumn("Score", format="%.2f"),
                         "passed": st.column_config.CheckboxColumn("Passed", width="small"),
                         "review_comment": st.column_config.TextColumn("Review Comment", width="medium"),
-                        "latency": st.column_config.NumberColumn("Response Time", format="%.2f s"),
+                        "ttft": st.column_config.NumberColumn("TTFT", format="%.2f s"),
+                        "latency": st.column_config.NumberColumn("Latency", format="%.2f s"),
                         "reason": st.column_config.TextColumn("Reason", width="large"),
                     },
                     use_container_width=True,
