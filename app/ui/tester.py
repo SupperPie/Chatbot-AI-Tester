@@ -78,7 +78,7 @@ The JSON format MUST strictly follow this schema:
 [
   {{
     "type": "multi_turn",
-    "tags": ["example_tag"],
+    "tags": [],
     "description": "Short description of the test case",
     "input": "Summary or title of the user's overall goal",
     "expected_output": "Summary of the final expected state",
