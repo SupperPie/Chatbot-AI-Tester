@@ -11,7 +11,7 @@ def render_tester_page():
     
     # Initialize session state for generated cases
     if "generated_cases" not in st.session_state:
-        st.session_state.generated_cases = pd.DataFrame(columns=["id", "input", "expected_output", "tags"])
+        st.session_state.generated_cases = pd.DataFrame(columns=["id", "description", "tags", "conversation"])
     
     # Two-column layout for inputs
     col1, col2 = st.columns(2)
@@ -51,7 +51,8 @@ def render_tester_page():
         else:
             with st.spinner("🤖 AI is generating test cases..."):
                 try:
-                    prompt = f"""You are a test case generator. Generate test cases based on the following requirements and knowledge.
+                    prompt = f"""You are a testcase generator. Generate test cases based on the requirements and knowledge.
+CRITICAL: You MUST output ONLY a valid JSON array of test case objects. Each test case MUST explicitly be of type "multi_turn" and contain a "conversation" array, even if it's just 1 turn.
 
 Requirements:
 {requirements}
@@ -59,26 +60,40 @@ Requirements:
 Knowledge Base:
 {knowledge_base if knowledge_base.strip() else "No additional knowledge provided."}
 
-Generate test cases in the following JSON format. Each test case should have:
-- input: The question or input to test
-- expected_output: The expected answer or response
-- tags: A list of relevant tags (e.g., ["login", "validation"])
-
-Return ONLY a JSON array of test cases, no other text. Example:
+The JSON format MUST strictly follow this schema:
 [
-  {{"input": "How do I login?", "expected_output": "You can login with email or phone number", "tags": ["login", "basic"]}},
-  {{"input": "What is the password requirement?", "expected_output": "Password must be 8-20 characters", "tags": ["login", "password"]}}
+  {{
+    "type": "multi_turn",
+    "tags": ["example_tag"],
+    "description": "Short description of the test case",
+    "conversation": [
+      {{
+        "turn": 1,
+        "user": "First user message",
+        "expected": "Expected AI response",
+        "validation": {{"type": "semantic", "threshold": 0.5}}
+      }},
+      {{
+        "turn": 2,
+        "user": "Follow up message",
+        "expected": "Expected follow up response",
+        "validation": {{"type": "semantic", "threshold": 0.5}}
+      }}
+    ],
+    "overall_criteria": {{"must_complete_all_turns": true, "min_success_rate": 0.8}}
+  }}
 ]
-"""
+
+ONLY return the highly-structured JSON array. Do not include markdown blocks like ```json or trailing text."""
                     try:
                         from openai import OpenAI
                         
-                        api_key = os.getenv("OPENAI_API_KEY")
-                        base_url = os.getenv("OPENAI_BASE_URL")
-                        model_name = os.getenv("OPENAI_MODEL_NAME", "deepseek-chat")
+                        api_key = os.getenv("COMPATIBLE_API_KEY")
+                        base_url = os.getenv("COMPATIBLE_BASE_URL")
+                        model_name = os.getenv("COMPATIBLE_MODEL", "qwen3-max")
                         
                         if not api_key:
-                            st.warning("⚠️ 缺省 OPENAI_API_KEY 环境变量，本次自动生成可能会失败。")
+                            st.warning("⚠️ 缺省 COMPATIBLE_API_KEY 环境变量，本次自动生成可能会失败。")
                         
                         client = OpenAI(
                             api_key=api_key,
@@ -104,16 +119,22 @@ Return ONLY a JSON array of test cases, no other text. Example:
                         
                         # Create DataFrame with generated cases
                         if cases_json:
-                            generated_df = pd.DataFrame(cases_json)
-                            # Add IDs
-                            generated_df["id"] = [f"NEW{str(i+1).zfill(3)}" for i in range(len(generated_df))]
-                            # Ensure required columns
-                            for col in ["input", "expected_output", "tags"]:
-                                if col not in generated_df.columns:
-                                    generated_df[col] = "" if col != "tags" else [[] for _ in range(len(generated_df))]
+                            # We flatten it slightly for the UI editor, but keep conversation intact
+                            flat_cases = []
+                            for i, case in enumerate(cases_json):
+                                flat_cases.append({
+                                    "id": f"GEN_MULTI_{str(i+1).zfill(3)}",
+                                    "type": "multi_turn",
+                                    "description": case.get("description", f"Generated Test {i+1}"),
+                                    "tags": case.get("tags", []),
+                                    "conversation": json.dumps(case.get("conversation", []), ensure_ascii=False),
+                                    "overall_criteria": json.dumps(case.get("overall_criteria", {"must_complete_all_turns": True, "min_success_rate": 0.8}), ensure_ascii=False)
+                                })
+                            
+                            generated_df = pd.DataFrame(flat_cases)
                             
                             st.session_state.generated_cases = generated_df
-                            st.success(f"✅ Generated {len(generated_df)} test cases!")
+                            st.success(f"✅ Generated {len(generated_df)} multi-turn test cases!")
                     else:
                         st.error("Failed to parse AI response. Please try again.")
                         st.text("AI Response:")
@@ -132,9 +153,11 @@ Return ONLY a JSON array of test cases, no other text. Example:
             st.session_state.generated_cases,
             column_config={
                 "id": st.column_config.TextColumn("ID", width="small", disabled=True),
-                "input": st.column_config.TextColumn("Input Question", width="large"),
-                "expected_output": st.column_config.TextColumn("Expected Output", width="large"),
+                "type": st.column_config.TextColumn("Type", disabled=True),
+                "description": st.column_config.TextColumn("Description", width="medium"),
                 "tags": st.column_config.ListColumn("Tags"),
+                "conversation": st.column_config.TextColumn("Conversation (JSON)", width="large"),
+                "overall_criteria": st.column_config.TextColumn("Criteria", disabled=True)
             },
             num_rows="dynamic",
             key="editor_generated",
@@ -145,14 +168,27 @@ Return ONLY a JSON array of test cases, no other text. Example:
         if st.button("💾 Save to Library", type="primary"):
             new_cases = edited_generated.to_dict(orient="records")
             
+            # Format back to real JSON from string for conversation/criteria
+            clean_new_cases = []
+            for case in new_cases:
+                try:
+                    case["conversation"] = json.loads(case["conversation"]) if isinstance(case["conversation"], str) else case["conversation"]
+                    case["overall_criteria"] = json.loads(case["overall_criteria"]) if isinstance(case["overall_criteria"], str) else case.get("overall_criteria", {})
+                except Exception:
+                    pass # Keep as string if parsing fails
+                
+                # Delete generated ID to let system assign real one
+                if "id" in case:
+                    del case["id"]
+                    
+                clean_new_cases.append(case)
+
             # Load existing
             existing_df = load_data()
             if "Select" in existing_df.columns:
                  existing_df = existing_df.drop(columns=["Select"])
                  
-            new_df = pd.DataFrame(new_cases)
-            if "id" in new_df.columns:
-                del new_df["id"] # Let save_data regenerate IDs or handle it
+            new_df = pd.DataFrame(clean_new_cases)
                 
             combined_df = pd.concat([existing_df, new_df], ignore_index=True)
             
@@ -160,7 +196,7 @@ Return ONLY a JSON array of test cases, no other text. Example:
             final_df = save_data(combined_df)
             
             # Clear generated cases
-            st.session_state.generated_cases = pd.DataFrame(columns=["id", "input", "expected_output", "tags"])
+            st.session_state.generated_cases = pd.DataFrame(columns=["id", "description", "tags", "conversation"])
             
             # Update main df in session state
             if "df" in st.session_state:
