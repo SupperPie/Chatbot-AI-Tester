@@ -2,7 +2,7 @@ import streamlit as st
 import nest_asyncio
 
 # Apply Layout immediately
-st.set_page_config(layout="wide", page_title="AI Test Manager", page_icon="🤖")
+st.set_page_config(layout="wide", page_title="AI Test Manager", page_icon="img/eva_avatar.png")
 
 # Apply nest_asyncio
 nest_asyncio.apply()
