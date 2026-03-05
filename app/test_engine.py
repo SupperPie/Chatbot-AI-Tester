@@ -294,7 +294,7 @@ class TestEngine:
                         correctness_reason,
                         faith_score,
                         faith_reason,
-                        self.correctness_metric.is_successful()
+                        (combined_score >= 0.5)
                     )
                 
                 # Create a new event loop for each measurement to avoid conflicts

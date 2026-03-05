@@ -178,7 +178,14 @@ def render_report_page():
                             new_row["input"] = t.get("user", "")
                             new_row["expected_output"] = t.get("expected", "")
                             new_row["actual_output"] = t.get("actual", "")
-                            new_row["passed"] = t.get("passed", False)
+                            
+                            is_manual = t.get("manual_review", False)
+                            if is_manual:
+                                new_row["passed"] = t.get("passed", False)
+                            else:
+                                score_val = float(t.get("score", 0)) if t.get("score") is not None else 0.0
+                                new_row["passed"] = (score_val >= 0.5)
+                            
                             new_row["latency"] = t.get("latency", 0)
                             new_row["ttft"] = t.get("ttft", 0)
                             new_row["thinking"] = t.get("thinking", "")
@@ -188,6 +195,14 @@ def render_report_page():
                     else:
                         row_dict = row.to_dict()
                         row_dict["turn_index"] = None
+                        
+                        is_manual = row_dict.get("manual_review", False)
+                        if is_manual:
+                            row_dict["passed"] = row_dict.get("passed", False)
+                        else:
+                            score_val = float(row_dict.get("score", 0)) if pd.notna(row_dict.get("score")) else 0.0
+                            row_dict["passed"] = (score_val >= 0.5)
+                            
                         unrolled_rows.append(row_dict)
                 
                 display_res_df = pd.DataFrame(unrolled_rows)
@@ -390,6 +405,15 @@ def render_report_page():
                             if cid in updates:
                                 res['passed'] = bool(updates[cid].get('passed', False))
                                 res['review_comment'] = str(updates[cid].get('review_comment', ""))
+                                res['manual_review'] = True
+                                
+                                # If it's multi-turn, also update all turns to mirror the manual pass 
+                                # logic so they render consistently
+                                if "turns" in res and isinstance(res["turns"], list):
+                                    for t in res["turns"]:
+                                        t['passed'] = res['passed']
+                                        t['manual_review'] = True
+                                        
                                 updated_count += 1
                         
                         if update_history_entry(entry_id, current_results):

@@ -295,6 +295,9 @@ def render_testcases_page():
         st.session_state.df["retrieval_context"] = st.session_state.df["retrieval_context"].apply(
             lambda x: ", ".join(x) if isinstance(x, list) else str(x)
         )
+        
+    if "conversation" in st.session_state.df.columns:
+        st.session_state.df.drop(columns=["conversation"], inplace=True)
 
     if "turn_index" in st.session_state.df.columns:
         st.session_state.df = st.session_state.df.sort_values(by=["id", "turn_index"], na_position="first").reset_index(drop=True)
