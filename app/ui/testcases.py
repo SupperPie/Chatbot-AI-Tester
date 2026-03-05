@@ -290,6 +290,12 @@ def render_testcases_page():
     # ------------------
     # Data Editor
     # ------------------
+    # pyarrow schema safety: format retrieval_context to string to prevent list/string mixing crashes
+    if "retrieval_context" in st.session_state.df.columns:
+        st.session_state.df["retrieval_context"] = st.session_state.df["retrieval_context"].apply(
+            lambda x: ", ".join(x) if isinstance(x, list) else str(x)
+        )
+
     if "turn_index" in st.session_state.df.columns:
         st.session_state.df = st.session_state.df.sort_values(by=["id", "turn_index"], na_position="first").reset_index(drop=True)
     elif "id" in st.session_state.df.columns:
