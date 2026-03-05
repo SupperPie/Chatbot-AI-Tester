@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import ast
 from app.utils import load_data, save_data, run_tests_sync, save_history
 from chat_client import get_available_apis
 
@@ -49,6 +50,32 @@ def render_testcases_page():
     
     if "df_content_sig" not in st.session_state:
         st.session_state.df_content_sig = get_content_signature(st.session_state.df)
+
+    @st.dialog("⚠️ Confirm Deletion")
+    def confirm_delete_dialog(ids_to_delete):
+        st.warning(f"Are you sure you want to permanently delete **{len(ids_to_delete)}** test cases? This action cannot be undone.")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("Cancel", use_container_width=True):
+                st.rerun()
+        with col2:
+            if st.button("🗑️ Yes, Delete", type="primary", use_container_width=True):
+                # Drop selected rows from the original DF
+                current_df = st.session_state.df
+                new_df = current_df[~current_df["id"].isin(ids_to_delete)]
+                
+                # Save the new filtered df to disk
+                final_df = save_data(new_df)
+                
+                # Update session state
+                if "Select" not in final_df.columns:
+                     final_df.insert(0, "Select", False)
+                st.session_state.df = final_df
+                st.session_state.df_content_sig = get_content_signature(final_df)
+                
+                st.toast(f"🗑️ Deleted {len(ids_to_delete)} cases successfully!")
+                st.rerun()
 
 
     # Filters & Actions
@@ -222,7 +249,7 @@ def render_testcases_page():
     st.divider()
     
     # Action row 1
-    range_col1, range_col2, range_col3, btn_col1, btn_col2 = st.columns([1, 1, 0.3, 1.2, 1.2])
+    range_col1, range_col2, btn_col1, btn_col2, btn_col3 = st.columns([1, 1, 1.2, 1.2, 1.2])
     with range_col1:
         st.text_input("From TC", value="TC0001", help="Starting test case ID", key="start_tc")
     with range_col2:
@@ -233,10 +260,10 @@ def render_testcases_page():
     with btn_col2:
         st.markdown('<div style="height: 28px;"></div>', unsafe_allow_html=True)
         run_selected_clicked = st.button("▶ Run Selected", use_container_width=True, type="primary", key="btn_run_selected")
-    with range_col3:
+    with btn_col3:
         st.markdown('<div style="height: 28px;"></div>', unsafe_allow_html=True)
         # Delete Selected 
-        delete_selected_clicked = st.button("🗑️ Delete Selected", use_container_width=True, key="btn_delete_selected")
+        delete_selected_clicked = st.button("🗑️ Delete Selected", use_container_width=True, type="primary", key="btn_delete_selected")
     
     # Action row 2 (Tags)
     def get_all_tags(df):
@@ -337,26 +364,8 @@ def render_testcases_page():
         if selected_rows.empty:
             st.warning("Please select cases to delete.")
         else:
-            # Drop selected rows from the original DF
-            current_df = st.session_state.df
-             
-            # Identify the IDs to delete 
             ids_to_delete = selected_rows["id"].tolist()
-            
-            # Keep rows whose IDs are NOT in the deletion list
-            new_df = current_df[~current_df["id"].isin(ids_to_delete)]
-            
-            # Save the new filtered df to disk
-            final_df = save_data(new_df)
-            
-            # Update session state and refresh
-            if "Select" not in final_df.columns:
-                 final_df.insert(0, "Select", False)
-            st.session_state.df = final_df
-            st.session_state.df_content_sig = get_content_signature(final_df)
-            
-            st.toast(f"🗑️ Deleted {len(ids_to_delete)} cases successfully!")
-            st.rerun()
+            confirm_delete_dialog(ids_to_delete)
     
     elif run_range_clicked:
         start_id = st.session_state.start_tc
