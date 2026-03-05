@@ -11,7 +11,7 @@ def render_tester_page():
     
     # Initialize session state for generated cases
     if "generated_cases" not in st.session_state:
-        st.session_state.generated_cases = pd.DataFrame(columns=["id", "input", "expected_output", "description", "tags", "conversation"])
+        st.session_state.generated_cases = pd.DataFrame(columns=["id", "input", "expected_output", "retrieval_context", "description", "tags", "conversation"])
         
     if "saved_req" not in st.session_state:
         st.session_state.saved_req = ""
@@ -81,7 +81,7 @@ The JSON format MUST strictly follow this schema:
     "tags": [], // CRITICAL: This MUST ALWAYS be an empty list []. Do not generate tags.
     "description": "Short description of the test case",
     "input": "Summary or title of the user's overall goal (in Chinese)",
-    "expected_output": "Summary of the final expected state (in Chinese)",
+    "expected_output": "The detailed context or knowledge reference expected to answer this query (in Chinese)",
     "conversation": [ // CRITICAL: Only generate this array if the user explicitly requested multi-turn. If it's a standard single question/answer, leave it as an empty list [].
       {{
         "turn": 1,
@@ -142,7 +142,8 @@ ONLY return the highly-structured JSON array. Do not include markdown blocks lik
                                     "id": f"GEN_MULTI_{str(i+1).zfill(3)}",
                                     "type": "multi_turn",
                                     "input": case.get("input", "N/A"),
-                                    "expected_output": case.get("expected_output", "N/A"),
+                                    "expected_output": "",
+                                    "retrieval_context": case.get("expected_output", "N/A"),
                                     "description": case.get("description", f"Generated Test {i+1}"),
                                     "tags": case.get("tags", []),
                                     "conversation": json.dumps(case.get("conversation", []), ensure_ascii=False),
@@ -174,6 +175,7 @@ ONLY return the highly-structured JSON array. Do not include markdown blocks lik
                 "type": st.column_config.TextColumn("Type", disabled=True),
                 "input": st.column_config.TextColumn("Input Goal", width="medium"),
                 "expected_output": st.column_config.TextColumn("Expected Goal", width="medium"),
+                "retrieval_context": st.column_config.TextColumn("Retrieval Context", width="large"),
                 "description": st.column_config.TextColumn("Description", width="medium"),
                 "tags": st.column_config.ListColumn("Tags"),
                 "conversation": st.column_config.TextColumn("Conversation (JSON)", width="large"),
@@ -216,7 +218,7 @@ ONLY return the highly-structured JSON array. Do not include markdown blocks lik
             final_df = save_data(combined_df)
             
             # Clear generated cases
-            st.session_state.generated_cases = pd.DataFrame(columns=["id", "input", "expected_output", "description", "tags", "conversation"])
+            st.session_state.generated_cases = pd.DataFrame(columns=["id", "input", "expected_output", "retrieval_context", "description", "tags", "conversation"])
             
             # Update main df in session state
             if "df" in st.session_state:

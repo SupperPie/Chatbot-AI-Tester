@@ -276,7 +276,7 @@ def render_report_page():
             if not res_df.empty:
                 display_res_df = res_df.copy()
                 if "type" in display_res_df.columns:
-                    def format_output(row):
+                    def format_actual(row):
                          if row.get("type") == "multi_turn" and isinstance(row.get("turns"), list):
                              summary = []
                              for t in row["turns"]:
@@ -284,9 +284,18 @@ def render_report_page():
                                  summary.append(f"T{t.get('turn')} {status}: Q: {t.get('user')} | A: {t.get('actual')}")
                              return "\n".join(summary)
                          return row.get("actual_output")
+                         
+                    def format_expect(row):
+                         if row.get("type") == "multi_turn" and isinstance(row.get("turns"), list):
+                             summary = []
+                             for t in row["turns"]:
+                                 summary.append(f"T{t.get('turn')}: {t.get('expected')}")
+                             return "\n".join(summary)
+                         return row.get("expected_output")
                     
                     if "turns" in display_res_df.columns:
-                        display_res_df["actual_output"] = display_res_df.apply(format_output, axis=1)
+                        display_res_df["actual_output"] = display_res_df.apply(format_actual, axis=1)
+                        display_res_df["expected_output"] = display_res_df.apply(format_expect, axis=1)
 
                 # Ensure review_comment exists
                 if "review_comment" not in display_res_df.columns:
@@ -294,7 +303,18 @@ def render_report_page():
                 else:
                     display_res_df["review_comment"] = display_res_df["review_comment"].fillna("").astype(str)
 
-                # Configure disabled columns
+                # Configure standard columns order
+                target_cols = [
+                    "case_id", "input", "expected_output", "actual_output", 
+                    "score", "passed", "latency", "reason", 
+                    "review_comment", "thinking", "inform_base", "raw"
+                ]
+                # Only keep columns that exist in the dataframe to prevent KeyError
+                display_cols = [c for c in target_cols if c in display_res_df.columns]
+                
+                # Keep Select if we need it, but we don't use Select in history table right now.
+                display_res_df = display_res_df[display_cols]
+                
                 all_cols = display_res_df.columns.tolist()
                 editable_cols = ["passed", "review_comment"]
                 disabled_cols = [c for c in all_cols if c not in editable_cols]
