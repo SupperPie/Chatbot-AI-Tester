@@ -11,7 +11,17 @@ def render_tester_page():
     
     # Initialize session state for generated cases
     if "generated_cases" not in st.session_state:
-        st.session_state.generated_cases = pd.DataFrame(columns=["id", "description", "tags", "conversation"])
+        st.session_state.generated_cases = pd.DataFrame(columns=["id", "input", "expected_output", "description", "tags", "conversation"])
+        
+    if "saved_req" not in st.session_state:
+        st.session_state.saved_req = ""
+    if "saved_kb" not in st.session_state:
+        st.session_state.saved_kb = ""
+        
+    def sync_req():
+        st.session_state.saved_req = st.session_state.tester_requirements
+    def sync_kb():
+        st.session_state.saved_kb = st.session_state.tester_knowledge
     
     # Two-column layout for inputs
     col1, col2 = st.columns(2)
@@ -20,18 +30,22 @@ def render_tester_page():
         st.subheader("📝 Test Requirements")
         requirements = st.text_area(
             "Describe what test cases you want to generate",
+            value=st.session_state.saved_req,
             height=200,
             placeholder="Example:\n- Generate 5 test cases about user login\n- Include edge cases for invalid passwords\n- Test both Chinese and English inputs",
-            key="tester_requirements"
+            key="tester_requirements",
+            on_change=sync_req
         )
     
     with col2:
         st.subheader("📚 Knowledge Base")
         knowledge_base = st.text_area(
             "Paste your knowledge, documentation, or facts",
+            value=st.session_state.saved_kb,
             height=200,
             placeholder="Paste relevant information here:\n\nExample:\n- Users can login with email or phone number\n- Password must be 8-20 characters\n- System supports Chinese and English",
-            key="tester_knowledge"
+            key="tester_knowledge",
+            on_change=sync_kb
         )
     
     # Generator button
@@ -66,6 +80,8 @@ The JSON format MUST strictly follow this schema:
     "type": "multi_turn",
     "tags": ["example_tag"],
     "description": "Short description of the test case",
+    "input": "Summary or title of the user's overall goal",
+    "expected_output": "Summary of the final expected state",
     "conversation": [
       {{
         "turn": 1,
@@ -125,6 +141,8 @@ ONLY return the highly-structured JSON array. Do not include markdown blocks lik
                                 flat_cases.append({
                                     "id": f"GEN_MULTI_{str(i+1).zfill(3)}",
                                     "type": "multi_turn",
+                                    "input": case.get("input", "N/A"),
+                                    "expected_output": case.get("expected_output", "N/A"),
                                     "description": case.get("description", f"Generated Test {i+1}"),
                                     "tags": case.get("tags", []),
                                     "conversation": json.dumps(case.get("conversation", []), ensure_ascii=False),
@@ -154,6 +172,8 @@ ONLY return the highly-structured JSON array. Do not include markdown blocks lik
             column_config={
                 "id": st.column_config.TextColumn("ID", width="small", disabled=True),
                 "type": st.column_config.TextColumn("Type", disabled=True),
+                "input": st.column_config.TextColumn("Input Goal", width="medium"),
+                "expected_output": st.column_config.TextColumn("Expected Goal", width="medium"),
                 "description": st.column_config.TextColumn("Description", width="medium"),
                 "tags": st.column_config.ListColumn("Tags"),
                 "conversation": st.column_config.TextColumn("Conversation (JSON)", width="large"),
@@ -196,7 +216,7 @@ ONLY return the highly-structured JSON array. Do not include markdown blocks lik
             final_df = save_data(combined_df)
             
             # Clear generated cases
-            st.session_state.generated_cases = pd.DataFrame(columns=["id", "description", "tags", "conversation"])
+            st.session_state.generated_cases = pd.DataFrame(columns=["id", "input", "expected_output", "description", "tags", "conversation"])
             
             # Update main df in session state
             if "df" in st.session_state:
