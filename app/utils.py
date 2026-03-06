@@ -162,7 +162,7 @@ def save_history(results: List[Dict], api_name: str = "Unknown"):
     with open(HISTORY_JSON, "w", encoding="utf-8") as f:
         json.dump(history, f, indent=4, ensure_ascii=False)
 
-def run_tests_sync(selected_cases: List[Dict], api_name: str = "Bundle API", progress_bar=None):
+def run_tests_sync(selected_cases: List[Dict], api_name: str = "Skills", progress_bar=None):
     engine = get_test_engine()  # Use cached instance
     
     def on_progress(result, current, total):

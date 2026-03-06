@@ -163,8 +163,29 @@ class TestEngine:
             threshold=0.5,
             model=self.custom_model
         )
+        
+        # Warm up metrics to prevent first-run 20-30s delay loading NLTK/Spacy models
+        self._warmup_metrics()
+        
+    def _warmup_metrics(self):
+        """Pre-load DeepEval NLP models asynchronously to avoid lag on first runtime click."""
+        dummy_case = LLMTestCase(
+            input="warmup",
+            actual_output="warmup",
+            expected_output="warmup",
+            retrieval_context=["warmup"]
+        )
+        
+        try:
+            async def run_warmup():
+                await self.correctness_metric.a_measure(dummy_case)
+                await self.faithfulness_metric.a_measure(dummy_case)
+                
+            asyncio.run(run_warmup())
+        except Exception:
+            pass # Ignore warmup errors
 
-    def run_case(self, case_data: Dict[str, Any], api_name: str = "Bundle API") -> Dict[str, Any]:
+    def run_case(self, case_data: Dict[str, Any], api_name: str = "Skills") -> Dict[str, Any]:
         """Runs a single test case and returns the result."""
         input_text = case_data.get("input")
         expected_output = case_data.get("expected_output")
@@ -325,7 +346,7 @@ class TestEngine:
             "ttft": ttft
         }
 
-    def run_batch(self, cases: List[Dict[str, Any]], api_name: str = "Bundle API", on_step_complete=None, should_stop=None) -> List[Dict[str, Any]]:
+    def run_batch(self, cases: List[Dict[str, Any]], api_name: str = "Skills", on_step_complete=None, should_stop=None) -> List[Dict[str, Any]]:
         results = []
         
         # Group cases by ID to handle split multi-turn cases (rows with same ID)
@@ -403,7 +424,7 @@ class TestEngine:
             
         return results
     
-    def run_multi_turn_case(self, case_data: Dict[str, Any], api_name: str = "Bundle API") -> Dict[str, Any]:
+    def run_multi_turn_case(self, case_data: Dict[str, Any], api_name: str = "Skills") -> Dict[str, Any]:
         """Runs a multi-turn conversation test case.
         
         Args:
