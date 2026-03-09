@@ -499,6 +499,7 @@ class TestEngine:
                         actual_output = resp_data["result"]
                         turn_thinking = resp_data.get("thinking")
                         turn_inform_base = resp_data.get("inform_base")
+                        turn_raw_data = resp_data.get("raw")
                         ttft = float(resp_data.get("ttft", 0.0))
                 except Exception:
                     pass
@@ -563,6 +564,7 @@ class TestEngine:
                 "passed": turn_passed,
                 "thinking": turn_thinking,
                 "inform_base": turn_inform_base,
+                "raw": turn_raw_data,
                 "latency": turn_latency,
                 "ttft": ttft
             })

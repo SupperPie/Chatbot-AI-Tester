@@ -223,6 +223,7 @@ def render_report_page():
                             new_row["ttft"] = t.get("ttft", 0)
                             new_row["thinking"] = t.get("thinking", "")
                             new_row["inform_base"] = t.get("inform_base", "")
+                            new_row["raw"] = str(t.get("raw", ""))
                             new_row["retrieval_context"] = str(t.get("retrieval_context", ""))
                             unrolled_rows.append(new_row)
                     else:
@@ -235,6 +236,8 @@ def render_report_page():
                         else:
                             score_val = float(row_dict.get("score", 0)) if pd.notna(row_dict.get("score")) else 0.0
                             row_dict["passed"] = (score_val >= 0.5)
+                        
+                        row_dict["raw"] = str(row_dict.get("raw", ""))
                             
                         unrolled_rows.append(row_dict)
                 
