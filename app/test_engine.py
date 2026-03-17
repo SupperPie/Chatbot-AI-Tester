@@ -25,7 +25,16 @@ except ImportError:
         # For now assume it's just import path
         print("Warning: Failed to import GEval. Trying legacy import paths.")
         # Attempt to proceed (it will fail later if not imported)
-from deepeval.test_case import LLMTestCase
+try:
+    from deepeval.test_case import LLMTestCase
+except ImportError:
+    # Provide a stub so the engine can still run and report failures gracefully
+    class LLMTestCase:
+        def __init__(self, input="", actual_output="", expected_output="", retrieval_context=None, **kwargs):
+            self.input = input
+            self.actual_output = actual_output
+            self.expected_output = expected_output
+            self.retrieval_context = retrieval_context or []
 try:
     from deepeval.test_case import LLMTestCaseParams
 except ImportError:

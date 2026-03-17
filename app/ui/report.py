@@ -471,6 +471,10 @@ def render_report_page():
             else:
                 if status == "running":
                     st.info("Waiting for first result...")
+                elif status == "failed":
+                    error_msg = entry.get("error", "Unknown error")
+                    st.error(f"❌ Job failed: {error_msg}")
+                    st.caption("Check server terminal logs for full traceback. Common causes: deepeval not installed, missing .env variables, or API connection issues.")
                 else:
                     st.text("No results data.")
 
