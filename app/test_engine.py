@@ -159,19 +159,31 @@ class TestEngine:
             api_key=os.getenv("COMPATIBLE_API_KEY")
         )
 
-        self.correctness_metric = GEval(
-            name="Correctness",
-            criteria="Determine if the 'actual output' is correct based on the 'expected output'.",
-            evaluation_params=[LLMTestCaseParams.ACTUAL_OUTPUT, LLMTestCaseParams.EXPECTED_OUTPUT],
-            threshold=0.5,
-            model=self.custom_model
-        )
-        
-        # Faithfulness metric - checks if actual_output is faithful to retrieval_context
-        self.faithfulness_metric = FaithfulnessMetric(
-            threshold=0.5,
-            model=self.custom_model
-        )
+        # Initialize metrics safely — deepeval may be missing or incompatible on this server
+        self.correctness_metric = None
+        self.faithfulness_metric = None
+        try:
+            if GEval is not None:
+                self.correctness_metric = GEval(
+                    name="Correctness",
+                    criteria="Determine if the 'actual output' is correct based on the 'expected output'.",
+                    evaluation_params=[LLMTestCaseParams.ACTUAL_OUTPUT, LLMTestCaseParams.EXPECTED_OUTPUT],
+                    threshold=0.5,
+                    model=self.custom_model
+                )
+        except Exception as e:
+            print(f"WARNING: GEval metric initialization failed: {e}. Correctness scoring will be skipped.")
+            self.correctness_metric = None
+
+        try:
+            if FaithfulnessMetric is not None:
+                self.faithfulness_metric = FaithfulnessMetric(
+                    threshold=0.5,
+                    model=self.custom_model
+                )
+        except Exception as e:
+            print(f"WARNING: FaithfulnessMetric initialization failed: {e}. Faithfulness scoring will be skipped.")
+            self.faithfulness_metric = None
         
         # Warm up metrics to prevent first-run 20-30s delay loading NLTK/Spacy models
         self._warmup_metrics()
@@ -187,8 +199,10 @@ class TestEngine:
         
         try:
             async def run_warmup():
-                await self.correctness_metric.a_measure(dummy_case)
-                await self.faithfulness_metric.a_measure(dummy_case)
+                if self.correctness_metric is not None:
+                    await self.correctness_metric.a_measure(dummy_case)
+                if self.faithfulness_metric is not None:
+                    await self.faithfulness_metric.a_measure(dummy_case)
                 
             asyncio.run(run_warmup())
         except Exception:
@@ -551,6 +565,8 @@ class TestEngine:
                     )
                     try:
                         async def eval_turn():
+                            if self.correctness_metric is None:
+                                return (0.0, "DeepEval GEval metric not available on this server.")
                             await self.correctness_metric.a_measure(test_case)
                             return self.correctness_metric.score, self.correctness_metric.reason
                         
