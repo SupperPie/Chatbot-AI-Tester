@@ -238,6 +238,13 @@ def render_report_page():
                             row_dict["passed"] = (score_val >= 0.5)
                         
                         row_dict["raw"] = str(row_dict.get("raw", ""))
+                        
+                        # Explicitly preserve retrieval_context as string
+                        rc = row_dict.get("retrieval_context", "")
+                        if isinstance(rc, list):
+                            row_dict["retrieval_context"] = ", ".join(str(x) for x in rc)
+                        else:
+                            row_dict["retrieval_context"] = str(rc) if rc else ""
                             
                         unrolled_rows.append(row_dict)
                 
