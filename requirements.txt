@@ -1,6 +1,6 @@
 streamlit
 pandas
-openai<1.0.0
+openai>=1.0.0
 deepeval==1.5.0
 python-dotenv
 nest_asyncio

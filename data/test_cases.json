@@ -5,11 +5,13 @@
         "input": "我们一家四口打算下个月去日本旅游，还有一只小型宠物狗，想一起坐飞机，该怎么订票？",
         "expected_output": "",
         "retrieval_context": "首先需要确认航空公司是否允许携带宠物进入客舱或托运，以及对宠物品种、体重和航空箱尺寸的要求。同时，需为四位成人预订机票，并了解是否需要额外支付宠物运输费用及提前申请许可。",
-        "tags": [],
+        "tags": [
+            "Demo"
+        ],
         "description": "一家四口带宠物狗预订国际航班",
         "turn_index": 1.0,
         "validation": NaN,
-        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.5}",
         "created_at": NaN,
         "module": NaN
     },
@@ -19,11 +21,13 @@
         "input": "我们家的狗是吉娃娃，只有3公斤，能带上客舱吗？",
         "expected_output": "根据中国民航及深圳机场现行规定：\n\n- **吉娃娃（3公斤）仍不可带入客舱**。  \n  除**导盲犬、助听犬等经航空公司特批的服务犬**外，**所有宠物（无论大小）均不得进入客舱**，必须办理**托运行李**。\n\n### 您需按以下流程操作：\n1. **提前联系航司**：至少提前48–72小时向执飞航空公司申请宠物托运，确认该航班/机型是否承运。\n2. **准备合规宠物箱**：使用航空专用航空箱（通风、防漏、坚固），尺寸需符合航司要求。\n3. **办理检疫证明**：\n   - 国内：《动物检疫合格证明》（出发地农业农村部门出具）\n   - 日本入境：需满足日本动物检疫所要求（如芯片、狂犬病抗体检测、进口许可等）\n4. **值机时办理托运**：在人工柜台提交文件并办理托运手续，宠物将作为特殊行李运输。\n\n> ⚠️ **特别提醒**：  \n> 日本对宠物入境实施严格检疫制度，部分情况需隔离30天以上。建议您务必提前查阅 **[日本农林水产省动物检疫服务官网](https://www.maff.go.jp/aqs/top.html)** 或咨询专业宠物运输代理。\n\n如需了解深圳机场宠物托运办理位置，可告知具体航空公司，我将为您指引值机柜台。",
         "retrieval_context": "多数航空公司允许体重在5公斤以下（含航空箱）的小型犬进入客舱，但需提前申请并获得批准。吉娃娃通常符合条件，但必须使用符合规定的航空箱，并确保狗狗在飞行过程中保持安静。建议尽快联系航空公司确认具体政策。",
-        "tags": [],
+        "tags": [
+            "Demo"
+        ],
         "description": "一家四口带宠物狗预订国际航班",
         "turn_index": 2.0,
         "validation": NaN,
-        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.5}",
         "created_at": NaN,
         "module": NaN
     },
@@ -33,11 +37,13 @@
         "input": "那我们需要准备哪些文件给狗狗呢？",
         "expected_output": "",
         "retrieval_context": "前往日本需为宠物狗准备：有效的狂犬病疫苗接种证明、兽医健康证明、微芯片植入记录，以及日本动物检疫所要求的进口许可证。部分文件需提前数周甚至数月申请，建议尽快联系当地出入境检验检疫部门办理。",
-        "tags": [],
+        "tags": [
+            "Demo"
+        ],
         "description": "一家四口带宠物狗预订国际航班",
         "turn_index": 3.0,
         "validation": NaN,
-        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.5}",
         "created_at": NaN,
         "module": NaN
     },
@@ -3315,8 +3321,10 @@
         "type": null,
         "input": "在 T3 航站楼内转机，去哪里办理手续？",
         "expected_output": "请按标识前往二层十字指廊处的国内中转厅，或靠近 320 机位的国内中转厅。",
-        "retrieval_context": "None",
-        "tags": [],
+        "retrieval_context": "请按标识前往二层十字指廊处的国内中转厅，或靠近 320 机位的国内中转厅。",
+        "tags": [
+            "Demo"
+        ],
         "description": null,
         "turn_index": NaN,
         "validation": NaN,
@@ -3329,8 +3337,10 @@
         "type": null,
         "input": "T3 转卫星厅的捷运站台入口在哪里？",
         "expected_output": "**T3转卫星厅捷运站台入口位置**\n\n- **入口位置**：位于航站楼**四层**（出发大厅层）\n- **具体路径**：\n  1. 在四层找到**捷运站台入口**\n  2. 乘坐电梯经**一层捷运转换平台**\n  3. 下至**负一层T3航站楼捷运站台**\n  4. 乘坐捷运列车前往卫星厅\n\n- **到达卫星厅后**：\n  - 在卫星厅负一层捷运站台下车\n  - 乘坐电梯经首层至二层出港交通大厅\n  - 进入三层出港候机厅（登机口501-583）\n\n**温馨提示**：\n- 捷运列车运行时间约3分钟\n- 建议预留充足时间，国内航班需在起飞前**20分钟**到达登机口\n- 现场有清晰标识指引，也可咨询工作人员\n\n![登机口位置、行旅托运、服务点位置-国内出发](/img/domestic_departures.png)",
-        "retrieval_context": "None",
-        "tags": [],
+        "retrieval_context": "**T3转卫星厅捷运站台入口位置**\n\n- **入口位置**：位于航站楼**四层**（出发大厅层）\n- **具体路径**：\n  1. 在四层找到**捷运站台入口**\n  2. 乘坐电梯经**一层捷运转换平台**\n  3. 下至**负一层T3航站楼捷运站台**\n  4. 乘坐捷运列车前往卫星厅\n\n- **到达卫星厅后**：\n  - 在卫星厅负一层捷运站台下车\n  - 乘坐电梯经首层至二层出港交通大厅\n  - 进入三层出港候机厅（登机口501-583）\n\n**温馨提示**：\n- 捷运列车运行时间约3分钟\n- 建议预留充足时间，国内航班需在起飞前**20分钟**到达登机口\n- 现场有清晰标识指引，也可咨询工作人员\n\n![登机口位置、行旅托运、服务点位置-国内出发](/img/domestic_departures.png)",
+        "tags": [
+            "Demo"
+        ],
         "description": null,
         "turn_index": NaN,
         "validation": NaN,

@@ -12,6 +12,8 @@ from chat_client import get_chat_response
 from dotenv import load_dotenv
 load_dotenv(override=True)
 
+GEval = None
+FaithfulnessMetric = None
 try:
     from deepeval.metrics import GEval, FaithfulnessMetric
 except ImportError:
@@ -19,12 +21,9 @@ except ImportError:
         from deepeval.metrics.g_eval import GEval
         from deepeval.metrics.faithfulness import FaithfulnessMetric
     except ImportError:
-        # Final fallback, maybe it was capitalized G in older versions?
-        # Or missing. Let's assume user installed at least 0.20.x
-        # If deeply missing, we just skip it or error out.
-        # For now assume it's just import path
-        print("Warning: Failed to import GEval. Trying legacy import paths.")
-        # Attempt to proceed (it will fail later if not imported)
+        # Both import paths failed — leave GEval and FaithfulnessMetric as None
+        # so the rest of the code can check for None safely.
+        print("Warning: Failed to import GEval and FaithfulnessMetric. Metrics will be skipped.")
 try:
     from deepeval.test_case import LLMTestCase
 except ImportError:
@@ -311,6 +310,10 @@ class TestEngine:
                 # running inside an async task. We use a_measure() with asyncio.run()
                 # to create a proper async context.
                 async def run_measure():
+                    # Guard: correctness metric may be None if deepeval failed to load
+                    if self.correctness_metric is None:
+                        return (0.0, "DeepEval GEval metric not available on this server.", None, None, False)
+
                     # Always run correctness metric
                     await self.correctness_metric.a_measure(test_case)
                     correctness_score = self.correctness_metric.score
@@ -319,7 +322,7 @@ class TestEngine:
                     # Run faithfulness metric only if retrieval_context is not empty
                     faith_score = None
                     faith_reason = None
-                    if context:  # Only evaluate if context exists
+                    if context and self.faithfulness_metric is not None:
                         try:
                             await self.faithfulness_metric.a_measure(test_case)
                             faith_score = self.faithfulness_metric.score
