@@ -19,10 +19,9 @@ venv.bak/
 # Deepeval
 .deepeval/
 
-# Data (exclude actual history/data if sensitive, but for now user might want to keep test cases)
-# keeping test_cases.json/csv as they seem to be config. 
-# Exclude potential large results or sensitive keys
-# test_results.csv (User wants to track results)
+# Runtime data - generated at runtime, should not be tracked
+data/history.json
+data/test_cases.json
 *.log
 
 # IDE
