@@ -68,7 +68,8 @@ def render_settings_page():
         
         # Save to file
         try:
-            config_path = "data/api_config.json"
+            from chat_client import CONFIG_FILE
+            config_path = CONFIG_FILE
             with open(config_path, "w", encoding="utf-8") as f:
                 json.dump(new_configs, f, indent=4, ensure_ascii=False)
             st.success("Configuration saved successfully!")

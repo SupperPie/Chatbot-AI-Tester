@@ -7,9 +7,13 @@ from typing import List, Dict
 from fpdf import FPDF
 from app.test_engine import TestEngine
 
-# Constants
-DATA_FILE = "data/test_cases.json"
-HISTORY_JSON = "data/history.json"
+# Constants - absolute paths to avoid CWD issues on deployed servers
+_BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DATA_FILE = os.path.join(_BASE_DIR, "data", "test_cases.json")
+HISTORY_JSON = os.path.join(_BASE_DIR, "data", "history.json")
+
+# Ensure data directory exists
+os.makedirs(os.path.join(_BASE_DIR, "data"), exist_ok=True)
 
 @st.cache_resource
 def get_test_engine():

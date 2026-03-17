@@ -6,8 +6,10 @@ import time
 from typing import List, Dict, Any, Callable
 from app.test_engine import TestEngine
 
-# Path to history file (circular import if we import from utils, so defining here or passing in)
-HISTORY_JSON = "data/history.json"
+# Path to history file (absolute to avoid CWD issues on servers)
+_BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+HISTORY_JSON = os.path.join(_BASE_DIR, "data", "history.json")
+os.makedirs(os.path.join(_BASE_DIR, "data"), exist_ok=True)
 
 class JobManager:
     _instance = None
