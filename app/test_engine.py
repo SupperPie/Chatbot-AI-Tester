@@ -491,6 +491,7 @@ class TestEngine:
                 # Parse thinking process if available
                 turn_thinking = None
                 turn_inform_base = None
+                turn_raw_data = None
                 ttft = 0.0
                 try:
                     import json

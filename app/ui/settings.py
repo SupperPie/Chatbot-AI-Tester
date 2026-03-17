@@ -19,14 +19,17 @@ def render_settings_page():
             "Name": name,
             "URL": details.get("url", ""),
             "Description": details.get("description", ""),
-            "Type": details.get("type", "bundle")
+            "Type": details.get("type", "bundle"),
+            "Token": details.get("token", "")
         })
     
     # If empty, provide empty row
     if not data_list:
-         data_list = [{"Name": "", "URL": "", "Description": "", "Type": "bundle"}]
+         data_list = [{"Name": "", "URL": "", "Description": "", "Type": "bundle", "Token": ""}]
          
     df_config = pd.DataFrame(data_list)
+    
+    st.caption("💡 **Token** field is only needed for `dify` type APIs (Bearer app token, e.g. `app-xxxxx`).")
     
     edited_df = st.data_editor(
         df_config,
@@ -35,7 +38,13 @@ def render_settings_page():
             "Name": st.column_config.TextColumn("API Name", required=True),
             "URL": st.column_config.TextColumn("Endpoint URL", required=True, width="large"),
             "Description": st.column_config.TextColumn("Description"),
-            "Type": st.column_config.SelectboxColumn("Type", options=["bundle", "airport", "skills", "flight", "limo"], default="bundle")
+            "Type": st.column_config.SelectboxColumn(
+                "Type",
+                options=["bundle", "skills", "flight", "limo", "dify"],
+                default="bundle",
+                help="dify = Dify /v1/chat-messages; skills/bundle/limo/flight = internal APIs"
+            ),
+            "Token": st.column_config.TextColumn("Token (Dify only)", help="Bearer token for Dify APIs, e.g. app-xxxxx"),
         },
         use_container_width=True,
         key="settings_api_editor"
@@ -46,12 +55,16 @@ def render_settings_page():
         new_configs = {}
         for _, row in edited_df.iterrows():
              name = row.get("Name")
-             if name and str(name).strip(): # Ensure valid name
-                 new_configs[str(name).strip()] = {
+             if name and str(name).strip():
+                 entry = {
                      "url": row.get("URL"),
                      "description": row.get("Description"),
                      "type": row.get("Type")
                  }
+                 token = str(row.get("Token", "")).strip()
+                 if token:
+                     entry["token"] = token
+                 new_configs[str(name).strip()] = entry
         
         # Save to file
         try:

@@ -378,6 +378,112 @@ def get_limo_response(message: str, url: str, user_id: str = None, session_id: s
         print(f"Error calling Limo API: {e}")
         return f"Error: {str(e)}"
 
+def get_dify_response(message: str, url: str, token: str = None, user_id: str = None, session_id: str = None) -> str:
+    """Dify /v1/chat-messages streaming API client.
+    
+    Expects config with:
+      url  : base_url up to /v1/chat-messages (e.g. http://192.168.25.247/v1/chat-messages)
+      token: Bearer app token (e.g. app-xxxxx)
+    """
+    if user_id is None:
+        user_id = str(uuid.uuid4())
+    # Dify requires conversation_id to be a valid UUID (36-char) or empty string.
+    # Our test engine passes 8-char truncated IDs which Dify rejects with a 400 error.
+    # Validate and fall back to "" (Dify will create a new conversation).
+    import re as _re
+    _uuid_pattern = _re.compile(
+        r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', _re.IGNORECASE
+    )
+    conversation_id = session_id if session_id and _uuid_pattern.match(session_id) else ""
+
+    payload = {
+        "inputs": {},
+        "query": message,
+        "response_mode": "streaming",
+        "conversation_id": conversation_id,
+        "user": user_id,
+    }
+
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "*/*",
+        "Authorization": f"Bearer {token}" if token else "",
+    }
+
+    print(f"[Dify] Sending request to {url} with message: {message}")
+
+    try:
+        start_time = time.time()
+        response = requests.post(url, json=payload, headers=headers, stream=True, timeout=600)
+
+        if not response.ok:
+            print(f"[Dify] API Error {response.status_code}: {response.text}")
+            return f"❌ SERVER DETAIL ({response.status_code}): {response.text}"
+
+        final_answer = ""
+        raw_chunks = []
+        ttft = 0.0
+        got_first_token = False
+        metadata = {}
+
+        for line in response.iter_lines():
+            if line:
+                decoded_line = line.decode("utf-8")
+                if decoded_line.startswith("data: "):
+                    json_str = decoded_line[6:]
+                    if json_str.strip() == "[DONE]":
+                        break
+                    try:
+                        data = json.loads(json_str)
+                        raw_chunks.append(json.dumps(data, ensure_ascii=False))
+
+                        event = data.get("event", "")
+
+                        if event == "message":
+                            # Incremental answer token
+                            chunk = data.get("answer", "")
+                            if chunk:
+                                if not got_first_token:
+                                    ttft = time.time() - start_time
+                                    got_first_token = True
+                                final_answer += chunk
+
+                        elif event == "message_end":
+                            # Dify returns total usage and conversation_id here
+                            metadata = {
+                                "conversation_id": data.get("conversation_id", ""),
+                                "usage": data.get("metadata", {}).get("usage", {}),
+                            }
+
+                        elif event == "error":
+                            err_msg = data.get("message", "Unknown Dify error")
+                            return f"Error: Dify returned error event: {err_msg}"
+
+                    except json.JSONDecodeError:
+                        raw_chunks.append(f"Decode Error: {json_str}")
+                        continue
+
+        if not final_answer:
+            final_answer = "Error: No answer content found in Dify response."
+
+        return json.dumps(
+            {
+                "result": final_answer,
+                "thinking": "",
+                "inform_base": json.dumps(metadata, ensure_ascii=False) if metadata else "",
+                "raw": "\n".join(raw_chunks),
+                "ttft": ttft,
+            },
+            ensure_ascii=False,
+        )
+
+    except requests.exceptions.Timeout:
+        return "Error: Dify API Request Timed Out (600s)"
+    except Exception as e:
+        print(f"[Dify] Error: {e}")
+        return f"Error: {str(e)}"
+
+
 def get_chat_response(message: str, api_name: str = "Bundle API", user_id: str = None, session_id: str = None) -> str:
     """Unified API call function - selects the appropriate API based on api_name"""
     
@@ -399,6 +505,9 @@ def get_chat_response(message: str, api_name: str = "Bundle API", user_id: str =
         return get_flight_response(message, url=url, user_id=user_id, session_id=session_id)
     elif api_type == "limo":
         return get_limo_response(message, url=url, user_id=user_id, session_id=session_id)
+    elif api_type == "dify":
+        token = config.get("token", "")
+        return get_dify_response(message, url=url, token=token, user_id=user_id, session_id=session_id)
     else:
         # Default to Bundle type structure
         return get_bundle_response(message, url=url, user_id=user_id, session_id=session_id)

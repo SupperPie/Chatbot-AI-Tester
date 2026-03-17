@@ -18,5 +18,11 @@
         "url": "http://192.168.22.252:10089/limo/stream",
         "description": "Limo",
         "type": "limo"
+    },
+    "劳斯莱斯": {
+        "url": "http://192.168.25.247/v1/chat-messages",
+        "description": "",
+        "type": "dify",
+        "token": "app-4pWDPCJ9GeR9OYjF9l26JvVT"
     }
 }
