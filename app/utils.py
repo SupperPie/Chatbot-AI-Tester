@@ -59,8 +59,9 @@ def load_data() -> pd.DataFrame:
         row_id = str(row.get("id", "")).strip()
         if not row_id or row_id.lower() == "nan":
             turn_idx = row.get("turn_index")
-            # If it's a continuing turn, try to use the last assigned ID
-            if turn_idx and not pd.isna(turn_idx) and int(turn_idx) > 1 and last_assigned_id:
+            row_type = row.get("type", "single")
+            # If it's a continuing turn of a multi_turn, try to use the last assigned ID
+            if row_type == "multi_turn" and turn_idx and not pd.isna(turn_idx) and int(turn_idx) > 1 and last_assigned_id:
                 df.at[idx, "id"] = last_assigned_id
             else:
                 # Generate new ID
@@ -122,7 +123,9 @@ def save_data(df: pd.DataFrame):
         row_id = str(row.get("id", "")).strip()
         if not row_id or row_id.lower() == "nan":
             turn_idx = row.get("turn_index")
-            if turn_idx and not pd.isna(turn_idx) and float(turn_idx) > 1 and last_assigned_id:
+            row_type = row.get("type", "single")
+            # Only share ID if it is explicitly a multi_turn continuing conversation
+            if row_type == "multi_turn" and turn_idx and not pd.isna(turn_idx) and float(turn_idx) > 1 and last_assigned_id:
                 to_save_df.at[idx, "id"] = last_assigned_id
             else:
                 current_max_id_num += 1

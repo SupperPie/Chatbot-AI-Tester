@@ -81,19 +81,16 @@ The JSON format MUST strictly follow this flat schema. If generating a multi-tur
     "type": "multi_turn", // Use "multi_turn" if testing a sequence, else "single"
     "turn_index": 1, // Only use turn_index if multi_turn. 1 for first turn, 2 for second, etc.
     "tags": [], // CRITICAL: This MUST ALWAYS be an empty list []. Do not generate tags.
-    "description": "Short description of the test case",
-    "input": "User's message or goal for this specific turn (in Chinese)",
-    "expected_output": "The detailed context, knowledge reference, or expected AI response for this turn (in Chinese)",
-    "overall_criteria": {{"must_complete_all_turns": true, "min_success_rate": 0.8}} // Omit if not multi_turn
-  }},
-  {{
-    "type": "multi_turn",
-    "turn_index": 2, // Second turn continues the same conversation
-    "tags": [],
-    "description": "Short description of the test case", // Must be IDENTICAL to turn 1's description
-    "input": "User's follow up message (in Chinese)",
-    "expected_output": "Expected follow up response (in Chinese)"
-  }}
+        "description": ""  # keep empty for generator
+    }},
+    {{
+        "type": "multi_turn",
+        "turn_index": 2, // Second turn continues the same conversation
+        "tags": [],
+        "input": "User's follow up message (in Chinese)",
+        "expected_output": "Expected follow up response (in Chinese)",
+        "description": ""
+    }}
 ]
 
 ONLY return the highly-structured JSON array. Do not include markdown blocks like ```json or trailing text."""
@@ -138,13 +135,13 @@ ONLY return the highly-structured JSON array. Do not include markdown blocks lik
                             current_id = None
                             
                             for case in cases_json:
-                                desc = case.get("description", "Generated Test")
+                                case_type = case.get("type", "single")
+                                turn_idx = case.get("turn_index", 1)
                                 
-                                # Assign new ID if description changes or it's turn 1 of single/new multi
-                                if desc != last_description or case.get("turn_index", 1) == 1 or case.get("type", "single") == "single":
+                                # Assign new ID if it's a single turn OR the first turn of a multi-turn
+                                if case_type != "multi_turn" or turn_idx == 1:
                                     current_id_counter += 1
                                     current_id = f"GEN_{str(current_id_counter).zfill(3)}"
-                                    last_description = desc
                                     
                                 flat_cases.append({
                                     "id": current_id,
@@ -153,7 +150,7 @@ ONLY return the highly-structured JSON array. Do not include markdown blocks lik
                                     "input": case.get("input", "N/A"),
                                     "expected_output": "",
                                     "retrieval_context": case.get("expected_output", "N/A"),
-                                    "description": desc,
+                                    "description": "",
                                     "tags": [],
                                     "overall_criteria": json.dumps(case.get("overall_criteria", {"must_complete_all_turns": True, "min_success_rate": 0.8}), ensure_ascii=False)
                                 })
@@ -205,7 +202,11 @@ ONLY return the highly-structured JSON array. Do not include markdown blocks lik
                     case["overall_criteria"] = json.loads(case["overall_criteria"]) if isinstance(case["overall_criteria"], str) else case.get("overall_criteria", {})
                 except Exception:
                     pass # Keep as string if parsing fails
-                # Do NOT delete generated ID anymore, we want to retain multi-turn groupings based on same ID
+                    
+                # CLEAR the generated ID to let utils.py generate a pure TCxxxx ID
+                case_id = str(case.get("id", ""))
+                if case_id.startswith("GEN_"):
+                    case["id"] = ""
                     
                 clean_new_cases.append(case)
 
