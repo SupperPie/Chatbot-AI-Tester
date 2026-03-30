@@ -493,10 +493,11 @@ def get_agent_qa_response(message: str, url: str, user_id: str = None, session_i
         session_id = str(uuid.uuid4())[:8]
     
     # Payload based on user specification
+    # Note: API expects 'session_id' not 'thread_id'
     payload = {
         "query": message,
         "user_id": user_id,
-        "session_id": session_id,
+        "session_id": session_id,  # API expects 'session_id'
         "lob": "dc"  # Default to 'dc', can be 'dc' or 'ata'
     }
     
