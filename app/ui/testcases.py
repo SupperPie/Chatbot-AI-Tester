@@ -295,70 +295,115 @@ def render_testcases_page():
         st.session_state.df["retrieval_context"] = st.session_state.df["retrieval_context"].apply(
             lambda x: ", ".join(x) if isinstance(x, list) else str(x)
         )
+    
+    # Fix: Convert expected_output to string to prevent float/text type conflicts
+    if "expected_output" in st.session_state.df.columns:
+        st.session_state.df["expected_output"] = st.session_state.df["expected_output"].apply(
+            lambda x: "" if pd.isna(x) else str(x)
+        )
         
     if "conversation" in st.session_state.df.columns:
         st.session_state.df.drop(columns=["conversation"], inplace=True)
 
-    if "turn_index" in st.session_state.df.columns:
-        st.session_state.df = st.session_state.df.sort_values(by=["id", "turn_index"], na_position="first").reset_index(drop=True)
-    elif "id" in st.session_state.df.columns:
-        st.session_state.df = st.session_state.df.sort_values(by="id").reset_index(drop=True)
-    edited_df = st.data_editor(
-        st.session_state.df,
-        column_config={
-            "Select": st.column_config.CheckboxColumn("✓", width="small", default=False),
-            "id": st.column_config.TextColumn("ID", width="small", disabled=False),
-            "input": st.column_config.TextColumn("Input Question", width="medium"),
-            "expected_output": st.column_config.TextColumn("Expected Output", width="medium"),
-            "tags": st.column_config.ListColumn("Tags"),
-            "retrieval_context": st.column_config.Column("Retrieval Context", help="为大模型提供的参考上下文文件。用于验证模型的回答是否基于给定的知识库 (Faithfulness)。"),
-            "overall_criteria": st.column_config.Column("Overall Criteria", help="用于评估打分的特殊判定要求或全局自定义标准。"),
-            "validation": st.column_config.Column("Validation", help="验证规则 (JSON格式)。例: {\"type\": \"contains\", \"keywords\": [\"正确\"]} 或 {\"type\": \"semantic\"}。"),
-            "turn_index": st.column_config.NumberColumn("Turn", width="small", help="多轮对话的顺序编号"),
-        },
-        num_rows="dynamic",
-        use_container_width=True,
-        height=600,
-        key="main_data_editor"
-    )
-
-    # ------------------
-    # Auto-Save Logic
-    # ------------------
-    # Check for changes
-    current_sig = get_content_signature(edited_df)
-    
-    if current_sig != st.session_state.df_content_sig:
-        # Save to disk
-        saved_df_clean = save_data(edited_df)
+    @st.fragment
+    def render_paginated_table():
+        if "turn_index" in st.session_state.df.columns:
+            st.session_state.df = st.session_state.df.sort_values(by=["id", "turn_index"], na_position="first").reset_index(drop=True)
+        elif "id" in st.session_state.df.columns:
+            st.session_state.df = st.session_state.df.sort_values(by="id").reset_index(drop=True)
+            
+        # --- Pagination Logic ---
+        items_per_page = 25
+        total_items = len(st.session_state.df)
+        total_pages = max(1, (total_items - 1) // items_per_page + 1)
         
-        # Restore Select state from the edited dataframe to prevent losing selection on edit
-        if "Select" in edited_df.columns:
-             # We need to ensure indices align if rows were added/removed, but usually data_editor handles this.
-             # Simplest is to just re-insert the series assuming index alignment or just use edited_df logic
-             # But save_data might have added IDs.
-             pass 
-        
-        # Actually, let's just use edited_df for the session state to keep UI stable, 
-        # as save_data only ensures IDs and writes to disk.
-        # If save_data generated NEW IDs, we should use them. 
-        # For simplicity in auto-save:
-        
-        # 1. Write to disk
-        saved_df_clean = save_data(edited_df)
-        
-        # 2. Update session state from the clean saved version + restore Select
-        # This ensures we have the canonical IDs if generated
-        if "Select" in edited_df.columns:
-            saved_df_clean.insert(0, "Select", edited_df["Select"].values)
+        if "current_page" not in st.session_state:
+            st.session_state.current_page = 1
         else:
-             saved_df_clean.insert(0, "Select", False)
-
-        st.session_state.df = saved_df_clean
-        st.session_state.df_content_sig = current_sig
+            try:
+                st.session_state.current_page = int(st.session_state.current_page)
+            except (ValueError, TypeError):
+                st.session_state.current_page = 1
+                
+        st.session_state.current_page = max(1, min(st.session_state.current_page, total_pages))
         
-        # Using toast instead of success to be less obtrusive
-        st.toast("✅ Changes saved automatically!", icon="💾")
+        def prev_page():
+            st.session_state.current_page -= 1
+        def next_page():
+            st.session_state.current_page += 1
+        def go_page():
+            st.session_state.current_page = st.session_state.page_input_widget
+        
+        # Pagination UI
+        st.write("")
+        page_cols = st.columns([1.5, 2, 1.5, 5])
+        
+        with page_cols[0]:
+            st.button("⬅️ 上一页", disabled=st.session_state.current_page <= 1, use_container_width=True, on_click=prev_page, key="prev_button")
+        with page_cols[1]:
+            st.number_input("跳转页", min_value=1, max_value=total_pages, value=st.session_state.current_page, step=1, label_visibility="collapsed", key="page_input_widget", on_change=go_page)
+        with page_cols[2]:
+            st.button("下一页 ➡️", disabled=st.session_state.current_page >= total_pages, use_container_width=True, on_click=next_page, key="next_button")
+        with page_cols[3]:
+            st.markdown(f"<div style='padding-top: 5px; color: gray;'>共 {total_pages} 页，总计 {total_items} 条数据</div>", unsafe_allow_html=True)
+
+        start_idx = (st.session_state.current_page - 1) * items_per_page
+        end_idx = start_idx + items_per_page
+        page_df = st.session_state.df.iloc[start_idx:end_idx].copy()
+
+        edited_page_df = st.data_editor(
+            page_df,
+            column_config={
+                "Select": st.column_config.CheckboxColumn("✓", width="small", default=False),
+                "id": st.column_config.TextColumn("ID", width="small", disabled=False),
+                "input": st.column_config.TextColumn("Input Question", width="medium"),
+                "expected_output": st.column_config.TextColumn("Expected Output", width="medium"),
+                "tags": st.column_config.ListColumn("Tags"),
+                "retrieval_context": st.column_config.Column("Retrieval Context", help="为大模型提供的参考上下文文件。用于验证模型的回答是否基于给定的知识库 (Faithfulness)。"),
+                "overall_criteria": st.column_config.Column("Overall Criteria", help="用于评估打分的特殊判定要求或全局自定义标准。"),
+                "validation": st.column_config.Column("Validation", help="验证规则 (JSON格式)。例: {\"type\": \"contains\", \"keywords\": [\"正确\"]} 或 {\"type\": \"semantic\"}。"),
+                "turn_index": st.column_config.NumberColumn("Turn", width="small", help="多轮对话的顺序编号"),
+            },
+            num_rows="dynamic",
+            use_container_width=True,
+            height=min(600 + 40, max(200, (len(page_df) + 1) * 35 + 40)), # Ensure table height adapts to row count nicely
+            key=f"main_data_editor_{st.session_state.current_page}"
+        )
+
+        # Reconstruct the full dataframe securely from chunks
+        current_edited_df = pd.concat([
+            st.session_state.df.iloc[:start_idx],
+            edited_page_df,
+            st.session_state.df.iloc[end_idx:]
+        ], ignore_index=True)
+
+        # ------------------
+        # Auto-Save Logic
+        # ------------------
+        current_sig = get_content_signature(current_edited_df)
+        
+        if current_sig != getattr(st.session_state, "df_content_sig", ""):
+            saved_df_clean = save_data(current_edited_df)
+            
+            if "Select" in current_edited_df.columns:
+                saved_df_clean.insert(0, "Select", current_edited_df["Select"].values)
+            else:
+                 saved_df_clean.insert(0, "Select", False)
+
+            st.session_state.df = saved_df_clean
+            st.session_state.df_content_sig = current_sig
+            
+            st.toast("✅ Changes saved automatically!", icon="💾")
+        else:
+            # ONLY Select state changed (or nothing changed). 
+            # We MUST save it to global state in memory so checkboxes aren't lost on page switch!
+            st.session_state.df = current_edited_df
+            
+        return current_edited_df
+
+    # Render table and capture edited global DF
+    edited_df = render_paginated_table()
+
 
     # ------------------
     # Execution Logic
@@ -432,15 +477,20 @@ def render_testcases_page():
                 # Check status from History check
                 # (JobManager updates history.json)
                 job_data = None
+                read_success = False
                 if os.path.exists(HISTORY_JSON):
                     try:
                         with open(HISTORY_JSON, "r", encoding="utf-8") as f:
-                            hist = json.load(f)
-                            for h in hist:
-                                if h.get("id") == job_id:
-                                    job_data = h
-                                    break
-                    except:
+                            content = f.read()
+                            if content.strip():
+                                hist = json.loads(content)
+                                read_success = True
+                                for h in hist:
+                                    if h.get("id") == job_id:
+                                        job_data = h
+                                        break
+                    except Exception:
+                        # Could be a read/write race condition where file is halfway written
                         pass
                 
                 if job_data:
@@ -457,8 +507,11 @@ def render_testcases_page():
                     if status in ["completed", "failed", "cancelled"]:
                         progress_bar.progress(1.0, text=f"Finished: {status}")
                         break
+                elif not read_success:
+                    # Ignore and try again on next loop because file might be mid-write
+                    continue
                 else:
-                    # Should not happen unless file delete race
+                    # Successfully parsed the file, but job_id is definitely not in it
                     status_text.warning("Job data not found...")
                     break
             
