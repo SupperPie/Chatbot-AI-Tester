@@ -24,5 +24,10 @@
         "description": "",
         "type": "dify",
         "token": "app-4pWDPCJ9GeR9OYjF9l26JvVT"
+    },
+    "Agent Q&A": {
+        "url": "http://agent-question-and-answer.platform-ai.svc.dragon/stream",
+        "description": "Agent Question and Answer API (仅服务器可访问)",
+        "type": "agent_qa"
     }
 }

@@ -484,6 +484,122 @@ def get_dify_response(message: str, url: str, token: str = None, user_id: str = 
         return f"Error: {str(e)}"
 
 
+def get_agent_qa_response(message: str, url: str, user_id: str = None, session_id: str = None) -> str:
+    """Agent Q&A API client"""
+    # Generate IDs if not provided
+    if user_id is None:
+        user_id = str(uuid.uuid4())
+    if session_id is None:
+        session_id = str(uuid.uuid4())[:8]
+    
+    # Payload based on user specification
+    payload = {
+        "query": message,
+        "user_id": user_id,
+        "session_id": session_id,
+        "lob": "dc"  # Default to 'dc', can be 'dc' or 'ata'
+    }
+    
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream"
+    }
+
+    print(f"Sending request to {url} with query: {message}")
+    
+    try:
+        start_time = time.time()
+        response = requests.post(url, json=payload, headers=headers, stream=True, timeout=600)
+        
+        if not response.ok:
+            print(f"API Error {response.status_code}: {response.text}")
+            return f"❌ SERVER DETAIL ({response.status_code}): {response.text}"
+            
+        response.raise_for_status()
+        
+        final_answer = ""
+        thinking_process = []
+        inform_base_process = []
+        raw_chunks = []
+        
+        ttft = 0.0
+        got_first_token = False
+        
+        for line in response.iter_lines():
+            if line:
+                decoded_line = line.decode('utf-8')
+                if decoded_line.startswith("data: "):
+                    json_str = decoded_line[6:]
+                    if json_str.strip() == "[DONE]":
+                        break
+                    
+                    try:
+                        data = json.loads(json_str)
+                        raw_chunks.append(json.dumps(data, ensure_ascii=False))
+
+                        # Parse based on message type
+                        msg_type = data.get("type")
+                        content = data.get("text") or data.get("content") or ""
+                        
+                        if msg_type == "reasoning":
+                            # Thinking process
+                            if content:
+                                thinking_process.append(content)
+                        elif msg_type == "tools":
+                            # Tools event for inform base
+                            if content:
+                                inform_base_process.append(f"[Tool] {content}")
+                            else:
+                                inform_base_process.append(json.dumps(data, ensure_ascii=False))
+                        elif msg_type == "text":
+                            if data.get("agent") == "tools":
+                                # Tool output goes to inform base
+                                if content:
+                                    inform_base_process.append(content)
+                            else:
+                                # Regular text goes to final answer
+                                if content:
+                                    if not got_first_token:
+                                        ttft = time.time() - start_time
+                                        got_first_token = True
+                                    final_answer += content
+                        else:
+                            # Other event types - store in raw
+                            pass
+
+                    except json.JSONDecodeError:
+                        raw_chunks.append(f"Decode Error: {json_str}")
+                        continue
+        
+        # Combine results
+        thinking_str = "".join(thinking_process)
+        inform_base_str = "\n".join(inform_base_process)
+        raw_full_str = "\n".join(raw_chunks)
+        
+        # Fallback if empty
+        if not final_answer:
+            if thinking_str:
+                final_answer = "Refers to thinking process for details."
+            elif raw_chunks:
+                final_answer = "Raw data captured (parsing failed). See Raw Data."
+            else:
+                final_answer = "Error: No response content found."
+
+        return json.dumps({
+            "result": final_answer, 
+            "thinking": thinking_str,
+            "inform_base": inform_base_str,
+            "raw": raw_full_str,
+            "ttft": ttft
+        }, ensure_ascii=False)
+
+    except requests.exceptions.Timeout:
+        return "Error: Agent Q&A API Request Timed Out (600s)"
+    except Exception as e:
+        print(f"Error calling Agent Q&A API: {e}")
+        return f"Error: {e}"
+
+
 def get_chat_response(message: str, api_name: str = "Bundle API", user_id: str = None, session_id: str = None) -> str:
     """Unified API call function - selects the appropriate API based on api_name"""
     
@@ -508,6 +624,8 @@ def get_chat_response(message: str, api_name: str = "Bundle API", user_id: str =
     elif api_type == "dify":
         token = config.get("token", "")
         return get_dify_response(message, url=url, token=token, user_id=user_id, session_id=session_id)
+    elif api_type == "agent_qa":
+        return get_agent_qa_response(message, url=url, user_id=user_id, session_id=session_id)
     else:
         # Default to Bundle type structure
         return get_bundle_response(message, url=url, user_id=user_id, session_id=session_id)
