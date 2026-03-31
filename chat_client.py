@@ -3,19 +3,28 @@ import json
 import uuid
 import os
 import time
+import logging
+
+# 配置日志
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 # Configuration File Path
 CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "api_config.json")
 
 def load_api_configs():
     """Load API configurations from JSON file"""
+    logger.debug(f"load_api_configs() 调用, CONFIG_FILE={CONFIG_FILE}")
     if os.path.exists(CONFIG_FILE):
         try:
             with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
+                config = json.load(f)
+                logger.debug(f"load_api_configs() 成功加载 {len(config)} 个API配置")
+                return config
         except Exception as e:
-            print(f"Error loading API config: {e}")
+            logger.error(f"Error loading API config: {e}")
             return {}
+    logger.warning(f"配置文件不存在: {CONFIG_FILE}")
     return {}
 
 def get_bundle_response(message: str, url: str, user_id: str = None, session_id: str = None) -> str:
@@ -634,7 +643,10 @@ def get_chat_response(message: str, api_name: str = "Bundle API", user_id: str =
 
 def get_available_apis():
     """Return list of available API names"""
-    return list(load_api_configs().keys())
+    logger.debug("get_available_apis() 调用")
+    result = list(load_api_configs().keys())
+    logger.debug(f"get_available_apis() 返回: {result}")
+    return result
 
 
 if __name__ == "__main__":

@@ -1,10 +1,16 @@
 import streamlit as st
 import pandas as pd
 import ast
+import logging
 from app.utils import load_data, save_data, run_tests_sync, save_history
 from chat_client import get_available_apis
 
+# 配置日志
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
+
 def render_testcases_page():
+    logger.debug("=== render_testcases_page() 开始 ===")
     title_col, manual_col = st.columns([5, 1])
     with title_col:
         st.title("📋 Test Cases Management")
@@ -73,6 +79,7 @@ def render_testcases_page():
                      final_df.insert(0, "Select", False)
                 st.session_state.df = final_df
                 st.session_state.df_content_sig = get_content_signature(final_df)
+                st.session_state.df_preprocessed = False
                 
                 st.toast(f"🗑️ Deleted {len(ids_to_delete)} cases successfully!")
                 st.rerun()
@@ -98,8 +105,13 @@ def render_testcases_page():
     
     with filter_col3:
         # API Selection
-        available_apis = get_available_apis() if get_available_apis() else ["Bundle API"]
+        logger.debug(">>> 准备获取 available_apis...")
+        available_apis = get_available_apis() or ["Bundle API"]
+        logger.debug(f">>> available_apis = {available_apis}")
+        logger.debug(f">>> 当前 session_state keys: {list(st.session_state.keys())}")
+        logger.debug(f">>> page_api_select 当前值: {st.session_state.get('page_api_select', 'NOT SET')}")
         selected_api = st.selectbox("⚙️ API Endpoint", options=available_apis, index=0, key="page_api_select")
+        logger.debug(f">>> selectbox 渲染完成, selected_api = {selected_api}")
 
     with filter_col4:
         # Import / Template Popover
@@ -240,6 +252,7 @@ def render_testcases_page():
                                  final_df.insert(0, "Select", False)
                             st.session_state.df = final_df
                             st.session_state.df_content_sig = get_content_signature(final_df)
+                            st.session_state.df_preprocessed = False
                             
                             st.rerun()
                             
@@ -290,64 +303,74 @@ def render_testcases_page():
     # ------------------
     # Data Editor
     # ------------------
-    # pyarrow schema safety: format retrieval_context to string to prevent list/string mixing crashes
-    if "retrieval_context" in st.session_state.df.columns:
-        st.session_state.df["retrieval_context"] = st.session_state.df["retrieval_context"].apply(
-            lambda x: ", ".join(x) if isinstance(x, list) else str(x)
-        )
-    
-    # Fix: Convert expected_output to string to prevent float/text type conflicts
-    if "expected_output" in st.session_state.df.columns:
-        st.session_state.df["expected_output"] = st.session_state.df["expected_output"].apply(
-            lambda x: "" if pd.isna(x) else str(x)
-        )
+    # Data preprocessing - only run once when data is first loaded
+    logger.debug(f">>> df_preprocessed = {st.session_state.get('df_preprocessed', False)}")
+    if not st.session_state.get("df_preprocessed", False):
+        logger.debug(">>> 开始数据预处理...")
+        # pyarrow schema safety: format retrieval_context to string to prevent list/string mixing crashes
+        if "retrieval_context" in st.session_state.df.columns:
+            st.session_state.df["retrieval_context"] = st.session_state.df["retrieval_context"].apply(
+                lambda x: ", ".join(x) if isinstance(x, list) else str(x)
+            )
         
-    if "conversation" in st.session_state.df.columns:
-        st.session_state.df.drop(columns=["conversation"], inplace=True)
-
-    @st.fragment
-    def render_paginated_table():
+        # Fix: Convert expected_output to string to prevent float/text type conflicts
+        if "expected_output" in st.session_state.df.columns:
+            st.session_state.df["expected_output"] = st.session_state.df["expected_output"].apply(
+                lambda x: "" if pd.isna(x) else str(x)
+            )
+            
+        if "conversation" in st.session_state.df.columns:
+            st.session_state.df.drop(columns=["conversation"], inplace=True)
+        
+        # Sort data once during preprocessing
         if "turn_index" in st.session_state.df.columns:
             st.session_state.df = st.session_state.df.sort_values(by=["id", "turn_index"], na_position="first").reset_index(drop=True)
         elif "id" in st.session_state.df.columns:
             st.session_state.df = st.session_state.df.sort_values(by="id").reset_index(drop=True)
+        
+        st.session_state.df_preprocessed = True
+        logger.debug(">>> 数据预处理完成")
+
+    @st.fragment
+    def render_paginated_table():
+        logger.debug(">>> render_paginated_table() fragment 开始")
             
         # --- Pagination Logic ---
         items_per_page = 25
         total_items = len(st.session_state.df)
         total_pages = max(1, (total_items - 1) // items_per_page + 1)
         
-        if "current_page" not in st.session_state:
-            st.session_state.current_page = 1
+        if "testcases_current_page" not in st.session_state:
+            st.session_state.testcases_current_page = 1
         else:
             try:
-                st.session_state.current_page = int(st.session_state.current_page)
+                st.session_state.testcases_current_page = int(st.session_state.testcases_current_page)
             except (ValueError, TypeError):
-                st.session_state.current_page = 1
+                st.session_state.testcases_current_page = 1
                 
-        st.session_state.current_page = max(1, min(st.session_state.current_page, total_pages))
+        st.session_state.testcases_current_page = max(1, min(st.session_state.testcases_current_page, total_pages))
         
         def prev_page():
-            st.session_state.current_page -= 1
+            st.session_state.testcases_current_page -= 1
         def next_page():
-            st.session_state.current_page += 1
+            st.session_state.testcases_current_page += 1
         def go_page():
-            st.session_state.current_page = st.session_state.page_input_widget
+            st.session_state.testcases_current_page = st.session_state.page_input_widget
         
         # Pagination UI
         st.write("")
         page_cols = st.columns([1.5, 2, 1.5, 5])
         
         with page_cols[0]:
-            st.button("⬅️ 上一页", disabled=st.session_state.current_page <= 1, use_container_width=True, on_click=prev_page, key="prev_button")
+            st.button("⬅️ 上一页", disabled=st.session_state.testcases_current_page <= 1, use_container_width=True, on_click=prev_page, key="prev_button")
         with page_cols[1]:
-            st.number_input("跳转页", min_value=1, max_value=total_pages, value=st.session_state.current_page, step=1, label_visibility="collapsed", key="page_input_widget", on_change=go_page)
+            st.number_input("跳转页", min_value=1, max_value=total_pages, value=st.session_state.testcases_current_page, step=1, label_visibility="collapsed", key="page_input_widget", on_change=go_page)
         with page_cols[2]:
-            st.button("下一页 ➡️", disabled=st.session_state.current_page >= total_pages, use_container_width=True, on_click=next_page, key="next_button")
+            st.button("下一页 ➡️", disabled=st.session_state.testcases_current_page >= total_pages, use_container_width=True, on_click=next_page, key="next_button")
         with page_cols[3]:
             st.markdown(f"<div style='padding-top: 5px; color: gray;'>共 {total_pages} 页，总计 {total_items} 条数据</div>", unsafe_allow_html=True)
 
-        start_idx = (st.session_state.current_page - 1) * items_per_page
+        start_idx = (st.session_state.testcases_current_page - 1) * items_per_page
         end_idx = start_idx + items_per_page
         page_df = st.session_state.df.iloc[start_idx:end_idx].copy()
 
@@ -367,7 +390,7 @@ def render_testcases_page():
             num_rows="dynamic",
             use_container_width=True,
             height=min(600 + 40, max(200, (len(page_df) + 1) * 35 + 40)), # Ensure table height adapts to row count nicely
-            key=f"main_data_editor_{st.session_state.current_page}"
+            key=f"main_data_editor_{st.session_state.testcases_current_page}"
         )
 
         # Reconstruct the full dataframe securely from chunks
@@ -398,11 +421,14 @@ def render_testcases_page():
             # ONLY Select state changed (or nothing changed). 
             # We MUST save it to global state in memory so checkboxes aren't lost on page switch!
             st.session_state.df = current_edited_df
-            
+        
+        logger.debug(">>> render_paginated_table() fragment 结束")
         return current_edited_df
 
     # Render table and capture edited global DF
+    logger.debug(">>> 准备调用 render_paginated_table()...")
     edited_df = render_paginated_table()
+    logger.debug(">>> render_paginated_table() 返回完成")
 
 
     # ------------------
@@ -533,3 +559,4 @@ def render_testcases_page():
         except Exception as e:
             st.error(f"Failed to run tests: {e}")
 
+    logger.debug("=== render_testcases_page() 结束 ===")
