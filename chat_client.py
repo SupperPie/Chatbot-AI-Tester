@@ -609,6 +609,138 @@ def get_agent_qa_response(message: str, url: str, user_id: str = None, session_i
         return f"Error: {e}"
 
 
+def get_hotel_response(message: str, url: str, user_id: str = None, session_id: str = None) -> str:
+    """Hotel streaming API client
+    
+    Uses the health check payload format with 'ex' field containing semantic_info.
+    Response format: type=done, agent=hotel, content contains AI response, data contains hotel_list.
+    """
+    if user_id is None:
+        user_id = str(uuid.uuid4())
+    if session_id is None:
+        session_id = str(uuid.uuid4())[:8]
+    
+    # Health check payload with semantic_info for Hotel API
+    payload = {
+        "message": message,
+        "thread_id": session_id,
+        "user_id": user_id,
+        "ex": {
+            "max_results": 5,
+            "use_ai_description": False,
+            "use_ai_commentary": True,
+            "previous_params": {},
+            "semantic_info": {
+                "lang": "zh-CN",
+                "userMessage": message,
+                "destination": "广州",
+                "cityCode": "10112",
+                "hotelName": "",
+                "checkInDate": "2026-04-02",
+                "checkOutDate": "2026-04-03",
+                "adultNum": 1,
+                "childNum": 0,
+                "childAgeList": [],
+                "roomNum": 1,
+                "hotelBrandName": "",
+                "hotelFacilityList": [],
+                "hotelRoomeFacilityList": [],
+                "hotelStarCode": "",
+                "hotelTypeCode": "",
+                "sortList": []
+            },
+            "ambiguous_fields": {},
+            "missing_fields": {}
+        }
+    }
+    
+    headers = {
+        "Content-Type": "application/json",
+        "accept": "application/json"
+    }
+
+    print(f"[Hotel] Sending request to {url} with message: {message}")
+    
+    try:
+        start_time = time.time()
+        response = requests.post(url, json=payload, headers=headers, stream=True, timeout=600)
+        
+        if not response.ok:
+            print(f"[Hotel] API Error {response.status_code}: {response.text}")
+            return f"❌ SERVER DETAIL ({response.status_code}): {response.text}"
+            
+        final_answer = ""
+        raw_chunks = []
+        inform_base = ""
+        ttft = 0.0
+        got_first_token = False
+        
+        for line in response.iter_lines():
+            if line:
+                decoded_line = line.decode('utf-8')
+                if decoded_line.startswith("data: "):
+                    json_str = decoded_line[6:]
+                    if json_str.strip() == "[DONE]":
+                        break
+                    
+                    try:
+                        data = json.loads(json_str)
+                        raw_chunks.append(json.dumps(data, ensure_ascii=False))
+                        
+                        msg_type = data.get("type")
+                        agent = data.get("agent")
+                        content = data.get("content", "")
+                        
+                        # Handle token streaming (type=token, agent=main)
+                        if msg_type == "token" and agent == "main":
+                            if content:
+                                if not got_first_token:
+                                    ttft = time.time() - start_time
+                                    got_first_token = True
+                                final_answer += content
+                        
+                        # Handle done event (type=done, agent=hotel)
+                        elif msg_type == "done" and agent == "hotel":
+                            if not got_first_token:
+                                ttft = time.time() - start_time
+                                got_first_token = True
+                            if content:
+                                final_answer = content
+                            # Extract hotel_list metadata
+                            hotel_data = data.get("data", {})
+                            if hotel_data.get("hotel_list"):
+                                hotel_count = len(hotel_data["hotel_list"])
+                                inform_base = f"返回 {hotel_count} 家酒店"
+                            # Extract metadata
+                            metadata = data.get("metadata", {})
+                            if metadata:
+                                semantic = metadata.get("semantic_info", {})
+                                if semantic:
+                                    inform_base += f"\n目的地: {semantic.get('destination', 'N/A')}"
+                                    inform_base += f"\n入住: {semantic.get('checkInDate', 'N/A')} - {semantic.get('checkOutDate', 'N/A')}"
+                                
+                    except json.JSONDecodeError:
+                        raw_chunks.append(f"Decode Error: {json_str}")
+                        continue
+                        
+        if not final_answer:
+            final_answer = "Error: No response content found from Hotel API."
+            
+        return json.dumps({
+            "result": final_answer, 
+            "thinking": "",
+            "inform_base": inform_base,
+            "raw": "\n".join(raw_chunks),
+            "ttft": ttft
+        }, ensure_ascii=False)
+
+    except requests.exceptions.Timeout:
+        return "Error: Hotel API Request Timed Out (600s)"
+    except Exception as e:
+        print(f"[Hotel] Error: {e}")
+        return f"Error: {str(e)}"
+
+
 def get_chat_response(message: str, api_name: str = "Bundle API", user_id: str = None, session_id: str = None) -> str:
     """Unified API call function - selects the appropriate API based on api_name"""
     
@@ -635,6 +767,8 @@ def get_chat_response(message: str, api_name: str = "Bundle API", user_id: str =
         return get_dify_response(message, url=url, token=token, user_id=user_id, session_id=session_id)
     elif api_type == "agent_qa":
         return get_agent_qa_response(message, url=url, user_id=user_id, session_id=session_id)
+    elif api_type == "hotel":
+        return get_hotel_response(message, url=url, user_id=user_id, session_id=session_id)
     else:
         # Default to Bundle type structure
         return get_bundle_response(message, url=url, user_id=user_id, session_id=session_id)

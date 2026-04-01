@@ -29,5 +29,11 @@
         "url": "http://agent-question-and-answer.platform-ai.svc.dragon/stream",
         "description": "Agent Question and Answer API (仅服务器可访问)",
         "type": "agent_qa"
+    },
+    "Hotel API": {
+        "url": "http://192.168.22.252:10010/stream",
+        "description": "Agent Hotel",
+        "type": "hotel",
+        "token": "None"
     }
 }
