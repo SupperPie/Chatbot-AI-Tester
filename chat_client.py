@@ -549,32 +549,31 @@ def get_agent_qa_response(message: str, url: str, user_id: str = None, session_i
 
                         # Parse based on message type
                         msg_type = data.get("type")
-                        content = data.get("text") or data.get("content") or ""
+                        content = data.get("content") or data.get("text") or ""
                         
-                        if msg_type == "reasoning":
-                            # Thinking process
+                        if msg_type == "token":
+                            # Token stream - concatenate content
+                            if content and isinstance(content, str):
+                                if not got_first_token:
+                                    ttft = time.time() - start_time
+                                    got_first_token = True
+                                final_answer += content
+                        elif msg_type == "done":
+                            # Done signal - stop processing
+                            break
+                        elif msg_type == "reasoning":
                             if content:
                                 thinking_process.append(content)
                         elif msg_type == "tools":
-                            # Tools event for inform base
                             if content:
                                 inform_base_process.append(f"[Tool] {content}")
-                            else:
-                                inform_base_process.append(json.dumps(data, ensure_ascii=False))
                         elif msg_type == "text":
-                            if data.get("agent") == "tools":
-                                # Tool output goes to inform base
-                                if content:
-                                    inform_base_process.append(content)
-                            else:
-                                # Regular text goes to final answer
-                                if content:
-                                    if not got_first_token:
-                                        ttft = time.time() - start_time
-                                        got_first_token = True
-                                    final_answer += content
+                            if content:
+                                if not got_first_token:
+                                    ttft = time.time() - start_time
+                                    got_first_token = True
+                                final_answer += content
                         else:
-                            # Other event types - store in raw
                             pass
 
                     except json.JSONDecodeError:
