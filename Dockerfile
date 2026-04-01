@@ -14,8 +14,8 @@ COPY . .
 # 将 .env.example 重命名为 .env 作为默认配置
 RUN cp .env.example .env
 
-# 端口通过环境变量配置，默认 8502 避免冲突
-ENV STREAMLIT_PORT=12345
+# 端口通过环境变量配置
+ENV STREAMLIT_PORT=54321
 
 EXPOSE ${STREAMLIT_PORT}
 

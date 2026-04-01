@@ -3,9 +3,9 @@ services:
     build: .
     container_name: chatbot-ai-tester
     ports:
-      - "0.0.0.0:${HOST_PORT:-12345}:${STREAMLIT_PORT:-12345}"
+      - "0.0.0.0:${HOST_PORT:-54321}:${STREAMLIT_PORT:-54321}"
     environment:
-      - STREAMLIT_PORT=${STREAMLIT_PORT:-12345}
+      - STREAMLIT_PORT=${STREAMLIT_PORT:-54321}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - OPENAI_BASE_URL=${OPENAI_BASE_URL:-}
     env_file:
