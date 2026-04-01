@@ -88,7 +88,7 @@ def render_settings_page():
     
     # 根据API类型提供不同的默认测试消息
     default_messages = {
-        "hotel": "我想在广州预订酒店，从2026-04-02到2026-04-03，1位成人，1间房",
+        "hotel": "帮我预定广州酒店",
         "flight": "查询北京到上海的航班",
         "limo": "我需要接机服务",
         "skills": "机场贵宾厅服务",
@@ -96,15 +96,16 @@ def render_settings_page():
     api_type = configs.get(test_api_name, {}).get("type", "bundle") if test_api_name else "bundle"
     default_msg = default_messages.get(api_type, "Hello, World!")
     
-    # 检测API切换，自动更新测试消息
+    # 初始化或检测API切换时更新测试消息
     if "last_debug_api" not in st.session_state:
         st.session_state.last_debug_api = test_api_name
+        st.session_state.debug_msg_input = default_msg
     elif st.session_state.last_debug_api != test_api_name:
         st.session_state.last_debug_api = test_api_name
-        st.session_state.debug_msg_input = default_msg  # 直接更新key对应的state
+        st.session_state.debug_msg_input = default_msg
         
     with debug_col2:
-        test_msg = st.text_input("Test Message", value=default_msg, key="debug_msg_input")
+        test_msg = st.text_input("Test Message", key="debug_msg_input")
         
     if st.button("🚀 Send Request", key="btn_debug_send"):
         if not test_api_name:
