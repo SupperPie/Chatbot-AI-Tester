@@ -1,0 +1,18 @@
+version: "3.8"
+
+services:
+  chatbot-ai-tester:
+    build: .
+    container_name: chatbot-ai-tester
+    ports:
+      - "0.0.0.0:${HOST_PORT:-12345}:${STREAMLIT_PORT:-12345}"
+    environment:
+      - STREAMLIT_PORT=${STREAMLIT_PORT:-12345}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL}
+    env_file:
+      - .env
+    restart: unless-stopped
+    volumes:
+      # 可选：挂载数据目录持久化
+      - ./data:/app/data

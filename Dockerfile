@@ -1,21 +1,20 @@
-# Use an official Python runtime as a parent image
-FROM python:3.9-slim
+FROM python:3.11-slim
 
-# Set the working directory in the container
 WORKDIR /app
 
-# Copy the current directory contents into the container at /app
-COPY . /app
+# 先复制依赖文件，利用 Docker 缓存层
+COPY requirements.txt .
 
-# Install any needed packages specified in requirements.txt
-# Use mirror for China if needed, otherwise standard
+# 安装依赖
 RUN pip install --no-cache-dir -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
 
-# Expose port 8501 for Streamlit
-EXPOSE 8501
+# 复制应用代码
+COPY . .
 
-# Define environment variable
-ENV PORT=8501
+# 端口通过环境变量配置，默认 8502 避免冲突
+ENV STREAMLIT_PORT=12345
 
-# Run streamlit when the container launches
-CMD ["streamlit", "run", "streamlit_app.py", "--server.port=8501", "--server.address=0.0.0.0"]
+EXPOSE ${STREAMLIT_PORT}
+
+# 使用 shell 形式以支持环境变量替换
+CMD streamlit run streamlit_app.py --server.port=${STREAMLIT_PORT} --server.address=0.0.0.0
