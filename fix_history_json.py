@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-History JSON 文件修复工具（强力版）
+History JSON 文件修复工具（强力版 v2）
 用于修复因磁盘空间不足导致的 JSON 文件截断问题
 """
 
@@ -22,19 +22,18 @@ def create_backup(file_path):
     return backup_path
 
 
-def find_last_complete_object(content):
+def find_last_complete_history_record(content):
     """
-    找到最后一个完整的 JSON 对象结束位置
-    针对 results 数组中的对象被截断的情况
+    找到最后一个完整的历史记录对象的结束位置
+    历史记录结构: { "id": ..., "results": [...], "api_name": ..., "started_count": ... }
+    完整记录以 "started_count": 数字 + } 结尾
     """
-    # 找所有 "ttft": 数字 后跟 } 的位置（这是每个 result 对象的结尾）
-    # 匹配模式：完整的对象结尾标志
-    pattern = r'"ttft"\s*:\s*[\d.]+\s*\n?\s*\}'
+    # 匹配完整历史记录的结尾: "started_count": 数字 }
+    pattern = r'"started_count"\s*:\s*\d+\s*\n?\s*\}'
     
     matches = list(re.finditer(pattern, content))
     
     if matches:
-        # 返回最后一个完整对象的结束位置
         last_match = matches[-1]
         return last_match.end()
     
@@ -44,46 +43,32 @@ def find_last_complete_object(content):
 def repair_json(content):
     """
     修复截断的 JSON 内容
+    策略：找到最后一个完整的历史记录，删除之后的损坏记录
     """
-    # 找到最后一个完整对象的位置
-    last_complete_pos = find_last_complete_object(content)
+    # 找到最后一个完整历史记录的位置
+    last_complete_pos = find_last_complete_history_record(content)
     
     if last_complete_pos is None:
-        print("[错误] 无法找到完整的对象结束位置")
+        print("[错误] 无法找到完整的历史记录结束位置")
         return None
     
-    # 截断到最后一个完整对象
+    # 截断到最后一个完整历史记录
     truncated = content[:last_complete_pos]
     
-    # 分析需要闭合的结构
-    # 计算未闭合的括号
-    open_braces = truncated.count('{') - truncated.count('}')
-    open_brackets = truncated.count('[') - truncated.count(']')
+    print(f"[分析] 最后一个完整记录结束位置: {last_complete_pos}")
+    print(f"[分析] 原始文件大小: {len(content)} 字节")
+    print(f"[分析] 截断后大小: {len(truncated)} 字节")
+    print(f"[分析] 删除损坏数据: {len(content) - last_complete_pos} 字节")
     
-    print(f"[分析] 截断后位置: {last_complete_pos}")
-    print(f"[分析] 需要闭合的 '{{}}': {open_braces} 个")
-    print(f"[分析] 需要闭合的 '[]': {open_brackets} 个")
-    
-    # 构建闭合结构
-    # 根据历史记录结构: [ { "results": [ {...}, {...} ], ... }, ... ]
-    # 通常需要: ] (关闭 results) + } (关闭当前记录对象) + ] (关闭根数组)
-    
-    closing = ""
-    closing += "\n" + " " * 12 + "]"  # 关闭 results 数组
-    closing += ","
-    closing += '\n        "api_name": "RECOVERED",'
-    closing += '\n        "started_count": 0'
-    closing += "\n    }"  # 关闭当前历史记录对象
-    closing += "\n]"  # 关闭根数组
-    
-    repaired = truncated + closing
+    # 只需要闭合根数组
+    repaired = truncated + "\n]"
     
     return repaired
 
 
 def main():
     print("=" * 50)
-    print("History JSON 文件修复工具（强力版）")
+    print("History JSON 文件修复工具（强力版 v2）")
     print("=" * 50)
     print()
     
@@ -101,8 +86,9 @@ def main():
     
     # 先测试是否真的损坏
     try:
-        json.loads(content)
-        print("[信息] 文件格式正常，无需修复")
+        data = json.loads(content)
+        print(f"[信息] 文件格式正常，无需修复")
+        print(f"[信息] 包含 {len(data)} 条历史记录")
         return 0
     except json.JSONDecodeError as e:
         print(f"[警告] 检测到 JSON 错误: {e}")
@@ -112,7 +98,7 @@ def main():
     print(f"[备份] 已创建备份: {backup_path}")
     
     # 执行修复
-    print("[修复] 开始强力修复...")
+    print("[修复] 开始修复...")
     repaired = repair_json(content)
     
     if repaired is None:
@@ -124,6 +110,15 @@ def main():
         data = json.loads(repaired)
         print(f"[成功] JSON 验证通过")
         print(f"[成功] 保留历史记录: {len(data)} 条")
+        
+        # 显示保留的记录概要
+        print()
+        print("[保留的历史记录]:")
+        for i, record in enumerate(data):
+            record_id = record.get('id', 'unknown')
+            api_name = record.get('api_name', 'unknown')
+            status = record.get('status', 'unknown')
+            print(f"  {i+1}. ID={record_id}, API={api_name}, Status={status}")
         
         # 写入修复后的文件
         with open(FILE_PATH, 'w', encoding='utf-8') as f:
