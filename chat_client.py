@@ -741,6 +741,110 @@ def get_hotel_response(message: str, url: str, user_id: str = None, session_id: 
         return f"Error: {str(e)}"
 
 
+def get_dify_workflow_response(message: str, url: str, token: str = None, user_id: str = None, session_id: str = None) -> str:
+    """Dify Workflow API client (extracts answer from workflow_finished event).
+    
+    This is for Dify APIs that return the final answer in the workflow_finished event's
+    data.outputs.answer field, rather than streaming message tokens.
+    
+    Token format: "x-app-code|x-app-passport" (separated by |)
+    """
+    if user_id is None:
+        user_id = str(uuid.uuid4())
+    
+    # Parse token: "x-app-code|x-app-passport"
+    app_code, app_passport = "", ""
+    if token and "|" in token:
+        parts = token.split("|", 1)
+        app_code, app_passport = parts[0], parts[1]
+    
+    # Validate conversation_id (must be UUID format or empty)
+    import re as _re
+    _uuid_pattern = _re.compile(
+        r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', _re.IGNORECASE
+    )
+    conversation_id = session_id if session_id and _uuid_pattern.match(session_id) else ""
+
+    payload = {
+        "inputs": {},
+        "query": message,
+        "response_mode": "streaming",
+        "conversation_id": conversation_id,
+        "files": [],
+    }
+
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "*/*",
+        "x-app-code": app_code,
+        "x-app-passport": app_passport,
+    }
+
+    print(f"[DifyWorkflow] Sending request to {url} with message: {message}")
+
+    try:
+        start_time = time.time()
+        response = requests.post(url, json=payload, headers=headers, stream=True, timeout=600)
+
+        if not response.ok:
+            print(f"[DifyWorkflow] API Error {response.status_code}: {response.text}")
+            return f"❌ SERVER DETAIL ({response.status_code}): {response.text}"
+
+        final_answer = ""
+        raw_chunks = []
+        ttft = 0.0
+        got_first_token = False
+
+        for line in response.iter_lines():
+            if line:
+                decoded_line = line.decode("utf-8")
+                if decoded_line.startswith("data: "):
+                    json_str = decoded_line[6:]
+                    if json_str.strip() == "[DONE]":
+                        break
+                    try:
+                        data = json.loads(json_str)
+                        raw_chunks.append(json.dumps(data, ensure_ascii=False))
+
+                        event = data.get("event", "")
+
+                        if event == "workflow_finished":
+                            # Extract answer from outputs
+                            if not got_first_token:
+                                ttft = time.time() - start_time
+                                got_first_token = True
+                            outputs = data.get("data", {}).get("outputs", {})
+                            final_answer = outputs.get("answer", "")
+
+                        elif event == "error":
+                            err_msg = data.get("message", "Unknown DifyWorkflow error")
+                            return f"Error: DifyWorkflow returned error event: {err_msg}"
+
+                    except json.JSONDecodeError:
+                        raw_chunks.append(f"Decode Error: {json_str}")
+                        continue
+
+        if not final_answer:
+            final_answer = "Error: No answer content found in workflow_finished event."
+
+        return json.dumps(
+            {
+                "result": final_answer,
+                "thinking": "",
+                "inform_base": "",
+                "raw": "\n".join(raw_chunks),
+                "ttft": ttft,
+            },
+            ensure_ascii=False,
+        )
+
+    except requests.exceptions.Timeout:
+        return "Error: DifyWorkflow API Request Timed Out (600s)"
+    except Exception as e:
+        print(f"[DifyWorkflow] Error: {e}")
+        return f"Error: {str(e)}"
+
+
 def get_chat_response(message: str, api_name: str = "Bundle API", user_id: str = None, session_id: str = None) -> str:
     """Unified API call function - selects the appropriate API based on api_name"""
     
@@ -769,6 +873,9 @@ def get_chat_response(message: str, api_name: str = "Bundle API", user_id: str =
         return get_agent_qa_response(message, url=url, user_id=user_id, session_id=session_id)
     elif api_type == "hotel":
         return get_hotel_response(message, url=url, user_id=user_id, session_id=session_id)
+    elif api_type == "dify_workflow":
+        token = config.get("token", "")
+        return get_dify_workflow_response(message, url=url, token=token, user_id=user_id, session_id=session_id)
     else:
         # Default to Bundle type structure
         return get_bundle_response(message, url=url, user_id=user_id, session_id=session_id)

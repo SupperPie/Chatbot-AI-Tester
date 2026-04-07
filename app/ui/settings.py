@@ -40,11 +40,11 @@ def render_settings_page():
             "Description": st.column_config.TextColumn("Description"),
             "Type": st.column_config.SelectboxColumn(
                 "Type",
-                options=["bundle", "skills", "flight", "limo", "dify"],
+                options=["bundle", "skills", "flight", "limo", "dify", "dify_workflow"],
                 default="bundle",
-                help="dify = Dify /v1/chat-messages; skills/bundle/limo/flight = internal APIs"
+                help="dify = Dify /v1/chat-messages; dify_workflow = Dify Workflow API; skills/bundle/limo/flight = internal APIs"
             ),
-            "Token": st.column_config.TextColumn("Token (Dify only)", help="Bearer token for Dify APIs, e.g. app-xxxxx"),
+            "Token": st.column_config.TextColumn("Token (Dify/Workflow)", help="Dify: Bearer token (app-xxx); Workflow: x-app-code|x-app-passport"),
         },
         use_container_width=True,
         key="settings_api_editor"

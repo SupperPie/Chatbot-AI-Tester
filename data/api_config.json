@@ -35,5 +35,11 @@
         "description": "Agent Hotel",
         "type": "hotel",
         "token": "None"
+    },
+    "MC 问答": {
+        "url": "https://ai-flow-app-uk.dp-svc.com/api/chat-messages",
+        "description": "MC问答",
+        "type": "dify_workflow",
+        "token": "ZdbUw8IngEi4CwZD|eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiI5YTRmNmE4Mi0yY2FhLTRlZGEtOTRhNi1iZTMyYTM5NzU5YzIiLCJzdWIiOiJXZWIgQVBJIFBhc3Nwb3J0IiwiYXBwX2lkIjoiOWE0ZjZhODItMmNhYS00ZWRhLTk0YTYtYmUzMmEzOTc1OWMyIiwiYXBwX2NvZGUiOiJaZGJVdzhJbmdFaTRDd1pEIiwiZW5kX3VzZXJfaWQiOiIwY2JkOGU3OC00MDQ4LTQ5ODUtYmM5Mi1mNGI2OTU4OThmMGQifQ.sbEa-0Qt8Xqeyz-4uk8hvH_ZFV7gdSborYjOVHe6PBI"
     }
 }
