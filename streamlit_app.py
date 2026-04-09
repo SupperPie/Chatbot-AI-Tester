@@ -1,5 +1,16 @@
 import streamlit as st
 import nest_asyncio
+import logging
+
+# 统一配置日志（只在入口配置一次）
+# 第三方库用 WARNING 级别，避免 watchdog 等库产生大量 DEBUG 日志
+logging.basicConfig(
+    level=logging.WARNING,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+# 只对本项目的模块启用 DEBUG
+for module in ['app', 'chat_client', '__main__']:
+    logging.getLogger(module).setLevel(logging.DEBUG)
 
 # Apply Layout immediately
 st.set_page_config(layout="wide", page_title="AI Test Manager", page_icon="img/eva_avatar.png")

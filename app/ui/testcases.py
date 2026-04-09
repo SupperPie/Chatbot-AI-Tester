@@ -5,8 +5,7 @@ import logging
 from app.utils import load_data, save_data, run_tests_sync, save_history
 from chat_client import get_available_apis
 
-# 配置日志
-logging.basicConfig(level=logging.DEBUG)
+# 获取 logger（配置在 streamlit_app.py 入口统一处理）
 logger = logging.getLogger(__name__)
 
 def render_testcases_page():

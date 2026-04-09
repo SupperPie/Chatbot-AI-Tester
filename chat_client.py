@@ -5,8 +5,7 @@ import os
 import time
 import logging
 
-# 配置日志
-logging.basicConfig(level=logging.DEBUG)
+# 获取 logger（配置在 streamlit_app.py 入口统一处理）
 logger = logging.getLogger(__name__)
 
 # Configuration File Path
@@ -59,8 +58,11 @@ def get_bundle_response(message: str, url: str, user_id: str = None, session_id:
         response.raise_for_status()
         
         full_response_text = ""
+        raw_chunks = []  # 收集完整原始响应
+        bundle_list = None  # 收集 bundle_list
         ttft = 0.0
         got_first_token = False
+        ai_content = None  # 保存 AI 回复内容
         
         for line in response.iter_lines():
             if line:
@@ -72,18 +74,22 @@ def get_bundle_response(message: str, url: str, user_id: str = None, session_id:
                     
                     try:
                         data = json.loads(json_str)
+                        raw_chunks.append(json.dumps(data, ensure_ascii=False))  # 保存原始数据
                         
+                        # 提取 AI 回复内容
                         if data.get("type") == "message" and data.get("agent") == "bundle":
                             content_obj = data.get("content", {})
                             if isinstance(content_obj, dict) and content_obj.get("type") == "ai":
-                                ttft = time.time() - start_time
-                                return json.dumps({
-                                    "result": content_obj.get("content"),
-                                    "thinking": "",
-                                    "inform_base": "",
-                                    "raw": "",
-                                    "ttft": ttft
-                                }, ensure_ascii=False)
+                                if not got_first_token:
+                                    ttft = time.time() - start_time
+                                    got_first_token = True
+                                ai_content = content_obj.get("content")
+                        
+                        # 提取 bundle_list
+                        if data.get("type") == "done" and data.get("agent") == "bundle":
+                            data_obj = data.get("data", {})
+                            if data_obj.get("bundle_list"):
+                                bundle_list = data_obj.get("bundle_list")
                                 
                         if data.get("type") == "token" and data.get("agent") == "main":
                              if not got_first_token:
@@ -92,18 +98,24 @@ def get_bundle_response(message: str, url: str, user_id: str = None, session_id:
                              full_response_text += data.get("content", "")
 
                     except json.JSONDecodeError:
+                        raw_chunks.append(f"Decode Error: {json_str}")
                         continue
 
-        if full_response_text:
-            return json.dumps({
-                "result": full_response_text,
+        # 构建返回结果
+        result_content = ai_content if ai_content else full_response_text
+        if result_content:
+            result_obj = {
+                "result": result_content,
                 "thinking": "",
                 "inform_base": "",
-                "raw": "",
+                "raw": "\n".join(raw_chunks),
                 "ttft": ttft
-            }, ensure_ascii=False)
+            }
+            if bundle_list:
+                result_obj["bundle_list"] = bundle_list
+            return json.dumps(result_obj, ensure_ascii=False)
             
-        return json.dumps({"result": "Error: No response content found.", "ttft": 0.0}, ensure_ascii=False)
+        return json.dumps({"result": "Error: No response content found.", "raw": "\n".join(raw_chunks), "ttft": 0.0}, ensure_ascii=False)
 
     except Exception as e:
         print(f"Error calling Bundle API: {e}")
@@ -275,12 +287,9 @@ def get_flight_response(message: str, url: str, user_id: str = None, session_id:
         
         # Extract according to user requirements
         actual_output = data.get("output_response", "")
-        raw_data = ""
         
-        # Put result_intent_detection into raw_data
-        intent_data = data.get("result_intent_detection")
-        if intent_data:
-            raw_data = json.dumps(intent_data, ensure_ascii=False, indent=2)
+        # 保存完整原始响应
+        raw_data = json.dumps(data, ensure_ascii=False, indent=2)
             
         return json.dumps({
             "result": actual_output, 
