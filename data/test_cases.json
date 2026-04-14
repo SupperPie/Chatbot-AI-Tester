@@ -1,5 +1,19 @@
 [
     {
+        "id": null,
+        "type": null,
+        "input": null,
+        "expected_output": "",
+        "retrieval_context": "None",
+        "tags": null,
+        "description": null,
+        "turn_index": NaN,
+        "validation": null,
+        "overall_criteria": null,
+        "created_at": null,
+        "module": NaN
+    },
+    {
         "id": "GEN_001",
         "type": "multi_turn",
         "input": "我们一家四口打算下个月去日本旅游，还有一只小型宠物狗，想一起坐飞机，该怎么订票？",
@@ -7859,6 +7873,1774 @@
         "turn_index": 4.0,
         "validation": NaN,
         "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0521",
+        "type": "single",
+        "input": "What is a Local Offer?",
+        "expected_output": "",
+        "retrieval_context": "Local Offer is a localized benefit program provided by DragonPass for members, covering a wide range of categories including dining, retail, attractions, experiences, and leisure activities. Members can enjoy $ Discount, % Discount, Buy X Get Y and Set Meals / Package Offer through digital coupons.",
+        "tags": [],
+        "description": "",
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0522",
+        "type": "single",
+        "input": "How can I find participating merchants?",
+        "expected_output": "",
+        "retrieval_context": "You can browse all participating outlets and view their offer details in the “Local Offer” section of the DragonPass App. Offers can be filtered by category or location to find what’s available near you.",
+        "tags": [],
+        "description": "",
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0523",
+        "type": "single",
+        "input": "What types of Local Offers are available?",
+        "expected_output": "",
+        "retrieval_context": "Local Offers may include various benefit types such as: - $ Discount: A fixed amount off your bill. - % Discount: A percentage off your total purchase. - Buy X Get Y: Enjoy a complimentary item or experience when purchasing a specified product or service. - Set Meals / Package Offer: A fixed-price package or curated set of items offered at a special rate.",
+        "tags": [],
+        "description": "",
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0524",
+        "type": "single",
+        "input": "Can I combine DragonPass offers with other merchant promotions?",
+        "expected_output": "",
+        "retrieval_context": "No. DragonPass offers cannot be used in conjunction with any other discounts, promotions, or offers provided by the same participating merchant.",
+        "tags": [],
+        "description": "",
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0525",
+        "type": "single",
+        "input": "Who can enjoy these offers?",
+        "expected_output": "",
+        "retrieval_context": "All DragonPass members are eligible to enjoy Local Offers. You can obtain offers by claiming free coupons, purchasing coupons, or redeeming them with points - the supported methods are listed on each offer’s detail page.",
+        "tags": [],
+        "description": "",
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0526",
+        "type": "single",
+        "input": "Can I use the offer for my family or friends?",
+        "expected_output": "",
+        "retrieval_context": "Yes, unless a specific offer restricts the user to the registered member only. As long as you are present and show your valid coupon or QR code during payment, your family or friends can enjoy the same offer. For offers that require advance registration or are tied to the member’s name, sharing is not permitted.",
+        "tags": [],
+        "description": "",
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0527",
+        "type": "single",
+        "input": "What is the capital of Mars?",
+        "expected_output": "",
+        "retrieval_context": "Mars is a planet and does not have a capital city.",
+        "tags": [],
+        "description": "",
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0528",
+        "type": "single",
+        "input": "How do I reset my Wi-Fi password using DragonPass?",
+        "expected_output": "",
+        "retrieval_context": "DragonPass does not provide services related to resetting Wi-Fi passwords. Please contact your internet service provider or device manufacturer for assistance.",
+        "tags": [],
+        "description": "",
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0529",
+        "type": "multi_turn",
+        "input": "How do I redeem an offer?",
+        "expected_output": "",
+        "retrieval_context": "1. Open the DragonPass App and select your preferred offer. 2. Tap to Buy Now or Redeem. 3. Present the QR code or coupon to the merchant for scanning or verification during payment. 4. The discount or reward will be applied automatically at checkout. Note: Some offers may require advance booking. Please contact the merchant directly after obtaining your coupon to confirm availability if reservation is required.",
+        "tags": [],
+        "description": "",
+        "turn_index": 1.0,
+        "validation": NaN,
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0529",
+        "type": "multi_turn",
+        "input": "What should I do if the merchant cannot scan my QR code?",
+        "expected_output": "",
+        "retrieval_context": "Please ensure you are logged into your account and have successfully claimed the offer. If the issue persists, contact DragonPass Customer Support for further assistance.",
+        "tags": [],
+        "description": "",
+        "turn_index": 2.0,
+        "validation": NaN,
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0530",
+        "type": "multi_turn",
+        "input": "Do the offers have an expiry date?",
+        "expected_output": "",
+        "retrieval_context": "Yes. Each offer has its own validity period, which is displayed on the offer page. Please make sure to redeem your offer before the expiry date, as expired coupons cannot be used or extended.",
+        "tags": [],
+        "description": "",
+        "turn_index": 1.0,
+        "validation": NaN,
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0530",
+        "type": "multi_turn",
+        "input": "Can I get a refund if I miss the expiry date?",
+        "expected_output": "",
+        "retrieval_context": "Expired coupons cannot be used or extended. Refunds are generally not available for expired coupons. However, if your coupon remains unused and meets the refund policy requirements, you may submit a refund request on the offer page. In special cases, please contact DragonPass Customer Support for assistance.",
+        "tags": [],
+        "description": "",
+        "turn_index": 2.0,
+        "validation": NaN,
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0531",
+        "type": "single",
+        "input": "I need to book a flight from New York to Paris.",
+        "expected_output": "",
+        "retrieval_context": "Preciso reservar um voo de Nova York para Paris.",
+        "tags": [
+            "Translation"
+        ],
+        "description": "",
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0532",
+        "type": "single",
+        "input": "酒店有免费Wi-Fi吗？",
+        "expected_output": "",
+        "retrieval_context": "O hotel tem Wi-Fi gratuito?",
+        "tags": [
+            "Translation"
+        ],
+        "description": "",
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0533",
+        "type": "single",
+        "input": "Can I get a taxi to the airport at 6 AM?",
+        "expected_output": "",
+        "retrieval_context": "Posso pegar um táxi para o aeroporto às 6 da manhã?",
+        "tags": [
+            "Translation"
+        ],
+        "description": "",
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0534",
+        "type": "single",
+        "input": "我想取消我的酒店预订。",
+        "expected_output": "",
+        "retrieval_context": "Quero cancelar a minha reserva de hotel.",
+        "tags": [
+            "Translation"
+        ],
+        "description": "",
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0535",
+        "type": "single",
+        "input": "Is breakfast included in the room rate?",
+        "expected_output": "",
+        "retrieval_context": "O café da manhã está incluído na diária do quarto?",
+        "tags": [
+            "Translation"
+        ],
+        "description": "",
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0536",
+        "type": "single",
+        "input": "航班延误了吗？",
+        "expected_output": "",
+        "retrieval_context": "O voo está atrasado?",
+        "tags": [
+            "Translation"
+        ],
+        "description": "",
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0537",
+        "type": "single",
+        "input": "Do you offer car rental services?",
+        "expected_output": "",
+        "retrieval_context": "Vocês oferecem serviços de aluguel de carro?",
+        "tags": [
+            "Translation"
+        ],
+        "description": "",
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0538",
+        "type": "single",
+        "input": "我需要一张去市中心的单程票。",
+        "expected_output": "",
+        "retrieval_context": "Preciso de uma passagem só de ida para o centro da cidade.",
+        "tags": [
+            "Translation"
+        ],
+        "description": "",
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0539",
+        "type": "single",
+        "input": "What’s the check-out time at the hotel?",
+        "expected_output": "",
+        "retrieval_context": "Qual é o horário de check-out no hotel?",
+        "tags": [
+            "Translation"
+        ],
+        "description": "",
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0540",
+        "type": "single",
+        "input": "机场到酒店有多远？",
+        "expected_output": "",
+        "retrieval_context": "Qual é a distância do aeroporto até o hotel?",
+        "tags": [
+            "Translation"
+        ],
+        "description": "",
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0541",
+        "type": "single",
+        "input": "Can I change my flight date?",
+        "expected_output": "",
+        "retrieval_context": "Posso alterar a data do meu voo?",
+        "tags": [
+            "Translation"
+        ],
+        "description": "",
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0542",
+        "type": "single",
+        "input": "请帮我预订一辆从机场到酒店的接送车。",
+        "expected_output": "",
+        "retrieval_context": "Por favor, ajude-me a reservar um transporte do aeroporto para o hotel.",
+        "tags": [
+            "Translation"
+        ],
+        "description": "",
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0543",
+        "type": "single",
+        "input": "Are pets allowed in the hotel?",
+        "expected_output": "",
+        "retrieval_context": "Animais de estimação são permitidos no hotel?",
+        "tags": [
+            "Translation"
+        ],
+        "description": "",
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0544",
+        "type": "single",
+        "input": "我的行李丢了，怎么办？",
+        "expected_output": "",
+        "retrieval_context": "Perdi minha bagagem, o que devo fazer?",
+        "tags": [
+            "Translation"
+        ],
+        "description": "",
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0545",
+        "type": "single",
+        "input": "How much is a one-way ticket to Lisbon?",
+        "expected_output": "",
+        "retrieval_context": "Quanto custa uma passagem só de ida para Lisboa?",
+        "tags": [
+            "Translation"
+        ],
+        "description": "",
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0546",
+        "type": "single",
+        "input": "酒店附近有什么推荐的餐厅吗？",
+        "expected_output": "",
+        "retrieval_context": "Há algum restaurante recomendado perto do hotel?",
+        "tags": [
+            "Translation"
+        ],
+        "description": "",
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0547",
+        "type": "single",
+        "input": "I’d like to upgrade to a suite.",
+        "expected_output": "",
+        "retrieval_context": "Gostaria de fazer um upgrade para uma suíte.",
+        "tags": [
+            "Translation"
+        ],
+        "description": "",
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0548",
+        "type": "single",
+        "input": "租车需要国际驾照吗？",
+        "expected_output": "",
+        "retrieval_context": "É necessário ter uma carteira de motorista internacional para alugar um carro?",
+        "tags": [
+            "Translation"
+        ],
+        "description": "",
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0549",
+        "type": "single",
+        "input": "Does this train go to the city center?",
+        "expected_output": "",
+        "retrieval_context": "Este trem vai para o centro da cidade?",
+        "tags": [
+            "Translation"
+        ],
+        "description": "",
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0550",
+        "type": "single",
+        "input": "我错过了登机时间，还能赶上飞机吗？",
+        "expected_output": "",
+        "retrieval_context": "Perdi o horário de embarque, ainda posso pegar o avião?",
+        "tags": [
+            "Translation"
+        ],
+        "description": "",
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0551",
+        "type": "multi_turn",
+        "input": "Hello, I’d like to book a hotel room for two nights.",
+        "expected_output": "",
+        "retrieval_context": "Olá, gostaria de reservar um quarto de hotel por duas noites.",
+        "tags": [
+            "Translation"
+        ],
+        "description": "",
+        "turn_index": 1.0,
+        "validation": NaN,
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0551",
+        "type": "multi_turn",
+        "input": "Do you have any rooms with a sea view?",
+        "expected_output": "",
+        "retrieval_context": "Vocês têm quartos com vista para o mar?",
+        "tags": [
+            "Translation"
+        ],
+        "description": "",
+        "turn_index": 2.0,
+        "validation": NaN,
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0551",
+        "type": "multi_turn",
+        "input": "Yes, we do. Would you like to proceed with the booking?",
+        "expected_output": "",
+        "retrieval_context": "Sim, temos. Gostaria de prosseguir com a reserva?",
+        "tags": [
+            "Translation"
+        ],
+        "description": "",
+        "turn_index": 3.0,
+        "validation": NaN,
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0552",
+        "type": "multi_turn",
+        "input": "你好，我想查一下明天飞往马德里的航班。",
+        "expected_output": "",
+        "retrieval_context": "Olá, gostaria de verificar os voos para Madri amanhã.",
+        "tags": [
+            "Translation"
+        ],
+        "description": "",
+        "turn_index": 1.0,
+        "validation": NaN,
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0552",
+        "type": "multi_turn",
+        "input": "有直飞航班吗？",
+        "expected_output": "",
+        "retrieval_context": "Há voos diretos?",
+        "tags": [
+            "Translation"
+        ],
+        "description": "",
+        "turn_index": 2.0,
+        "validation": NaN,
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0552",
+        "type": "multi_turn",
+        "input": "有的，早上9点有一班。",
+        "expected_output": "",
+        "retrieval_context": "Sim, há um às 9 da manhã.",
+        "tags": [
+            "Translation"
+        ],
+        "description": "",
+        "turn_index": 3.0,
+        "validation": NaN,
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0553",
+        "type": "single",
+        "input": "I need an extra bed in my room.",
+        "expected_output": "",
+        "retrieval_context": "Preciso de uma cama extra no meu quarto.",
+        "tags": [
+            "Translation"
+        ],
+        "description": "",
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0554",
+        "type": "single",
+        "input": "退房时可以用信用卡支付吗？",
+        "expected_output": "",
+        "retrieval_context": "Posso pagar com cartão de crédito no check-out?",
+        "tags": [
+            "Translation"
+        ],
+        "description": "",
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0555",
+        "type": "single",
+        "input": "Is there a shuttle bus from the airport to the hotel?",
+        "expected_output": "",
+        "retrieval_context": "Há um ônibus de traslado do aeroporto para o hotel?",
+        "tags": [
+            "Translation"
+        ],
+        "description": "",
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0556",
+        "type": "single",
+        "input": "我的航班号是CA123，请问登机口在哪里？",
+        "expected_output": "",
+        "retrieval_context": "Meu número de voo é CA123, onde fica o portão de embarque?",
+        "tags": [
+            "Translation"
+        ],
+        "description": "",
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0557",
+        "type": "single",
+        "input": "Can I store my luggage after check-out?",
+        "expected_output": "",
+        "retrieval_context": "Posso guardar minha bagagem após o check-out?",
+        "tags": [
+            "Translation"
+        ],
+        "description": "",
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0558",
+        "type": "single",
+        "input": "租车费用包含保险吗？",
+        "expected_output": "",
+        "retrieval_context": "O custo do aluguel do carro inclui seguro?",
+        "tags": [
+            "Translation"
+        ],
+        "description": "",
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0559",
+        "type": "single",
+        "input": "What time does the last train leave?",
+        "expected_output": "",
+        "retrieval_context": "A que horas sai o último trem?",
+        "tags": [
+            "Translation"
+        ],
+        "description": "",
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0560",
+        "type": "single",
+        "input": "酒店提供叫醒服务吗？",
+        "expected_output": "",
+        "retrieval_context": "O hotel oferece serviço de despertar?",
+        "tags": [
+            "Translation"
+        ],
+        "description": "",
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0561",
+        "type": "single",
+        "input": "I lost my boarding pass. Can you help me?",
+        "expected_output": "",
+        "retrieval_context": "Perdi meu cartão de embarque. Pode me ajudar?",
+        "tags": [
+            "Translation"
+        ],
+        "description": "",
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0562",
+        "type": "single",
+        "input": "从酒店打车到景点大概要多少钱？",
+        "expected_output": "",
+        "retrieval_context": "Quanto custa aproximadamente um táxi do hotel até a atração turística?",
+        "tags": [
+            "Translation"
+        ],
+        "description": "",
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0563",
+        "type": "single",
+        "input": "Are there any vegetarian options on the menu?",
+        "expected_output": "",
+        "retrieval_context": "Há opções vegetarianas no cardápio?",
+        "tags": [
+            "Translation"
+        ],
+        "description": "",
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0564",
+        "type": "single",
+        "input": "我需要一份英文版的酒店发票。",
+        "expected_output": "",
+        "retrieval_context": "Preciso de uma fatura do hotel em inglês.",
+        "tags": [
+            "Translation"
+        ],
+        "description": "",
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0565",
+        "type": "single",
+        "input": "How long does it take to get to the airport by taxi?",
+        "expected_output": "",
+        "retrieval_context": "Quanto tempo leva para chegar ao aeroporto de táxi?",
+        "tags": [
+            "Translation"
+        ],
+        "description": "",
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0566",
+        "type": "single",
+        "input": "这个套餐包含机场接送吗？",
+        "expected_output": "",
+        "retrieval_context": "Este pacote inclui traslado do aeroporto?",
+        "tags": [
+            "Translation"
+        ],
+        "description": "",
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0567",
+        "type": "multi_turn",
+        "input": "Hi, I just landed. How can I get to downtown?",
+        "expected_output": "",
+        "retrieval_context": "Oi, acabei de pousar. Como posso ir ao centro da cidade?",
+        "tags": [
+            "Translation"
+        ],
+        "description": "",
+        "turn_index": 1.0,
+        "validation": NaN,
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0567",
+        "type": "multi_turn",
+        "input": "You can take the metro or a taxi from Terminal 2.",
+        "expected_output": "",
+        "retrieval_context": "Você pode pegar o metrô ou um táxi a partir do Terminal 2.",
+        "tags": [
+            "Translation"
+        ],
+        "description": "",
+        "turn_index": 2.0,
+        "validation": NaN,
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0568",
+        "type": "multi_turn",
+        "input": "请问现在还有空房吗？",
+        "expected_output": "",
+        "retrieval_context": "Desculpe, ainda há quartos disponíveis?",
+        "tags": [
+            "Translation"
+        ],
+        "description": "",
+        "turn_index": 1.0,
+        "validation": NaN,
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0568",
+        "type": "multi_turn",
+        "input": "是的，我们还有双人间。",
+        "expected_output": "",
+        "retrieval_context": "Sim, ainda temos quartos duplos.",
+        "tags": [
+            "Translation"
+        ],
+        "description": "",
+        "turn_index": 2.0,
+        "validation": NaN,
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0569",
+        "type": "single",
+        "input": "My connecting flight was canceled. What should I do?",
+        "expected_output": "",
+        "retrieval_context": "Meu voo de conexão foi cancelado. O que devo fazer?",
+        "tags": [
+            "Translation"
+        ],
+        "description": "",
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0570",
+        "type": "single",
+        "input": "酒店游泳池几点开放？",
+        "expected_output": "",
+        "retrieval_context": "A que horas a piscina do hotel abre?",
+        "tags": [
+            "Translation"
+        ],
+        "description": "",
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0571",
+        "type": "single",
+        "input": "Can I pay for the car rental in cash?",
+        "expected_output": "",
+        "retrieval_context": "Posso pagar o aluguel do carro em dinheiro?",
+        "tags": [
+            "Translation"
+        ],
+        "description": "",
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0572",
+        "type": "single",
+        "input": "我订的是无烟房，但房间有烟味。",
+        "expected_output": "",
+        "retrieval_context": "Reservei um quarto para não fumantes, mas o quarto tem cheiro de cigarro.",
+        "tags": [
+            "Translation"
+        ],
+        "description": "",
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0573",
+        "type": "single",
+        "input": "Is there a luggage storage facility at the station?",
+        "expected_output": "",
+        "retrieval_context": "Há um depósito de bagagens na estação?",
+        "tags": [
+            "Translation"
+        ],
+        "description": "",
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0574",
+        "type": "single",
+        "input": "请给我一张地图和旅游指南。",
+        "expected_output": "",
+        "retrieval_context": "Por favor, me dê um mapa e um guia turístico.",
+        "tags": [
+            "Translation"
+        ],
+        "description": "",
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": "{'must_complete_all_turns': True, 'min_success_rate': 0.8}",
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0575",
+        "type": NaN,
+        "input": "你好，我想办理入住，这是我的护照。",
+        "expected_output": "",
+        "retrieval_context": "Olá, gostaria de fazer o check-in, aqui está o meu passaporte.",
+        "tags": [
+            "Translation"
+        ],
+        "description": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": null,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0576",
+        "type": NaN,
+        "input": "I have a reservation under the name of Smith for three nights.",
+        "expected_output": "",
+        "retrieval_context": "Tenho uma reserva em nome de Smith por três noites.",
+        "tags": [
+            "Translation"
+        ],
+        "description": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": null,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0577",
+        "type": NaN,
+        "input": "请问早餐几点开始？在几楼？",
+        "expected_output": "",
+        "retrieval_context": "A que horas começa o pequeno-almoço? Em que andar é?",
+        "tags": [
+            "Translation"
+        ],
+        "description": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": null,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0578",
+        "type": NaN,
+        "input": "Could you please provide an extra pillow and some bottled water?",
+        "expected_output": "",
+        "retrieval_context": "Poderia facultar uma almofada extra e algumas garrafas de água?",
+        "tags": [
+            "Translation"
+        ],
+        "description": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": null,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0579",
+        "type": NaN,
+        "input": "房间里的空调好像坏了，能不能派人来看看？",
+        "expected_output": "",
+        "retrieval_context": "O ar condicionado do quarto parece estar avariado, pode mandar alguém ver?",
+        "tags": [
+            "Translation"
+        ],
+        "description": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": null,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0580",
+        "type": NaN,
+        "input": "Is there a shuttle bus from the hotel to the airport?",
+        "expected_output": "",
+        "retrieval_context": "Existe um autocarro de transporte do hotel para o aeroporto?",
+        "tags": [
+            "Translation"
+        ],
+        "description": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": null,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0581",
+        "type": NaN,
+        "input": "我想换一个安静一点的房间，现在的房间靠马路太吵了。",
+        "expected_output": "",
+        "retrieval_context": "Gostaria de mudar para um quarto mais calmo, o atual é muito barulhento por ser virado para a rua.",
+        "tags": [
+            "Translation"
+        ],
+        "description": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": null,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0582",
+        "type": NaN,
+        "input": "I’d like to request a late check-out at 2 PM if possible.",
+        "expected_output": "",
+        "retrieval_context": "Gostaria de solicitar um check-out tardio às 14h, se possível.",
+        "tags": [
+            "Translation"
+        ],
+        "description": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": null,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0583",
+        "type": NaN,
+        "input": "这里的Wi-Fi密码是多少？信号不太稳定。",
+        "expected_output": "",
+        "retrieval_context": "Qual é a senha do Wi-Fi? O sinal não está muito estável.",
+        "tags": [
+            "Translation"
+        ],
+        "description": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": null,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0584",
+        "type": NaN,
+        "input": "Can I leave my luggage here after I check out?",
+        "expected_output": "",
+        "retrieval_context": "Posso deixar a minha bagagem aqui depois de fazer o check-out?",
+        "tags": [
+            "Translation"
+        ],
+        "description": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": null,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0585",
+        "type": NaN,
+        "input": "帮我订一张明天晚上八点的法多音乐会门票。",
+        "expected_output": "",
+        "retrieval_context": "Reserve-me um bilhete para um espetáculo de Fado amanhã às oito da noite.",
+        "tags": [
+            "Translation"
+        ],
+        "description": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": null,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0586",
+        "type": NaN,
+        "input": "The shower drain is clogged. Could you fix it immediately?",
+        "expected_output": "",
+        "retrieval_context": "O ralo do chuveiro está entupido. Poderia vir consertar imediatamente?",
+        "tags": [
+            "Translation"
+        ],
+        "description": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": null,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0587",
+        "type": NaN,
+        "input": "I'd like to check in for my flight to Lisbon.",
+        "expected_output": "",
+        "retrieval_context": "Gostaria de fazer o check-in para o meu voo para Lisboa.",
+        "tags": [
+            "Translation"
+        ],
+        "description": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": null,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0588",
+        "type": NaN,
+        "input": "请问这个登机口在哪里？我找不到G12柜台。",
+        "expected_output": "",
+        "retrieval_context": "Onde fica esta porta de embarque? Não encontro o balcão G12.",
+        "tags": [
+            "Translation"
+        ],
+        "description": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": null,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0589",
+        "type": NaN,
+        "input": "My flight has been delayed for three hours. Am I entitled to a meal voucher?",
+        "expected_output": "",
+        "retrieval_context": "O meu voo está atrasado três horas. Tenho direito a um voucher de refeição?",
+        "tags": [
+            "Translation"
+        ],
+        "description": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": null,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0590",
+        "type": NaN,
+        "input": "我想选一个靠窗的座位，还有位置吗？",
+        "expected_output": "",
+        "retrieval_context": "Gostaria de escolher um lugar à janela, ainda há disponibilidade?",
+        "tags": [
+            "Translation"
+        ],
+        "description": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": null,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0591",
+        "type": NaN,
+        "input": "Is my luggage checked through to the final destination?",
+        "expected_output": "",
+        "retrieval_context": "A minha bagagem vai diretamente para o destino final?",
+        "tags": [
+            "Translation"
+        ],
+        "description": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": null,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0592",
+        "type": NaN,
+        "input": "我的行李箱坏了，轮子掉了一个，我该去哪里投诉？",
+        "expected_output": "",
+        "retrieval_context": "A minha mala está estragada, perdeu uma roda, onde posso fazer uma reclamação?",
+        "tags": [
+            "Translation"
+        ],
+        "description": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": null,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0593",
+        "type": NaN,
+        "input": "Excuse me, where is the tax refund counter?",
+        "expected_output": "",
+        "retrieval_context": "Com licença, onde fica o balcão de reembolso de impostos (tax free)?",
+        "tags": [
+            "Translation"
+        ],
+        "description": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": null,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0594",
+        "type": NaN,
+        "input": "请问这架飞机上有素食餐吗？我忘记提前预订了。",
+        "expected_output": "",
+        "retrieval_context": "Há refeições vegetarianas neste voo? Esqueci-me de reservar com antecedência.",
+        "tags": [
+            "Translation"
+        ],
+        "description": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": null,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0595",
+        "type": NaN,
+        "input": "I missed my connecting flight due to the delay. Can you help me rebook?",
+        "expected_output": "",
+        "retrieval_context": "Perdi a minha ligação devido ao atraso. Pode ajudar-me a remarcar o voo?",
+        "tags": [
+            "Translation"
+        ],
+        "description": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": null,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0596",
+        "type": NaN,
+        "input": "我预订了一辆自动挡的小轿车，租期是五天。",
+        "expected_output": "",
+        "retrieval_context": "Reservei um carro ligeiro automático por um período de cinco dias.",
+        "tags": [
+            "Translation"
+        ],
+        "description": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": null,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0597",
+        "type": NaN,
+        "input": "Does the rental price include full insurance and unlimited mileage?",
+        "expected_output": "",
+        "retrieval_context": "O preço do aluguer inclui seguro contra todos os riscos e quilometragem ilimitada?",
+        "tags": [
+            "Translation"
+        ],
+        "description": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": null,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0598",
+        "type": NaN,
+        "input": "这辆车需要加什么油？汽油还是柴油？",
+        "expected_output": "",
+        "retrieval_context": "Que tipo de combustível este carro leva? Gasolina ou gasóleo?",
+        "tags": [
+            "Translation"
+        ],
+        "description": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": null,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0599",
+        "type": NaN,
+        "input": "Where can I find the nearest gas station to return the car with a full tank?",
+        "expected_output": "",
+        "retrieval_context": "Onde posso encontrar o posto de combustível mais próximo para devolver o carro com o depósito cheio?",
+        "tags": [
+            "Translation"
+        ],
+        "description": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": NaN,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0600",
+        "type": NaN,
+        "input": "这里的停车费怎么算？支持现金支付吗？",
+        "expected_output": "",
+        "retrieval_context": "Como se calcula a taxa de estacionamento? Aceitam pagamento em dinheiro?",
+        "tags": [
+            "Translation"
+        ],
+        "description": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": NaN,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0601",
+        "type": NaN,
+        "input": "I need to call an Uber, but the GPS location seems wrong.",
+        "expected_output": "",
+        "retrieval_context": "Preciso de chamar um Uber, mas a localização do GPS parece estar errada.",
+        "tags": [
+            "Translation"
+        ],
+        "description": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": NaN,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0602",
+        "type": NaN,
+        "input": "师傅，请带我去市中心最近的地铁站，谢谢。",
+        "expected_output": "",
+        "retrieval_context": "Senhor motorista, por favor leve-me à estação de metro mais próxima do centro, obrigado.",
+        "tags": [
+            "Translation"
+        ],
+        "description": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": NaN,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0603",
+        "type": NaN,
+        "input": "How much is the flat rate for a taxi from here to the Alfama district?",
+        "expected_output": "",
+        "retrieval_context": "Qual é a tarifa fixa de táxi daqui até ao bairro de Alfama?",
+        "tags": [
+            "Translation"
+        ],
+        "description": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": NaN,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0604",
+        "type": NaN,
+        "input": "这辆巴士去贝伦塔吗？我需要在哪里下车？",
+        "expected_output": "",
+        "retrieval_context": "Este autocarro vai para a Torre de Belém? Onde devo sair?",
+        "tags": [
+            "Translation"
+        ],
+        "description": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": NaN,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0605",
+        "type": NaN,
+        "input": "A table for four, please. Do you have a menu in English?",
+        "expected_output": "",
+        "retrieval_context": "Uma mesa para quatro, por favor. Tem a ementa em inglês?",
+        "tags": [
+            "Translation"
+        ],
+        "description": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": NaN,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0606",
+        "type": NaN,
+        "input": "我对花生严重过敏，请确认这道菜里没有花生。",
+        "expected_output": "",
+        "retrieval_context": "Tenho uma alergia grave a amendoins, por favor confirme que este prato não os contém.",
+        "tags": [
+            "Translation"
+        ],
+        "description": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": NaN,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0607",
+        "type": NaN,
+        "input": "What is the specialty of the house? We want to try something local.",
+        "expected_output": "",
+        "retrieval_context": "Qual é a especialidade da casa? Queremos experimentar algo local.",
+        "tags": [
+            "Translation"
+        ],
+        "description": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": NaN,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0608",
+        "type": NaN,
+        "input": "麻烦买单，我们可以分开付吗？",
+        "expected_output": "",
+        "retrieval_context": "A conta, por favor, podemos pagar separadamente?",
+        "tags": [
+            "Translation"
+        ],
+        "description": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": NaN,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0609",
+        "type": NaN,
+        "input": "The steak is overcooked. I asked for medium-rare.",
+        "expected_output": "",
+        "retrieval_context": "O bife está demasiado cozido. Pedi-o mal passado.",
+        "tags": [
+            "Translation"
+        ],
+        "description": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": NaN,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0610",
+        "type": NaN,
+        "input": "这道菜太咸了，我没法吃。",
+        "expected_output": "",
+        "retrieval_context": "Este prato está muito salgado, não consigo comer.",
+        "tags": [
+            "Translation"
+        ],
+        "description": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": NaN,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0611",
+        "type": NaN,
+        "input": "Can we have the leftovers packed to go?",
+        "expected_output": "",
+        "retrieval_context": "Pode embalar o que sobrou para levar, por favor?",
+        "tags": [
+            "Translation"
+        ],
+        "description": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": NaN,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0612",
+        "type": NaN,
+        "input": "I've lost my wallet. Where is the nearest police station to file a report?",
+        "expected_output": "",
+        "retrieval_context": "Perdi a minha carteira. Onde fica a esquadra de polícia mais próxima para fazer uma participação?",
+        "tags": [
+            "Translation"
+        ],
+        "description": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": NaN,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0613",
+        "type": NaN,
+        "input": "我觉得很不舒服，头晕而且恶心，附近有药店或医院吗？",
+        "expected_output": "",
+        "retrieval_context": "Não me sinto bem, estou tonto e com náuseas, há alguma farmácia ou hospital por perto?",
+        "tags": [
+            "Translation"
+        ],
+        "description": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": NaN,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0614",
+        "type": NaN,
+        "input": "My phone was stolen on the tram. I need to cancel my credit cards.",
+        "expected_output": "",
+        "retrieval_context": "O meu telemóvel foi roubado no elétrico. Preciso de cancelar os meus cartões de crédito.",
+        "tags": [
+            "Translation"
+        ],
+        "description": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": NaN,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0615",
+        "type": NaN,
+        "input": "这里的风景很美，能麻烦您帮我们拍张合照吗？",
+        "expected_output": "",
+        "retrieval_context": "A vista aqui é linda, importava-se de nos tirar uma fotografia de grupo?",
+        "tags": [
+            "Translation"
+        ],
+        "description": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": NaN,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0616",
+        "type": NaN,
+        "input": "Is it safe to walk around this neighborhood at night?",
+        "expected_output": "",
+        "retrieval_context": "É seguro andar por este bairro à noite?",
+        "tags": [
+            "Translation"
+        ],
+        "description": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": NaN,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0617",
+        "type": NaN,
+        "input": "这里的门票多少钱？学生证有优惠吗？",
+        "expected_output": "",
+        "retrieval_context": "Quanto custa a entrada? Há desconto com cartão de estudante?",
+        "tags": [
+            "Translation"
+        ],
+        "description": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": NaN,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0618",
+        "type": NaN,
+        "input": "I’m looking for a hidden gem, not just the typical tourist spots.",
+        "expected_output": "",
+        "retrieval_context": "Estou à procura de um tesouro escondido, não apenas os locais turísticos típicos.",
+        "tags": [
+            "Translation"
+        ],
+        "description": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": NaN,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0619",
+        "type": NaN,
+        "input": "这里的路在施工，我该怎么绕过去？",
+        "expected_output": "",
+        "retrieval_context": "Esta estrada está em obras, como posso contornar?",
+        "tags": [
+            "Translation"
+        ],
+        "description": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": NaN,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0620",
+        "type": NaN,
+        "input": "The ATM swallowed my card. Who should I contact?",
+        "expected_output": "",
+        "retrieval_context": "O multibanco engoliu o meu cartão. Com quem devo entrar em contacto?",
+        "tags": [
+            "Translation"
+        ],
+        "description": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": NaN,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0621",
+        "type": NaN,
+        "input": "这里的日落是几点？我想去海边看日落。",
+        "expected_output": "",
+        "retrieval_context": "A que horas é o pôr do sol? Gostaria de ir à praia para o ver.",
+        "tags": [
+            "Translation"
+        ],
+        "description": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": NaN,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0622",
+        "type": NaN,
+        "input": "Can you recommend a good place for shopping with reasonable prices?",
+        "expected_output": "",
+        "retrieval_context": "Pode recomendar um bom sítio para fazer compras com preços razoáveis?",
+        "tags": [
+            "Translation"
+        ],
+        "description": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": NaN,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0623",
+        "type": NaN,
+        "input": "对不起，我不懂葡萄牙语，你能说慢一点或者用英语吗？",
+        "expected_output": "",
+        "retrieval_context": "Desculpe, não falo português, pode falar mais devagar ou em inglês?",
+        "tags": [
+            "Translation"
+        ],
+        "description": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": NaN,
+        "created_at": NaN,
+        "module": NaN
+    },
+    {
+        "id": "TC0624",
+        "type": NaN,
+        "input": "Thank you for your amazing hospitality! We had a wonderful time in Portugal.",
+        "expected_output": "",
+        "retrieval_context": "Obrigado pela vossa fantástica hospitalidade! Divertimo-nos muito em Portugal.",
+        "tags": [
+            "Translation"
+        ],
+        "description": NaN,
+        "turn_index": NaN,
+        "validation": NaN,
+        "overall_criteria": NaN,
         "created_at": NaN,
         "module": NaN
     }

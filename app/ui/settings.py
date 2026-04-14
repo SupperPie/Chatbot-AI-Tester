@@ -40,9 +40,9 @@ def render_settings_page():
             "Description": st.column_config.TextColumn("Description"),
             "Type": st.column_config.SelectboxColumn(
                 "Type",
-                options=["bundle", "skills", "flight", "limo", "dify", "dify_workflow"],
+                options=["bundle", "skills", "flight", "limo", "dify", "dify_workflow", "agent_qa", "hotel", "ai_engineering", "translation"],
                 default="bundle",
-                help="dify = Dify /v1/chat-messages; dify_workflow = Dify Workflow API; skills/bundle/limo/flight = internal APIs"
+                help="dify = Dify /v1/chat-messages; dify_workflow = Dify Workflow API; ai_engineering = AI Engineering 流式接口; skills/bundle/limo/flight/agent_qa/hotel = internal APIs"
             ),
             "Token": st.column_config.TextColumn("Token (Dify/Workflow)", help="Dify: Bearer token (app-xxx); Workflow: x-app-code|x-app-passport"),
         },
@@ -92,6 +92,8 @@ def render_settings_page():
         "flight": "查询北京到上海的航班",
         "limo": "我需要接机服务",
         "skills": "机场贵宾厅服务",
+        "ai_engineering": "你好，这是一条测试消息",
+        "translation": "OK, the order has been placed for you.",
     }
     api_type = configs.get(test_api_name, {}).get("type", "bundle") if test_api_name else "bundle"
     default_msg = default_messages.get(api_type, "Hello, World!")

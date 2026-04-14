@@ -502,6 +502,198 @@ def get_dify_response(message: str, url: str, token: str = None, user_id: str = 
         return f"Error: {str(e)}"
 
 
+def get_translation_response(message: str, url: str, user_id: str = None, session_id: str = None, sys_lang: str = "pt-BR") -> str:
+    """Translation 流式接口客户端
+    
+    响应解析规则：
+    - type="done": 提取 data.translation_result 作为结果
+    """
+    payload = {
+        "query": message,
+        "config": {
+            "translate_config": {
+                "sys_lang": sys_lang
+            }
+        }
+    }
+    
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream"
+    }
+
+    print(f"[Translation] Sending request to {url}")
+    print(f"[Translation] Request Payload: {json.dumps(payload, ensure_ascii=False, indent=2)}")
+    print(f"[Translation] Request Headers: {headers}")
+    
+    try:
+        start_time = time.time()
+        response = requests.post(url, json=payload, headers=headers, stream=True, timeout=600)
+        
+        if not response.ok:
+            print(f"[Translation] API Error {response.status_code}: {response.text}")
+            return f"❌ SERVER DETAIL ({response.status_code}): {response.text}"
+            
+        final_answer = ""
+        raw_chunks = []
+        translation_data = None
+        
+        ttft = 0.0
+        got_first_token = False
+        
+        for line in response.iter_lines():
+            if line:
+                decoded_line = line.decode('utf-8')
+                if decoded_line.startswith("data: "):
+                    json_str = decoded_line[6:]
+                    if json_str.strip() == "[DONE]":
+                        break
+                    
+                    try:
+                        data = json.loads(json_str)
+                        raw_chunks.append(json.dumps(data, ensure_ascii=False))
+
+                        msg_type = data.get("type")
+                        
+                        if msg_type == "done":
+                            if not got_first_token:
+                                ttft = time.time() - start_time
+                                got_first_token = True
+                            translation_data = data.get("data", {})
+                            final_answer = translation_data.get("translation_result", "")
+                            break
+
+                    except json.JSONDecodeError:
+                        raw_chunks.append(f"Decode Error: {json_str}")
+                        continue
+        
+        raw_full_str = "\n".join(raw_chunks)
+        
+        # 构建 inform_base 展示翻译元信息
+        inform_base = ""
+        if translation_data:
+            inform_base = f"source_lang: {translation_data.get('source_lang', 'N/A')} → target_lang: {translation_data.get('target_lang', 'N/A')} | mode: {translation_data.get('mode', 'N/A')}"
+        
+        if not final_answer:
+            if raw_chunks:
+                final_answer = "Raw data captured (parsing failed). See Raw Data."
+            else:
+                final_answer = "Error: No response content found."
+
+        return json.dumps({
+            "result": final_answer, 
+            "thinking": "",
+            "inform_base": inform_base,
+            "raw": raw_full_str,
+            "ttft": ttft
+        }, ensure_ascii=False)
+
+    except requests.exceptions.Timeout:
+        return "Error: Translation API Request Timed Out (600s)"
+    except Exception as e:
+        print(f"[Translation] Error: {e}")
+        return f"Error: {e}"
+
+
+def get_ai_engineering_response(message: str, url: str, user_id: str = None, session_id: str = None, lob: str = "dc") -> str:
+    """AI Engineering 流式接口客户端
+    
+    响应解析规则：
+    - type="content": 流式输出中
+    - type="done": 流式结束，提取 content 作为 result
+    """
+    if user_id is None:
+        user_id = str(uuid.uuid4())
+    if session_id is None:
+        session_id = str(uuid.uuid4())[:8]
+    
+    payload = {
+        "query": message,
+        "user_id": user_id,
+        "thread_id": session_id,
+        "lob": lob
+    }
+    
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream"
+    }
+
+    print(f"[AI Engineering] Sending request to {url} with query: {message}")
+    
+    try:
+        start_time = time.time()
+        response = requests.post(url, json=payload, headers=headers, stream=True, timeout=600)
+        
+        if not response.ok:
+            print(f"[AI Engineering] API Error {response.status_code}: {response.text}")
+            return f"❌ SERVER DETAIL ({response.status_code}): {response.text}"
+            
+        final_answer = ""
+        raw_chunks = []
+        
+        ttft = 0.0
+        got_first_token = False
+        
+        for line in response.iter_lines():
+            if line:
+                decoded_line = line.decode('utf-8')
+                if decoded_line.startswith("data: "):
+                    json_str = decoded_line[6:]
+                    if json_str.strip() == "[DONE]":
+                        break
+                    
+                    try:
+                        data = json.loads(json_str)
+                        raw_chunks.append(json.dumps(data, ensure_ascii=False))
+
+                        msg_type = data.get("type")
+                        content = data.get("content", "")
+                        
+                        if msg_type == "content":
+                            # 流式输出中
+                            if content:
+                                if not got_first_token:
+                                    ttft = time.time() - start_time
+                                    got_first_token = True
+                                final_answer += content
+                                    
+                        elif msg_type == "done":
+                            # 流式结束，提取最终内容
+                            if not got_first_token:
+                                ttft = time.time() - start_time
+                                got_first_token = True
+                            if content:
+                                final_answer = content
+                            break
+
+                    except json.JSONDecodeError:
+                        raw_chunks.append(f"Decode Error: {json_str}")
+                        continue
+        
+        raw_full_str = "\n".join(raw_chunks)
+        
+        if not final_answer:
+            if raw_chunks:
+                final_answer = "Raw data captured (parsing failed). See Raw Data."
+            else:
+                final_answer = "Error: No response content found."
+
+        return json.dumps({
+            "result": final_answer, 
+            "thinking": "",
+            "inform_base": "",
+            "raw": raw_full_str,
+            "ttft": ttft
+        }, ensure_ascii=False)
+
+    except requests.exceptions.Timeout:
+        return "Error: AI Engineering API Request Timed Out (600s)"
+    except Exception as e:
+        print(f"[AI Engineering] Error: {e}")
+        return f"Error: {e}"
+
+
 def get_agent_qa_response(message: str, url: str, user_id: str = None, session_id: str = None) -> str:
     """Agent Q&A API client"""
     # Generate IDs if not provided
@@ -880,6 +1072,12 @@ def get_chat_response(message: str, api_name: str = "Bundle API", user_id: str =
         return get_dify_response(message, url=url, token=token, user_id=user_id, session_id=session_id)
     elif api_type == "agent_qa":
         return get_agent_qa_response(message, url=url, user_id=user_id, session_id=session_id)
+    elif api_type == "ai_engineering":
+        lob = config.get("lob", "dc")
+        return get_ai_engineering_response(message, url=url, user_id=user_id, session_id=session_id, lob=lob)
+    elif api_type == "translation":
+        sys_lang = config.get("sys_lang", "pt-BR")
+        return get_translation_response(message, url=url, user_id=user_id, session_id=session_id, sys_lang=sys_lang)
     elif api_type == "hotel":
         return get_hotel_response(message, url=url, user_id=user_id, session_id=session_id)
     elif api_type == "dify_workflow":
