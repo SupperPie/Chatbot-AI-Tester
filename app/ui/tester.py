@@ -191,8 +191,30 @@ ONLY return the highly-structured JSON array. Do not include markdown blocks lik
             use_container_width=True
         )
         
+        # 目录选择
+        save_category = 'root'
+        try:
+            from app.ui.components.category_selector import get_category_options
+            cat_opts = get_category_options()
+            if cat_opts:
+                save_col1, save_col2 = st.columns([2, 1])
+                with save_col1:
+                    save_category = st.selectbox(
+                        "📂 保存到目录",
+                        options=[c[0] for c in cat_opts],
+                        format_func=lambda x: next((c[1] for c in cat_opts if c[0] == x), x),
+                        key="tester_save_category"
+                    )
+                with save_col2:
+                    st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
+                    save_clicked = st.button("💾 Save to Library", type="primary", use_container_width=True)
+            else:
+                save_clicked = st.button("💾 Save to Library", type="primary")
+        except Exception:
+            save_clicked = st.button("💾 Save to Library", type="primary")
+        
         # Save to Library
-        if st.button("💾 Save to Library", type="primary"):
+        if save_clicked:
             new_cases = edited_generated.to_dict(orient="records")
             
             # Format back to real JSON from string for criteria
@@ -207,6 +229,9 @@ ONLY return the highly-structured JSON array. Do not include markdown blocks lik
                 case_id = str(case.get("id", ""))
                 if case_id.startswith("GEN_"):
                     case["id"] = ""
+                
+                # 设置目录
+                case["category_id"] = save_category
                     
                 clean_new_cases.append(case)
 
@@ -219,8 +244,41 @@ ONLY return the highly-structured JSON array. Do not include markdown blocks lik
                 
             combined_df = pd.concat([existing_df, new_df], ignore_index=True)
             
-            # Save
+            # Save to JSON
             final_df = save_data(combined_df)
+            
+            # 同步写入数据库
+            try:
+                from app.database import SessionLocal
+                from app.models.test_case import TestCase
+                from datetime import datetime
+                
+                db = SessionLocal()
+                for case in clean_new_cases:
+                    # 查找最终分配的 ID
+                    final_row = final_df[final_df['input'] == case['input']]
+                    if not final_row.empty:
+                        case_id = final_row.iloc[0]['id']
+                        # 检查是否已存在
+                        existing = db.query(TestCase).filter(TestCase.id == case_id).first()
+                        if not existing:
+                            test_case = TestCase(
+                                id=case_id,
+                                type=case.get('type', 'single'),
+                                input=case.get('input', ''),
+                                expected_output=case.get('expected_output', ''),
+                                retrieval_context=case.get('retrieval_context'),
+                                description=case.get('description'),
+                                turn_index=case.get('turn_index'),
+                                tags=case.get('tags', []),
+                                category_id=save_category,
+                                created_at=datetime.utcnow()
+                            )
+                            db.add(test_case)
+                db.commit()
+                db.close()
+            except Exception as e:
+                st.warning(f"数据库同步失败: {e}")
             
             # Clear generated cases
             st.session_state.generated_cases = pd.DataFrame(columns=["id", "type", "turn_index", "input", "expected_output", "retrieval_context", "description", "tags"])

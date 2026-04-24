@@ -3,6 +3,12 @@ import streamlit as st
 def apply_custom_styles():
     st.markdown("""
     <style>
+        /* Reduce Top Margin for All Pages */
+        .block-container {
+            padding-top: 1.5rem !important;
+            padding-bottom: 1.5rem !important;
+        }
+
         /* Modern Table Styling */
         div[data-testid="stDataFrame"] > div {
             border-radius: 12px;
@@ -30,7 +36,7 @@ def apply_custom_styles():
         /* Use nth-child selector to target the button in the specific column if possible, 
            or rely on global primary styling */
         
-        /* GLOBAL: Primary Buttons - Yellow Gradient (Eva Theme) */
+        /* GLOBAL: Primary Buttons - 恢复原有亮色调 */
         button[kind="primary"] {
             background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%) !important;
             color: #333 !important;
@@ -49,6 +55,22 @@ def apply_custom_styles():
             background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%) !important;
             color: #333 !important;
             box-shadow: 0 0 0 3px rgba(255, 215, 0, 0.3) !important;
+        }
+
+        /* GLOBAL: Secondary Buttons - 增强色彩但保持柔和 */
+        button[kind="secondary"] {
+            background: linear-gradient(135deg, #DFF1FF 0%, #C5E3FF 100%) !important;
+            color: #1F3B57 !important;
+            border: 1px solid #A6CDEE !important;
+            border-radius: 8px !important;
+            font-weight: 600 !important;
+            box-shadow: 0 2px 6px rgba(95, 150, 210, 0.25) !important;
+        }
+        button[kind="secondary"]:hover {
+            background: linear-gradient(135deg, #CFE9FF 0%, #B5DAFF 100%) !important;
+            color: #17314D !important;
+            transform: translateY(-1px);
+            box-shadow: 0 3px 10px rgba(95, 150, 210, 0.32) !important;
         }
         
         /* --- Sidebar Layout --- */
@@ -102,31 +124,36 @@ def apply_custom_styles():
              padding-left: 20px !important;
         }
 
-        /* --- Custom Button Colors for Testcases Actions --- */
-        
-        /* Run Range Button (Column 4) -> Green */
-        div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(4) button {
-            background: linear-gradient(135deg, #42e695 0%, #3bb2b8 100%) !important;
-            color: white !important;
-            border: none !important;
-            box-shadow: 0 2px 6px rgba(66, 230, 149, 0.3) !important;
+        /* Delete 按钮单独红色强调 */
+        button[aria-label="🗑️ Delete"],
+        button[aria-label="Delete"] {
+            background: linear-gradient(135deg, #F7C1C1 0%, #EE9A9A 100%) !important;
+            color: #5F1F1F !important;
+            border: 1px solid #E28787 !important;
+            box-shadow: 0 2px 6px rgba(180, 80, 80, 0.28) !important;
         }
-        div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(4) button:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(66, 230, 149, 0.5) !important;
+        button[aria-label="🗑️ Delete"]:hover,
+        button[aria-label="Delete"]:hover {
+            background: linear-gradient(135deg, #F2A9A9 0%, #E98383 100%) !important;
+            color: #4E1414 !important;
+            box-shadow: 0 3px 10px rgba(180, 80, 80, 0.35) !important;
         }
 
-        /* Run Selected Button (Column 5) -> Purple */
-        div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(5) button {
-            background: linear-gradient(135deg, #c471ed 0%, #f64f59 100%) !important; /* Berry gradient */
-            background: linear-gradient(135deg, #8E2DE2 0%, #4A00E0 100%) !important; /* Deep Purple */
-            color: white !important;
-            border: none !important;
-            box-shadow: 0 2px 6px rgba(138, 43, 226, 0.3) !important;
+        /* --- Custom Color Accent for Testcases Action Row (丰富页面色彩) --- */
+        /* 说明：仅对主内容区横向按钮组生效，侧边栏按钮已在上方单独覆盖 */
+
+        /* 绿色系强调按钮（例如 Move / 当前页选择等位置） */
+        div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(2) button {
+            background: linear-gradient(135deg, #9BE7C4 0%, #6FD6A8 100%) !important;
+            color: #173F33 !important;
+            border: 1px solid #63C79B !important;
         }
-        div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(5) button:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(138, 43, 226, 0.5) !important;
+
+        /* 紫蓝系强调按钮（例如 Import / 部分操作按钮位置） */
+        div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(5) button {
+            background: linear-gradient(135deg, #D8CCFF 0%, #BDA9FF 100%) !important;
+            color: #2F2556 !important;
+            border: 1px solid #A894EF !important;
         }
     </style>
     """, unsafe_allow_html=True)

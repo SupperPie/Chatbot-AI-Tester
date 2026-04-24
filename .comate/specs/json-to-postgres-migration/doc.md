@@ -736,34 +736,13 @@ def discard_drafts(batch_id: str):
 - 页面加载崩溃
 - 数据丢失
 
-### 7.2 解决方案：事务 + 状态机
+### 7.2 解决方案：逐条写入 + 实时可见
+
+**核心原则：每执行完一条用例，立即写入数据库并可在页面实时查看。**
 
 ```python
-def save_test_result_atomic(history_id: str, result: dict):
-    """原子性保存单条测试结果"""
-    with SessionLocal() as db:
-        try:
-            test_result = TestResult(history_id=history_id, **result)
-            db.add(test_result)
-            
-            # 更新 history 统计
-            history = db.query(TestHistory).filter(TestHistory.id == history_id).first()
-            if history:
-                history.started_count += 1
-                if result.get('passed'):
-                    history.passed += 1
-                else:
-                    history.failed += 1
-            
-            db.commit()
-            return True
-        except Exception as e:
-            db.rollback()
-            logger.error(f"保存测试结果失败: {e}")
-            return False
-
 def create_test_history(api_name: str, total_cases: int) -> str:
-    """创建测试历史记录（初始状态）"""
+    """创建测试历史记录，立即可见"""
     history_id = datetime.now().strftime("%Y%m%d%H%M%S")
     with SessionLocal() as db:
         history = TestHistory(
@@ -773,19 +752,47 @@ def create_test_history(api_name: str, total_cases: int) -> str:
             total=total_cases,
             passed=0,
             failed=0,
-            status='running',  # 运行中状态
+            status='running',
             started_count=0
         )
         db.add(history)
         db.commit()
     return history_id
 
+def save_test_result_atomic(history_id: str, result: dict):
+    """
+    原子性保存单条测试结果
+    - 每条结果独立事务，立即提交
+    - 写入成功即可在页面看到
+    - 单条失败不影响其他结果
+    """
+    with SessionLocal() as db:
+        try:
+            test_result = TestResult(history_id=history_id, **result)
+            db.add(test_result)
+            
+            # 同步更新 history 统计（同一事务内）
+            history = db.query(TestHistory).filter(TestHistory.id == history_id).first()
+            if history:
+                history.started_count += 1
+                if result.get('passed'):
+                    history.passed += 1
+                else:
+                    history.failed += 1
+            
+            db.commit()  # 立即提交，页面刷新即可看到
+            return True
+        except Exception as e:
+            db.rollback()
+            logger.error(f"保存测试结果失败: {e}")
+            return False
+
 def finalize_test_history(history_id: str, status: str = 'completed'):
-    """完成测试，更新最终状态"""
+    """测试结束，更新最终状态"""
     with SessionLocal() as db:
         history = db.query(TestHistory).filter(TestHistory.id == history_id).first()
         if history:
-            history.status = status  # completed/failed/cancelled
+            history.status = status
             db.commit()
 ```
 
@@ -793,23 +800,470 @@ def finalize_test_history(history_id: str, status: str = 'completed'):
 
 ```
 TestHistory.status:
-  pending → running → completed
-                   ↘ failed
-                   ↘ cancelled
+  running → completed
+         ↘ failed
+         ↘ cancelled
 ```
 
-- **pending**: 初始状态
-- **running**: 测试执行中
+- **running**: 测试执行中（页面显示进度：已完成 X / 总数 Y）
 - **completed**: 全部完成
-- **failed**: 执行过程出错
+- **failed**: 执行过程出错中断
 - **cancelled**: 用户取消
 
-**页面加载时的容错处理：**
-- 只显示 `status = 'completed'` 的完整报告
-- `status = 'running'` 显示为"进行中"
-- `status = 'failed'` 显示错误信息
+### 7.4 页面实时显示
 
-## 8. 边界条件和异常处理
+**页面支持所有状态的报告查看：**
+
+| 状态 | 页面显示 |
+|------|----------|
+| running | 显示已完成的结果 + 进度条（X/Y），自动刷新 |
+| completed | 显示完整报告 |
+| failed | 显示已完成的结果 + 错误提示 |
+| cancelled | 显示已完成的结果 + 取消提示 |
+
+```python
+def get_test_report(history_id: str) -> dict:
+    """获取测试报告（支持实时查看进行中的报告）"""
+    with SessionLocal() as db:
+        history = db.query(TestHistory).filter(TestHistory.id == history_id).first()
+        if not history:
+            return None
+        
+        results = db.query(TestResult).filter(
+            TestResult.history_id == history_id
+        ).order_by(TestResult.id).all()
+        
+        return {
+            "id": history.id,
+            "timestamp": history.timestamp,
+            "api_name": history.api_name,
+            "total": history.total,
+            "passed": history.passed,
+            "failed": history.failed,
+            "started_count": history.started_count,
+            "status": history.status,
+            "progress": f"{history.started_count}/{history.total}",
+            "results": [r.to_dict() for r in results]  # 返回已有的所有结果
+        }
+```
+
+### 7.5 数据完整性保证
+
+- **每条结果独立事务**：单条写入失败不影响已写入的数据
+- **history 和 result 同事务**：统计数据始终准确
+- **无 JSON 截断风险**：数据库保证写入要么成功要么回滚
+- **断点恢复**：running 状态的报告可继续执行或标记为 failed
+
+## 8. 数据迁移与合并方案
+
+### 8.1 迁移策略概述
+
+**场景：**
+- 本地环境有一套 JSON 数据
+- 服务器环境有一套 JSON 数据
+- 两套数据需要分别迁移到 PostgreSQL，并支持后续合并
+
+**迁移原则：**
+1. 迁移前备份原始 JSON 文件
+2. 迁移过程可中断、可恢复
+3. 迁移后校验数据完整性
+4. 支持增量迁移和全量迁移
+
+### 8.2 测试用例去重策略
+
+**去重规则：input（问题）相同即为同一条测试用例**
+
+```sql
+-- 添加 input 哈希字段用于快速去重
+ALTER TABLE test_cases ADD COLUMN input_hash VARCHAR(64);
+
+-- 哈希计算方式：仅基于 input 字段
+-- hash = SHA256(input)
+```
+
+```python
+import hashlib
+
+def compute_input_hash(case: dict) -> str:
+    """计算测试用例 input 哈希（用于去重判断）"""
+    input_text = str(case.get("input", "")).strip()
+    return hashlib.sha256(input_text.encode('utf-8')).hexdigest()
+```
+
+**去重策略选项：**
+| 策略 | 说明 |
+|------|------|
+| 保留本地 | 相同 input 保留本地版本，跳过服务器版本 |
+| 保留服务器 | 相同 input 保留服务器版本，跳过本地版本 |
+| 保留最新 | 根据 created_at/updated_at 保留最新版本 |
+| 合并字段 | 相同 input 时，合并两边的其他字段（如标签、分类等） |
+
+### 8.3 测试报告合并策略
+
+**测试报告不去重，全部保留。**
+
+- 不同环境的测试报告独立存储
+- 可通过 `source` 字段区分来源
+
+```sql
+-- 测试历史表增加来源字段
+ALTER TABLE test_history ADD COLUMN source VARCHAR(50) DEFAULT 'local';
+-- source: 'local', 'server', 'merged' 等
+```
+
+### 8.4 迁移脚本增强
+
+```python
+# scripts/migrate_json_to_postgres.py
+
+import json
+import hashlib
+import shutil
+from datetime import datetime
+from pathlib import Path
+from app.database import SessionLocal
+from app.models import TestCase, TestHistory, ...
+
+class DataMigrator:
+    def __init__(self, data_dir: str, backup_dir: str = None):
+        self.data_dir = Path(data_dir)
+        self.backup_dir = Path(backup_dir or f"{data_dir}_backup_{datetime.now().strftime('%Y%m%d%H%M%S')}")
+        self.migration_log = []
+        
+    def backup_json_files(self):
+        """迁移前备份所有 JSON 文件"""
+        self.backup_dir.mkdir(parents=True, exist_ok=True)
+        
+        json_files = [
+            "test_cases.json",
+            "history.json", 
+            "blind_reviews.json",
+            "api_config.json",
+            "modules.json"
+        ]
+        
+        for f in json_files:
+            src = self.data_dir / f
+            if src.exists():
+                shutil.copy2(src, self.backup_dir / f)
+                self.log(f"备份: {f} -> {self.backup_dir / f}")
+        
+        return self.backup_dir
+    
+    def log(self, message: str):
+        """记录迁移日志"""
+        entry = f"[{datetime.now().isoformat()}] {message}"
+        self.migration_log.append(entry)
+        print(entry)
+    
+    def migrate_test_cases(self, dedup: bool = True) -> dict:
+        """
+        迁移测试用例
+        返回: {"total": 总数, "migrated": 迁移数, "skipped": 跳过数, "errors": 错误数}
+        """
+        stats = {"total": 0, "migrated": 0, "skipped": 0, "errors": 0}
+        
+        json_path = self.data_dir / "test_cases.json"
+        if not json_path.exists():
+            self.log(f"文件不存在: {json_path}")
+            return stats
+        
+        with open(json_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        
+        stats["total"] = len(data)
+        
+        with SessionLocal() as db:
+            for i, item in enumerate(data):
+                try:
+                    input_hash = compute_input_hash(item)
+                    
+                    # 去重检查（基于 input 相同）
+                    if dedup:
+                        existing = db.query(TestCase).filter(
+                            TestCase.input_hash == input_hash
+                        ).first()
+                        
+                        if existing:
+                            self.log(f"跳过重复用例: {item.get('id')} (input相同, hash={input_hash[:8]}...)")
+                            stats["skipped"] += 1
+                            continue
+                    
+                    # 处理 ID 冲突
+                    case_id = item.get("id", f"TC{i+1:04d}")
+                    id_conflict = db.query(TestCase).filter(TestCase.id == case_id).first()
+                    if id_conflict:
+                        # 生成新 ID
+                        case_id = f"{case_id}_{datetime.now().strftime('%H%M%S')}"
+                    
+                    case = TestCase(
+                        id=case_id,
+                        type=item.get("type", "single"),
+                        input=item.get("input", ""),
+                        expected_output=item.get("expected_output"),
+                        retrieval_context=item.get("retrieval_context"),
+                        description=item.get("description"),
+                        turn_index=item.get("turn_index"),
+                        validation=item.get("validation"),
+                        overall_criteria=item.get("overall_criteria"),
+                        tags=item.get("tags", []),
+                        input_hash=input_hash
+                    )
+                    db.add(case)
+                    stats["migrated"] += 1
+                    
+                    # 每 100 条提交一次，避免内存溢出
+                    if stats["migrated"] % 100 == 0:
+                        db.commit()
+                        self.log(f"已迁移 {stats['migrated']} 条...")
+                        
+                except Exception as e:
+                    self.log(f"迁移失败 [{item.get('id')}]: {e}")
+                    stats["errors"] += 1
+            
+            db.commit()
+        
+        self.log(f"测试用例迁移完成: 总数={stats['total']}, 迁移={stats['migrated']}, 跳过={stats['skipped']}, 错误={stats['errors']}")
+        return stats
+    
+    def verify_migration(self) -> dict:
+        """校验迁移数据完整性"""
+        results = {}
+        
+        # 校验测试用例
+        with open(self.data_dir / "test_cases.json", "r", encoding="utf-8") as f:
+            json_count = len(json.load(f))
+        
+        with SessionLocal() as db:
+            db_count = db.query(TestCase).count()
+        
+        results["test_cases"] = {
+            "json_count": json_count,
+            "db_count": db_count,
+            "match": json_count == db_count  # 如果有去重则不一定相等
+        }
+        
+        # 校验其他表...
+        
+        return results
+    
+    def save_migration_log(self):
+        """保存迁移日志"""
+        log_path = self.backup_dir / "migration.log"
+        with open(log_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(self.migration_log))
+        return log_path
+
+def migrate_local(data_dir: str = "data"):
+    """迁移本地数据"""
+    migrator = DataMigrator(data_dir)
+    migrator.backup_json_files()
+    migrator.migrate_categories()
+    migrator.migrate_tags()
+    migrator.migrate_test_cases(dedup=True)
+    migrator.migrate_history()
+    migrator.migrate_blind_reviews()
+    migrator.migrate_api_configs()
+    migrator.verify_migration()
+    migrator.save_migration_log()
+```
+
+### 8.5 多环境数据合并
+
+```python
+# scripts/merge_data.py
+
+class DataMerger:
+    def __init__(self, case_strategy: str = "keep_local"):
+        """
+        case_strategy (测试用例合并策略): 
+          - keep_local: 相同 input 保留本地版本
+          - keep_remote: 相同 input 保留服务器版本
+          - keep_newest: 保留最新版本
+          - merge_fields: 合并两边的标签、分类等字段
+        
+        测试报告：全部保留，不去重
+        """
+        self.case_strategy = case_strategy
+        self.merge_log = []
+    
+    def merge_test_cases_from_json(self, json_path: str, source_name: str = "remote") -> dict:
+        """
+        合并测试用例（基于 input 去重）
+        """
+        stats = {"total": 0, "added": 0, "skipped": 0, "updated": 0, "errors": 0}
+        
+        with open(json_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        
+        stats["total"] = len(data)
+        
+        with SessionLocal() as db:
+            for item in data:
+                try:
+                    input_hash = compute_input_hash(item)
+                    existing = db.query(TestCase).filter(
+                        TestCase.input_hash == input_hash
+                    ).first()
+                    
+                    if existing:
+                        # 相同 input，处理重复
+                        if self.case_strategy == "keep_local":
+                            stats["skipped"] += 1
+                            continue
+                        elif self.case_strategy == "keep_remote":
+                            # 更新为远程版本（保留本地 ID）
+                            for key, value in item.items():
+                                if hasattr(existing, key) and key not in ["id", "input_hash"]:
+                                    setattr(existing, key, value)
+                            stats["updated"] += 1
+                        elif self.case_strategy == "keep_newest":
+                            remote_time = item.get("updated_at") or item.get("created_at")
+                            local_time = existing.updated_at or existing.created_at
+                            if remote_time and local_time and remote_time > str(local_time):
+                                for key, value in item.items():
+                                    if hasattr(existing, key) and key not in ["id", "input_hash"]:
+                                        setattr(existing, key, value)
+                                stats["updated"] += 1
+                            else:
+                                stats["skipped"] += 1
+                        elif self.case_strategy == "merge_fields":
+                            # 合并标签
+                            local_tags = set(existing.tags or [])
+                            remote_tags = set(item.get("tags", []))
+                            existing.tags = list(local_tags | remote_tags)
+                            # 如果本地无分类，使用远程分类
+                            if not existing.category_id and item.get("category_id"):
+                                existing.category_id = item["category_id"]
+                            stats["updated"] += 1
+                    else:
+                        # 新增
+                        case = TestCase(
+                            **item,
+                            input_hash=input_hash
+                        )
+                        db.add(case)
+                        stats["added"] += 1
+                        
+                except Exception as e:
+                    self.merge_log.append(f"合并失败 [{item.get('id')}]: {e}")
+                    stats["errors"] += 1
+            
+            db.commit()
+        
+        return stats
+    
+    def merge_test_history_from_json(self, json_path: str, source_name: str = "server") -> dict:
+        """
+        合并测试报告（全部保留，不去重）
+        """
+        stats = {"total": 0, "added": 0, "errors": 0}
+        
+        with open(json_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        
+        stats["total"] = len(data)
+        
+        with SessionLocal() as db:
+            for entry in data:
+                try:
+                    # 检查 ID 冲突，冲突则生成新 ID
+                    history_id = entry["id"]
+                    if db.query(TestHistory).filter(TestHistory.id == history_id).first():
+                        history_id = f"{history_id}_{source_name}"
+                    
+                    history = TestHistory(
+                        id=history_id,
+                        timestamp=entry["timestamp"],
+                        api_name=entry.get("api_name"),
+                        total=entry.get("total", 0),
+                        passed=entry.get("passed", 0),
+                        failed=entry.get("failed", 0),
+                        status=entry.get("status", "completed"),
+                        source=source_name  # 标记来源
+                    )
+                    db.add(history)
+                    
+                    # 保存所有结果
+                    for r in entry.get("results", []):
+                        result = TestResult(history_id=history_id, **r)
+                        db.add(result)
+                    
+                    stats["added"] += 1
+                    
+                except Exception as e:
+                    self.merge_log.append(f"合并报告失败 [{entry.get('id')}]: {e}")
+                    stats["errors"] += 1
+            
+            db.commit()
+        
+        return stats
+    
+    def export_to_json(self, output_path: str, data_type: str = "test_cases"):
+        """导出数据库数据到 JSON"""
+        with SessionLocal() as db:
+            if data_type == "test_cases":
+                items = db.query(TestCase).all()
+            elif data_type == "history":
+                items = db.query(TestHistory).all()
+            else:
+                raise ValueError(f"Unknown data_type: {data_type}")
+            
+            data = [item.to_dict() for item in items]
+        
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+        
+        return len(data)
+
+# 使用示例
+def merge_server_data():
+    """合并服务器数据到本地"""
+    merger = DataMerger(case_strategy="keep_local")
+    
+    # 1. 合并测试用例（去重）
+    case_stats = merger.merge_test_cases_from_json(
+        json_path="server_export/test_cases.json",
+        source_name="server"
+    )
+    print(f"测试用例合并: 总数={case_stats['total']}, 新增={case_stats['added']}, 跳过={case_stats['skipped']}")
+    
+    # 2. 合并测试报告（全部保留）
+    history_stats = merger.merge_test_history_from_json(
+        json_path="server_export/history.json",
+        source_name="server"
+    )
+    print(f"测试报告合并: 总数={history_stats['total']}, 新增={history_stats['added']}")
+```
+
+### 8.6 迁移检查清单
+
+| 步骤 | 操作 | 检查点 |
+|------|------|--------|
+| 1 | 备份 JSON 文件 | 备份目录存在，文件完整 |
+| 2 | 创建数据库表 | 所有表创建成功 |
+| 3 | 迁移分类目录 | categories 表记录数正确 |
+| 4 | 迁移标签 | tags 表记录数正确 |
+| 5 | 迁移测试用例 | test_cases 记录数 + 去重数 = JSON 记录数 |
+| 6 | 迁移测试历史 | test_history 和 test_results 记录数正确 |
+| 7 | 迁移盲测评审 | blind_reviews 记录数正确 |
+| 8 | 迁移 API 配置 | api_configs 记录数正确 |
+| 9 | 功能验证 | UI 页面正常显示、CRUD 操作正常 |
+| 10 | 保存迁移日志 | migration.log 文件完整 |
+
+### 8.7 回滚方案
+
+如迁移出现问题，可通过备份恢复：
+
+```bash
+# 恢复 JSON 文件
+cp -r data_backup_20260414120000/* data/
+
+# 清空数据库表（谨慎操作）
+psql -d chatbot_tester -c "TRUNCATE test_cases, test_history, test_results, ... CASCADE;"
+```
+
+## 9. 边界条件和异常处理
 
 - 数据库连接失败时，记录错误日志并返回空数据/抛出友好错误
 - 事务回滚：写操作失败时自动回滚
@@ -817,8 +1271,9 @@ TestHistory.status:
 - 向后兼容：保留 JSON 文件作为备份，迁移期间可回退
 - **草稿清理**：定期清理超过 24 小时未确认的草稿
 - **文件上传**：限制单文件大小（如 10MB），支持的格式白名单
+- **迁移中断恢复**：基于 content_hash 去重，支持重复执行迁移脚本
 
-## 9. 预期结果
+## 10. 预期结果
 
 - 所有数据存储迁移到 PostgreSQL
 - API 和 UI 功能保持不变

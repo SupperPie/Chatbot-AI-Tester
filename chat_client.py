@@ -522,9 +522,11 @@ def get_translation_response(message: str, url: str, user_id: str = None, sessio
         "Accept": "text/event-stream"
     }
 
-    print(f"[Translation] Sending request to {url}")
-    print(f"[Translation] Request Payload: {json.dumps(payload, ensure_ascii=False, indent=2)}")
-    print(f"[Translation] Request Headers: {headers}")
+    print("=" * 60, flush=True)
+    print(f"[Translation] URL: {url}", flush=True)
+    print(f"[Translation] Request Payload:\n{json.dumps(payload, ensure_ascii=False, indent=2)}", flush=True)
+    print(f"[Translation] Request Headers: {headers}", flush=True)
+    print("=" * 60, flush=True)
     
     try:
         start_time = time.time()
@@ -595,7 +597,7 @@ def get_translation_response(message: str, url: str, user_id: str = None, sessio
         return f"Error: {e}"
 
 
-def get_ai_engineering_response(message: str, url: str, user_id: str = None, session_id: str = None, lob: str = "dc") -> str:
+def get_ai_engineering_response(message: str, url: str, user_id: str = None, session_id: str = None, lob: str = "ata") -> str:
     """AI Engineering 流式接口客户端
     
     响应解析规则：
@@ -619,7 +621,11 @@ def get_ai_engineering_response(message: str, url: str, user_id: str = None, ses
         "Accept": "text/event-stream"
     }
 
-    print(f"[AI Engineering] Sending request to {url} with query: {message}")
+    print("=" * 60, flush=True)
+    print(f"[AI Engineering] URL: {url}", flush=True)
+    print(f"[AI Engineering] Request Payload:\n{json.dumps(payload, ensure_ascii=False, indent=2)}", flush=True)
+    print(f"[AI Engineering] Request Headers: {headers}", flush=True)
+    print("=" * 60, flush=True)
     
     try:
         start_time = time.time()
@@ -1073,7 +1079,7 @@ def get_chat_response(message: str, api_name: str = "Bundle API", user_id: str =
     elif api_type == "agent_qa":
         return get_agent_qa_response(message, url=url, user_id=user_id, session_id=session_id)
     elif api_type == "ai_engineering":
-        lob = config.get("lob", "dc")
+        lob = config.get("lob", "ata")
         return get_ai_engineering_response(message, url=url, user_id=user_id, session_id=session_id, lob=lob)
     elif api_type == "translation":
         sys_lang = config.get("sys_lang", "pt-BR")

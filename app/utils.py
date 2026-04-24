@@ -2,6 +2,7 @@ import os
 import json
 import pandas as pd
 import datetime
+import re
 import streamlit as st
 from typing import List, Dict
 from fpdf import FPDF
@@ -23,21 +24,69 @@ def get_test_engine():
 def generate_tc_id(index: int) -> str:
     return f"TC{str(index + 1).zfill(4)}"
 
-def load_data() -> pd.DataFrame:
-    # Always try to load or create empty
-    data = []
-    if os.path.exists(DATA_FILE):
-        try:
-            with open(DATA_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-        except:
-            data = []
-            
-    if not data:
-        # Return empty structure with Select column
-        return pd.DataFrame(columns=["Select", "id", "turn_index", "input", "expected_output", "tags"])
 
-    df = pd.DataFrame(data)
+def normalize_case_id(case_id: str) -> str:
+    """Normalize business case ID by removing only trailing _TT<digits>."""
+    if case_id is None:
+        return ""
+    cid = str(case_id).strip()
+    if not cid:
+        return ""
+    return re.sub(r"_T\d+$", "", cid)
+
+
+def load_data() -> pd.DataFrame:
+    """Load test cases from database (if enabled) or JSON file."""
+    # Feature flag - set to True to enable database loading with category support
+    ENABLE_CATEGORY_FEATURE = True
+    
+    df = None
+    
+    # Try loading from database if feature is enabled
+    if ENABLE_CATEGORY_FEATURE:
+        try:
+            from app.services.test_case_service import TestCaseService
+            service = TestCaseService()
+            db_cases = service.get_all()
+            if db_cases:
+                data = []
+                for tc in db_cases:
+                    record = {
+                        'id': tc.id,
+                        'input': tc.input,
+                        'expected_output': tc.expected_output,
+                        'tags': tc.tags or [],
+                        'type': tc.type,
+                        'turn_index': tc.turn_index,
+                        'category_id': tc.category_id or 'root',
+                        'retrieval_context': tc.retrieval_context,
+                        'overall_criteria': tc.overall_criteria,
+                        'validation': tc.validation,
+                    }
+                    data.append(record)
+                df = pd.DataFrame(data)
+        except Exception as e:
+            print(f"[load_data] Failed to load from database: {e}")
+            df = None
+    
+    # Fallback to JSON file
+    if df is None:
+        data = []
+        if os.path.exists(DATA_FILE):
+            try:
+                with open(DATA_FILE, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+            except:
+                data = []
+                
+        if not data:
+            # Return empty structure with Select column
+            return pd.DataFrame(columns=["Select", "id", "__raw_id", "turn_index", "input", "expected_output", "tags", "category_id"])
+
+        df = pd.DataFrame(data)
+        # Add default category_id for JSON data
+        if 'category_id' not in df.columns:
+            df['category_id'] = 'root'
     
     # ID Generation logic: Only generate for explicitly missing IDs.
     # If a row is missing an ID, but it's part of a multi-turn sequence (turn_index > 1), assign it the same ID as the row before it.
@@ -72,12 +121,20 @@ def load_data() -> pd.DataFrame:
         else:
             last_assigned_id = row_id
     
+    # Preserve raw unique ID and expose normalized business ID
+    if "__raw_id" not in df.columns:
+        df["__raw_id"] = df["id"].apply(lambda x: str(x).strip() if not pd.isna(x) else "")
+    else:
+        df["__raw_id"] = df["__raw_id"].apply(lambda x: str(x).strip() if not pd.isna(x) else "")
+
+    df["id"] = df["__raw_id"].apply(normalize_case_id)
+
     # Add Select column if not present (for row selection in UI)
     if "Select" not in df.columns:
         df.insert(0, "Select", False)
     
     # Ensure columns exist
-    for col in ["input", "expected_output"]:
+    for col in ["input", "expected_output", "retrieval_context", "overall_criteria", "validation"]:
         if col not in df.columns:
             df[col] = ""
     if "tags" not in df.columns:
@@ -102,8 +159,8 @@ def load_data() -> pd.DataFrame:
     return df
 
 def save_data(df: pd.DataFrame):
-    # Remove 'Select' column before saving (it's only for UI)
-    to_save_df = df.drop(columns=["Select"], errors='ignore').copy()
+    # Remove UI/internal columns before saving
+    to_save_df = df.drop(columns=["Select", "__row_key", "__raw_id"], errors='ignore').copy()
     
     if "id" not in to_save_df.columns:
         to_save_df["id"] = ""

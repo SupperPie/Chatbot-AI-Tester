@@ -1,6 +1,7 @@
 import streamlit as st
 import nest_asyncio
 import logging
+from pathlib import Path
 
 # 统一配置日志（只在入口配置一次）
 # 第三方库用 WARNING 级别，避免 watchdog 等库产生大量 DEBUG 日志
@@ -13,7 +14,9 @@ for module in ['app', 'chat_client', '__main__']:
     logging.getLogger(module).setLevel(logging.DEBUG)
 
 # Apply Layout immediately
-st.set_page_config(layout="wide", page_title="AI Test Manager", page_icon="img/eva_avatar.png")
+_ICON_PATH = Path(__file__).resolve().parent / "img" / "eva_avatar.png"
+_PAGE_ICON = str(_ICON_PATH) if _ICON_PATH.exists() else "🤖"
+st.set_page_config(layout="wide", page_title="AI Test Manager", page_icon=_PAGE_ICON)
 
 # Apply nest_asyncio
 nest_asyncio.apply()

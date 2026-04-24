@@ -2,22 +2,87 @@ import streamlit as st
 import pandas as pd
 import ast
 import logging
-from app.utils import load_data, save_data, run_tests_sync, save_history
+from app.utils import load_data, save_data, run_tests_sync, save_history, normalize_case_id
 from chat_client import get_available_apis
 
 # 获取 logger（配置在 streamlit_app.py 入口统一处理）
 logger = logging.getLogger(__name__)
 
+# 目录功能开关（数据库迁移完成前可关闭）
+ENABLE_CATEGORY_FEATURE = True
+
+def render_category_widget_safe():
+    """渲染目录 Widget（带错误处理），返回选中的目录 ID"""
+    if not ENABLE_CATEGORY_FEATURE:
+        return 'root'
+    try:
+        from app.ui.components.category_widget import render_category_widget
+        return render_category_widget()
+    except Exception as e:
+        logger.warning(f"目录功能加载失败: {e}")
+        st.warning(f"目录功能暂不可用: {e}")
+        return 'root'
+
+def filter_test_cases(df, category_id=None, tags=None, id_from=None, id_to=None, keyword=None):
+    """多维度筛选测试用例
+    
+    Args:
+        df: 原始 DataFrame
+        category_id: 目录 ID（含子目录）
+        tags: 标签列表（OR 逻辑）
+        id_from: ID 起始范围
+        id_to: ID 结束范围
+        keyword: 关键词搜索（匹配 input 字段）
+    
+    Returns:
+        筛选后的 DataFrame
+    """
+    filtered = df.copy()
+    
+    # 目录筛选（含子目录）
+    if category_id and category_id not in ('root', 'all', '') and ENABLE_CATEGORY_FEATURE:
+        if 'category_id' in filtered.columns:
+            try:
+                from app.ui.components.category_selector import get_category_ids_with_children
+                category_ids = get_category_ids_with_children(category_id)
+                if category_ids:
+                    filtered = filtered[filtered['category_id'].isin(category_ids)]
+            except Exception as e:
+                logger.warning(f"目录筛选失败，category_id={category_id}, error={e}")
+    
+    # 标签筛选（OR 逻辑：包含任一标签即可）
+    if tags and len(tags) > 0:
+        def has_any_tag(row_tags):
+            if not isinstance(row_tags, list):
+                return False
+            return any(tag in row_tags for tag in tags)
+        filtered = filtered[filtered['tags'].apply(has_any_tag)]
+    
+    # ID 范围筛选
+    if id_from and str(id_from).strip():
+        filtered = filtered[filtered['id'] >= str(id_from).strip()]
+    if id_to and str(id_to).strip():
+        filtered = filtered[filtered['id'] <= str(id_to).strip()]
+    
+    # 关键词搜索（匹配 input 字段）
+    if keyword and str(keyword).strip():
+        keyword_lower = str(keyword).strip().lower()
+        filtered = filtered[filtered['input'].str.lower().str.contains(keyword_lower, na=False)]
+    
+    return filtered
+
 def render_testcases_page():
     logger.debug("=== render_testcases_page() 开始 ===")
-    title_col, manual_col = st.columns([5, 1])
+    title_col, manual_col, import_col = st.columns([5.8, 2.1, 2.1])
     with title_col:
         st.title("📋 Test Cases Management")
         st.markdown("Manage, edit, and run your test cases.")
-    with manual_col:
-        st.markdown("<br>", unsafe_allow_html=True)
-        with st.popover("📖 参数说明手册", use_container_width=True):
-            st.markdown("""
+
+    manual_container = manual_col
+    import_container = import_col
+
+    def render_manual_content():
+        st.markdown("""
 ### 📖 测评参数使用手册
 
 #### 1. 字段说明
@@ -43,15 +108,58 @@ def render_testcases_page():
 - **`min_success_rate`** (float): 最低通过率。如 0.8 表示必须答对 80% 的轮次，这题才算总评 Pass。
 - *示例*: `{"must_complete_all_turns": true, "min_success_rate": 1.0}`
             """)
+
+    # 顶部右侧：参数说明手册（下移避免贴顶裁剪）
+    with manual_container:
+        st.markdown('<div style="height: 34px;"></div>', unsafe_allow_html=True)
+        with st.popover("📖 参数说明手册", use_container_width=True):
+            render_manual_content()
     
     # Initialize df in session state
     if "df" not in st.session_state:
         st.session_state.df = load_data()
     
+    # Ensure all required columns exist (reload from DB if missing due to cache)
+    required_cols = ['category_id', 'retrieval_context', 'overall_criteria', 'validation']
+    if not all(col in st.session_state.df.columns for col in required_cols):
+        st.session_state.df = load_data()
+
+    # Internal IDs (frontend only), do NOT persist to backend
+    if '__raw_id' not in st.session_state.df.columns:
+        st.session_state.df['__raw_id'] = st.session_state.df['id'].apply(lambda x: "" if pd.isna(x) else str(x).strip())
+    if '__row_key' not in st.session_state.df.columns:
+        st.session_state.df['__row_key'] = [f"rk_{i}" for i in range(len(st.session_state.df))]
+    
+    # Layout: Top Section
+    top_left_col, top_right_col = st.columns([1, 2.5])
+    
+    selected_category = 'root'
+    if ENABLE_CATEGORY_FEATURE:
+        with top_left_col:
+            selected_category = render_category_widget_safe()
+    
     # Track content signature
     def get_content_signature(df):
-        content_df = df.drop(columns=["Select"], errors='ignore')
+        content_df = df.drop(columns=["Select", "__row_key", "__raw_id"], errors='ignore')
         return content_df.to_json(orient='records', force_ascii=False)
+
+    def prepare_df_for_persistence(df: pd.DataFrame) -> pd.DataFrame:
+        """Persist using raw unique IDs, never normalized display IDs."""
+        out = df.copy()
+        if '__raw_id' in out.columns:
+            raw_ids = out['__raw_id'].apply(lambda x: "" if pd.isna(x) else str(x).strip())
+            display_ids = out['id'].apply(lambda x: "" if pd.isna(x) else str(x).strip()) if 'id' in out.columns else raw_ids
+            out['id'] = raw_ids.where(raw_ids != "", display_ids)
+        return out.drop(columns=['__row_key', '__raw_id'], errors='ignore')
+
+    def rebuild_internal_ids(df: pd.DataFrame) -> pd.DataFrame:
+        out = df.copy()
+        if 'id' not in out.columns:
+            out['id'] = ""
+        out['__raw_id'] = out['id'].apply(lambda x: "" if pd.isna(x) else str(x).strip())
+        out['id'] = out['__raw_id'].apply(normalize_case_id)
+        out['__row_key'] = [f"rk_{i}" for i in range(len(out))]
+        return out
     
     if "df_content_sig" not in st.session_state:
         st.session_state.df_content_sig = get_content_signature(st.session_state.df)
@@ -66,16 +174,18 @@ def render_testcases_page():
                 st.rerun()
         with col2:
             if st.button("🗑️ Yes, Delete", type="primary", use_container_width=True):
-                # Drop selected rows from the original DF
+                # Drop selected rows from the original DF (use raw unique ID if provided)
                 current_df = st.session_state.df
-                new_df = current_df[~current_df["id"].isin(ids_to_delete)]
+                key_col = '__raw_id' if '__raw_id' in current_df.columns else 'id'
+                new_df = current_df[~current_df[key_col].isin(ids_to_delete)]
                 
-                # Save the new filtered df to disk
-                final_df = save_data(new_df)
-                
+                # Save using raw unique IDs
+                final_df = save_data(prepare_df_for_persistence(new_df))
+
                 # Update session state
                 if "Select" not in final_df.columns:
                      final_df.insert(0, "Select", False)
+                final_df = rebuild_internal_ids(final_df)
                 st.session_state.df = final_df
                 st.session_state.df_content_sig = get_content_signature(final_df)
                 st.session_state.df_preprocessed = False
@@ -83,221 +193,339 @@ def render_testcases_page():
                 st.toast(f"🗑️ Deleted {len(ids_to_delete)} cases successfully!")
                 st.rerun()
 
-
-    # Filters & Actions
-    # ------------------
-    filter_col1, filter_col2, filter_col3, filter_col4 = st.columns([1, 1.5, 1, 0.5])
-    
-    with filter_col1:
-        st.selectbox("🔍 Module Filter", options=["All Modules"], index=0, key="page_module_filter")
-    
-    with filter_col2:
-        # Tags filter
-        available_filter_tags = []
-        if "df" in st.session_state and "tags" in st.session_state.df.columns:
-            for tags_value in st.session_state.df["tags"]:
-                if isinstance(tags_value, list):
-                    available_filter_tags.extend(tags_value)
-        available_filter_tags = sorted(list(set(available_filter_tags)))
+    @st.dialog("📂 移动到目录")
+    def move_to_category_dialog(ids_to_move):
+        """移动选中的测试用例到指定目录"""
+        st.info(f"将 **{len(ids_to_move)}** 个测试用例移动到目录：")
         
-        st.multiselect("🏷️ Tags Filter", options=available_filter_tags, default=[], key="page_tags_filter")
-    
-    with filter_col3:
-        # API Selection
-        logger.debug(">>> 准备获取 available_apis...")
-        available_apis = get_available_apis() or ["Bundle API"]
-        logger.debug(f">>> available_apis = {available_apis}")
-        logger.debug(f">>> 当前 session_state keys: {list(st.session_state.keys())}")
-        logger.debug(f">>> page_api_select 当前值: {st.session_state.get('page_api_select', 'NOT SET')}")
-        selected_api = st.selectbox("⚙️ API Endpoint", options=available_apis, index=0, key="page_api_select")
-        logger.debug(f">>> selectbox 渲染完成, selected_api = {selected_api}")
-
-    with filter_col4:
-        # Import / Template Popover
-        st.markdown('<div style="height: 28px;"></div>', unsafe_allow_html=True) # Align with selectbox
-        with st.popover("📤 Import", use_container_width=True):
-             st.markdown("### Import Test Cases")
-             # Download Template
-             try:
-                 with open("docs/import_template.csv", "rb") as f:
-                     st.download_button("📄 Download Template", data=f, file_name="import_template.csv", mime="text/csv", help="Download CSV template")
-             except Exception as e:
-                 st.error(f"Template not found: {e}")
-             
-             st.divider()
-             
-             st.info("Upload CSV/JSON with `input`, `expected_output`.")
-             uploaded_file = st.file_uploader("Upload File", type=["csv", "json"], key="popover_uploader")
-             
-             if uploaded_file is not None:
-                try:
-                    if uploaded_file.name.endswith('.csv'):
-                         try:
-                             import_df = pd.read_csv(uploaded_file, encoding='utf-8')
-                         except UnicodeDecodeError:
-                             uploaded_file.seek(0)
-                             import_df = pd.read_csv(uploaded_file, encoding='gb18030')
-                    else:
-                        import_df = pd.read_json(uploaded_file)
-                    
-                    # Validation
-                    required_cols = ["input", "expected_output"]
-                    if not all(col in import_df.columns for col in required_cols):
-                        st.error(f"Missing columns: {', '.join(required_cols)}")
-                    else:
-                        update_existing = st.checkbox("Update existing cases by ID (if ID matches)", value=False, key="chk_update_cases")
+        try:
+            from app.services.category_service import CategoryService
+            from app.database import SessionLocal
+            
+            db = SessionLocal()
+            service = CategoryService(db)
+            tree = service.get_tree()
+            db.close()
+            
+            # 构建目录选项列表
+            category_options = []
+            def build_options(nodes, prefix=""):
+                for node in nodes:
+                    indent = "　" * (node['level'] - 1)  # 用全角空格缩进
+                    label = f"{indent}📁 {node['name']}"
+                    category_options.append((node['id'], label))
+                    if node.get('children'):
+                        build_options(node['children'], prefix + "  ")
+            build_options(tree)
+            
+            if not category_options:
+                st.error("没有可用的目录")
+                return
+            
+            # 目录选择
+            selected = st.selectbox(
+                "选择目标目录",
+                options=[c[0] for c in category_options],
+                format_func=lambda x: next((c[1] for c in category_options if c[0] == x), x),
+                key="move_category_select"
+            )
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("取消", use_container_width=True):
+                    st.rerun()
+            with col2:
+                if st.button("✅ 确认移动", type="primary", use_container_width=True):
+                    # 更新数据库中的 category_id
+                    try:
+                        from app.models.test_case import TestCase
+                        db = SessionLocal()
+                        updated = db.query(TestCase).filter(TestCase.id.in_(ids_to_move)).update(
+                            {TestCase.category_id: selected},
+                            synchronize_session=False
+                        )
+                        db.commit()
+                        db.close()
                         
-                        if st.button(f"Confirm Import", type="primary", key="btn_confirm_import"):
-                            # Prepare data
-                            # Ensure tags are lists
-                            if "tags" in import_df.columns:
-                                def normalize_tags(x):
-                                    if isinstance(x, list): return x
-                                    if pd.isna(x) or x == "": return []
-                                    if isinstance(x, str):
-                                        try:
-                                            # Try to parse string representation of list like "['tag1', 'tag2']"
-                                            import ast
-                                            parsed = ast.literal_eval(x)
-                                            if isinstance(parsed, list): return parsed
-                                            return [x]
-                                        except:
-                                            # Treat string as single tag
-                                            return [x] if x.strip() else []
-                                    return []
-                                import_df["tags"] = import_df["tags"].apply(normalize_tags)
-                            else:
-                                import_df["tags"] = [[] for _ in range(len(import_df))]
+                        # 同时更新本地 DataFrame
+                        if 'category_id' not in st.session_state.df.columns:
+                            st.session_state.df['category_id'] = 'root'
+                        key_col = '__raw_id' if '__raw_id' in st.session_state.df.columns else 'id'
+                        st.session_state.df.loc[st.session_state.df[key_col].isin(ids_to_move), 'category_id'] = selected
+                        
+                        st.toast(f"✅ 已将 {len(ids_to_move)} 个用例移动到目录")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"移动失败: {e}")
+        except Exception as e:
+            st.error(f"加载目录失败: {e}")
 
-                            current_df = st.session_state.df.drop(columns=["Select"], errors='ignore')
-                            
-                            if update_existing:
-                                if "id" not in import_df.columns:
-                                    st.error("Column 'id' is required for updating existing cases.")
-                                    st.stop()
-                                
-                                # Convert IDs to string for comparison
-                                current_df["id"] = current_df["id"].astype(str)
-                                import_df["id"] = import_df["id"].astype(str)
-                                
-                                # Create a dict mapping ID to index in current_df for fast lookup
-                                id_to_index = {row_id: idx for idx, row_id in current_df["id"].items()}
-                                
-                                updated_count = 0
-                                new_count = 0
-                                
-                                for _, row in import_df.iterrows():
-                                    row_id = row.get("id")
-                                    if row_id in id_to_index:
-                                        # Update existing
-                                        idx = id_to_index[row_id]
-                                        for col in row.index:
-                                            val = row[col]
-                                            # Only update if value is not empty/NaN
-                                            # Skip ID update itself
-                                            if col == "id": continue
-                                            
-                                            # Check empty/NaN
-                                            # Using pd.isna(list) returns array of bools which fails if check
-                                            is_empty = False
-                                            
-                                            if isinstance(val, list):
-                                                if not val: is_empty = True
-                                            elif pd.isna(val):
-                                                is_empty = True
-                                            elif isinstance(val, str) and not val.strip():
-                                                is_empty = True
-                                            
-                                            if not is_empty:
-                                                # Special handling for tags: merge or overwrite?
-                                                # Request said "update", usually implies overwrite or list-merge
-                                                # Let's overwrite for simplicity unless user asks otherwise, 
-                                                # or maybe merge unique?
-                                                # "Update non-empty fields" -> Overwrite existing field with new non-empty value
-                                                if col == "tags":
-                                                    # Fix: Ensure logic handles list properly
-                                                    current_df.at[idx, col] = val
-                                                else:
-                                                    current_df.at[idx, col] = val
-                                        updated_count += 1
-                                    else:
-                                        # It's a new ID or ID not present -> Append
-                                        # We can just append to a list and concat later or append to DF
-                                        # Appending to DF row by row is slow, but consistent here.
-                                        # Better: Collect new rows
-                                        pass 
-                                
-                                # Filter import_df for ONLY new rows to concat
-                                existing_ids = set(current_df["id"])
-                                new_rows_df = import_df[~import_df["id"].isin(existing_ids)]
-                                new_count = len(new_rows_df)
-                                
-                                combined_df = pd.concat([current_df, new_rows_df], ignore_index=True)
-                                st.toast(f"Updated {updated_count} cases, Added {new_count} new cases.")
-                                
-                            else:
-                                # Standard Append Mode (Drop ID to regenerate)
-                                if "id" in import_df.columns:
-                                    del import_df["id"]
-                                
-                                combined_df = pd.concat([current_df, import_df], ignore_index=True)
-                                st.toast(f"Imported {len(import_df)} new cases.")
-                            
-                            # Save
-                            final_df = save_data(combined_df)
-                            
-                            # Update State
-                            if "Select" not in final_df.columns:
-                                 final_df.insert(0, "Select", False)
-                            st.session_state.df = final_df
-                            st.session_state.df_content_sig = get_content_signature(final_df)
-                            st.session_state.df_preprocessed = False
-                            
-                            st.rerun()
-                            
-                except Exception as e:
-                    st.error(f"Error: {e}")
-    
-    st.divider()
-    
-    # Action row 1
-    range_col1, range_col2, btn_col1, btn_col2, btn_col3 = st.columns([1, 1, 1.2, 1.2, 1.2])
-    with range_col1:
-        st.text_input("From TC", value="TC0001", help="Starting test case ID", key="start_tc")
-    with range_col2:
-        st.text_input("To TC", value="TC0001", help="Ending test case ID", key="end_tc")
-    with btn_col1:
-        st.markdown('<div style="height: 28px;"></div>', unsafe_allow_html=True)
-        run_range_clicked = st.button("▶ Run Range", use_container_width=True, type="primary", key="btn_run_range")
-    with btn_col2:
-        st.markdown('<div style="height: 28px;"></div>', unsafe_allow_html=True)
-        run_selected_clicked = st.button("▶ Run Selected", use_container_width=True, type="primary", key="btn_run_selected")
-    with btn_col3:
-        st.markdown('<div style="height: 28px;"></div>', unsafe_allow_html=True)
-        # Delete Selected 
-        delete_selected_clicked = st.button("🗑️ Delete Selected", use_container_width=True, type="primary", key="btn_delete_selected")
-    
-    # Action row 2 (Tags)
-    def get_all_tags(df):
-        all_tags = set()
-        if "tags" in df.columns:
-            for tags_value in df["tags"]:
-                if isinstance(tags_value, list):
-                    all_tags.update(tags_value)
-        return sorted(list(all_tags))
+    with top_right_col:
+        # ------------------
+        # Control Panel
+        # ------------------
+        def get_all_tags(df):
+            all_tags = set()
+            if "tags" in df.columns:
+                for tags_value in df["tags"]:
+                    if isinstance(tags_value, list):
+                        all_tags.update(tags_value)
+            return sorted(list(all_tags))
+        
+        available_tags = get_all_tags(st.session_state.df)
 
-    available_tags = get_all_tags(st.session_state.df)
+        st.markdown("#### ⚙️ Management")
+        top_col1, top_col2, top_col3 = st.columns([4.5, 1, 1])
+        with top_col1:
+            available_apis = get_available_apis() or ["Bundle API"]
+            selected_api = st.selectbox("⚙️ API Endpoint", options=available_apis, index=0, key="page_api_select", label_visibility="collapsed")
+        with top_col2:
+            move_to_category_clicked = st.button("📂 Move", use_container_width=True, key="btn_move_category") if ENABLE_CATEGORY_FEATURE else False
+        with top_col3:
+            delete_selected_clicked = st.button("🗑️ Delete", use_container_width=True, key="btn_delete_selected")
+
+        # 顶部右侧：Import（与参数说明手册同一行，下移避免贴顶裁剪）
+        with import_container:
+            st.markdown('<div style="height: 34px;"></div>', unsafe_allow_html=True)
+            with st.popover("📤 Import", use_container_width=True):
+                 st.markdown("### Import Test Cases")
+                 
+                 # 目录选择
+                 import_category = 'root'
+                 if ENABLE_CATEGORY_FEATURE:
+                     try:
+                         from app.ui.components.category_selector import get_category_options
+                         cat_opts = get_category_options()
+                         import_category = st.selectbox(
+                             "📂 目标目录",
+                             options=[c[0] for c in cat_opts],
+                             format_func=lambda x: next((c[1] for c in cat_opts if c[0] == x), x),
+                             key="import_category_select"
+                         )
+                     except Exception:
+                         st.text("目录加载失败，将导入到根目录")
+                 
+                 st.divider()
+                 
+                 # Download Template
+                 try:
+                     with open("docs/import_template.csv", "rb") as f:
+                         st.download_button("📄 Download Template", data=f, file_name="import_template.csv", mime="text/csv", help="Download CSV template")
+                 except Exception as e:
+                     st.error(f"Template not found: {e}")
+             
+                 st.info("Upload CSV/JSON with `input`, `expected_output`.")
+                 uploaded_file = st.file_uploader("Upload File", type=["csv", "json"], key="popover_uploader")
+             
+                 if uploaded_file is not None:
+                    try:
+                        if uploaded_file.name.endswith('.csv'):
+                             try:
+                                 import_df = pd.read_csv(uploaded_file, encoding='utf-8')
+                             except UnicodeDecodeError:
+                                 uploaded_file.seek(0)
+                                 import_df = pd.read_csv(uploaded_file, encoding='gb18030')
+                        else:
+                            import_df = pd.read_json(uploaded_file)
+                    
+                        # Validation
+                        required_cols = ["input", "expected_output"]
+                        if not all(col in import_df.columns for col in required_cols):
+                            st.error(f"Missing columns: {', '.join(required_cols)}")
+                        else:
+                            update_existing = st.checkbox("Update existing cases by ID (if ID matches)", value=False, key="chk_update_cases")
+                        
+                            if st.button(f"Confirm Import", type="primary", key="btn_confirm_import"):
+                                # Prepare data
+                                # Ensure tags are lists
+                                if "tags" in import_df.columns:
+                                    def normalize_tags(x):
+                                        if isinstance(x, list): return x
+                                        if pd.isna(x) or x == "": return []
+                                        if isinstance(x, str):
+                                            try:
+                                                # Try to parse string representation of list like "['tag1', 'tag2']"
+                                                import ast
+                                                parsed = ast.literal_eval(x)
+                                                if isinstance(parsed, list): return parsed
+                                                return [x]
+                                            except:
+                                                # Treat string as single tag
+                                                return [x] if x.strip() else []
+                                        return []
+                                    import_df["tags"] = import_df["tags"].apply(normalize_tags)
+                                else:
+                                    import_df["tags"] = [[] for _ in range(len(import_df))]
+                                
+                                # 设置 category_id（导入到指定目录）
+                                import_df["category_id"] = import_category
+
+                                current_df = st.session_state.df.drop(columns=["Select"], errors='ignore')
+                            
+                                if update_existing:
+                                    if "id" not in import_df.columns:
+                                        st.error("Column 'id' is required for updating existing cases.")
+                                        st.stop()
+                                
+                                    # Convert IDs to string for comparison
+                                    current_df["id"] = current_df["id"].astype(str)
+                                    import_df["id"] = import_df["id"].astype(str)
+                                
+                                    # Create a dict mapping ID to index in current_df for fast lookup
+                                    id_to_index = {row_id: idx for idx, row_id in current_df["id"].items()}
+                                
+                                    updated_count = 0
+                                    new_count = 0
+                                
+                                    for _, row in import_df.iterrows():
+                                        row_id = row.get("id")
+                                        if row_id in id_to_index:
+                                            # Update existing
+                                            idx = id_to_index[row_id]
+                                            for col in row.index:
+                                                val = row[col]
+                                                # Only update if value is not empty/NaN
+                                                # Skip ID update itself
+                                                if col == "id": continue
+                                            
+                                                # Check empty/NaN
+                                                # Using pd.isna(list) returns array of bools which fails if check
+                                                is_empty = False
+                                            
+                                                if isinstance(val, list):
+                                                    if not val: is_empty = True
+                                                elif pd.isna(val):
+                                                    is_empty = True
+                                                elif isinstance(val, str) and not val.strip():
+                                                    is_empty = True
+                                            
+                                                if not is_empty:
+                                                    # Special handling for tags: merge or overwrite?
+                                                    # Request said "update", usually implies overwrite or list-merge
+                                                    # Let's overwrite for simplicity unless user asks otherwise, 
+                                                    # or maybe merge unique?
+                                                    # "Update non-empty fields" -> Overwrite existing field with new non-empty value
+                                                    if col == "tags":
+                                                        # Fix: Ensure logic handles list properly
+                                                        current_df.at[idx, col] = val
+                                                    else:
+                                                        current_df.at[idx, col] = val
+                                            updated_count += 1
+                                        else:
+                                            # It's a new ID or ID not present -> Append
+                                            # We can just append to a list and concat later or append to DF
+                                            # Appending to DF row by row is slow, but consistent here.
+                                            # Better: Collect new rows
+                                            pass 
+                                
+                                    # Filter import_df for ONLY new rows to concat
+                                    existing_ids = set(current_df["id"])
+                                    new_rows_df = import_df[~import_df["id"].isin(existing_ids)]
+                                    new_count = len(new_rows_df)
+                                
+                                    combined_df = pd.concat([current_df, new_rows_df], ignore_index=True)
+                                    st.toast(f"Updated {updated_count} cases, Added {new_count} new cases.")
+                                
+                                else:
+                                    # Standard Append Mode (Drop ID to regenerate)
+                                    if "id" in import_df.columns:
+                                        del import_df["id"]
+                                
+                                    combined_df = pd.concat([current_df, import_df], ignore_index=True)
+                                    st.toast(f"Imported {len(import_df)} new cases.")
+                            
+                                # Save to JSON using raw unique IDs
+                                final_df = save_data(prepare_df_for_persistence(combined_df))
+                                
+                                # 同步写入数据库（新增的用例）
+                                if ENABLE_CATEGORY_FEATURE and not update_existing:
+                                    try:
+                                        from app.database import SessionLocal
+                                        from app.models.test_case import TestCase
+                                        from datetime import datetime
+                                        
+                                        db = SessionLocal()
+                                        for _, row in import_df.iterrows():
+                                            # 查找最终分配的 ID
+                                            final_row = final_df[final_df['input'] == row['input']]
+                                            if not final_row.empty:
+                                                case_id = final_row.iloc[0]['id']
+                                                # 检查是否已存在
+                                                existing = db.query(TestCase).filter(TestCase.id == case_id).first()
+                                                if not existing:
+                                                    test_case = TestCase(
+                                                        id=case_id,
+                                                        type=row.get('type', 'single'),
+                                                        input=row.get('input', ''),
+                                                        expected_output=row.get('expected_output', ''),
+                                                        retrieval_context=row.get('retrieval_context'),
+                                                        description=row.get('description'),
+                                                        tags=row.get('tags', []),
+                                                        category_id=import_category,
+                                                        created_at=datetime.utcnow()
+                                                    )
+                                                    db.add(test_case)
+                                        db.commit()
+                                        db.close()
+                                    except Exception as e:
+                                        logger.warning(f"数据库同步失败: {e}")
+                            
+                                # Update State
+                                if "Select" not in final_df.columns:
+                                     final_df.insert(0, "Select", False)
+                                final_df = rebuild_internal_ids(final_df)
+                                st.session_state.df = final_df
+                                st.session_state.df_content_sig = get_content_signature(final_df)
+                                st.session_state.df_preprocessed = False
+                            
+                                st.rerun()
+                            
+                    except Exception as e:
+                        st.error(f"Error: {e}")
     
-    if available_tags:
-        tags_col1, tags_col2 = st.columns([3, 1])
-        with tags_col1:
-            action_tags = st.multiselect("🏷️ Run by Tags", options=available_tags, default=[], key="tags_multiselect")
-        with tags_col2:
-            st.markdown('<div style="height: 28px;"></div>', unsafe_allow_html=True)
-            run_tags_clicked = st.button("▶ Run by Tags", type="primary", use_container_width=True, key="btn_run_tags")
-    else:
-        run_tags_clicked = False
-        action_tags = []
+    with top_right_col:
+        st.markdown('<div style="height: 10px"></div>', unsafe_allow_html=True)
+        # ------------------
+        # Filter & Run Section
+        # ------------------
+        st.markdown("#### 🔍 Filter")
+        filter_col1, filter_col2, filter_col3, filter_col4 = st.columns([2.8, 1.2, 1.2, 2.3])
+
+        with filter_col1:
+            filter_tags = st.multiselect(
+                "标签",
+                options=available_tags,
+                default=[],
+                key="filter_tags",
+                label_visibility="collapsed",
+                placeholder="🏷️ 选择标签..."
+            ) if available_tags else []
+
+        with filter_col2:
+            filter_id_from = st.text_input("From ID", value="", key="filter_id_from", label_visibility="collapsed", placeholder="From ID")
+
+        with filter_col3:
+            filter_id_to = st.text_input("To ID", value="", key="filter_id_to", label_visibility="collapsed", placeholder="To ID")
+
+        with filter_col4:
+            filter_keyword = st.text_input("关键词", value="", key="filter_keyword", label_visibility="collapsed", placeholder="🔎 搜索关键词...")
+
+        # Run按钮放在标签下方
+        run_col1, run_col2, run_col3, run_col4 = st.columns([1, 1, 1, 3])
+        with run_col1:
+            run_selected_clicked = st.button("▶ Run Selected", use_container_width=True, type="primary", key="btn_run_selected")
+        with run_col2:
+            run_range_clicked = st.button("▶ Run Range", use_container_width=True, type="primary", key="btn_run_range", help="执行 From ID 到 To ID 范围内的用例")
+        with run_col3:
+            run_tags_clicked = st.button("▶ Run by Tags", use_container_width=True, type="primary", key="btn_run_tags") if filter_tags else False
+
+    # 使用左侧目录树的选择作为目录筛选条件
+    filter_category = selected_category
+
+    # 节点切换时重置到第一页，避免页码越界导致空表/残留
+    if st.session_state.get('last_selected_category') != filter_category:
+        st.session_state.testcases_current_page = 1
+        st.session_state.last_selected_category = filter_category
 
     # ------------------
     # Data Editor
@@ -330,48 +558,107 @@ def render_testcases_page():
         st.session_state.df_preprocessed = True
         logger.debug(">>> 数据预处理完成")
 
+    # 应用筛选条件
+    filtered_df = filter_test_cases(
+        st.session_state.df,
+        category_id=filter_category,
+        tags=filter_tags,
+        id_from=filter_id_from,
+        id_to=filter_id_to,
+        keyword=filter_keyword
+    )
+    
+    # 统计信息（选择控制与分页将在同一行渲染）
+    total_count = len(st.session_state.df)
+    filtered_count = len(filtered_df)
+
     @st.fragment
-    def render_paginated_table():
+    def render_paginated_table(display_df):
         logger.debug(">>> render_paginated_table() fragment 开始")
-            
-        # --- Pagination Logic ---
-        items_per_page = 25
-        total_items = len(st.session_state.df)
+
+        if "testcases_page_size" not in st.session_state:
+            st.session_state.testcases_page_size = 20
+
+        total_items = len(display_df)
+
+        # 选择控制 + 统计 + 每页 + 分页（同一行）
+        ctrl_col1, ctrl_col2, ctrl_col3, ctrl_col4, ctrl_col5, ctrl_col6 = st.columns([1.35, 1.35, 1.15, 1.95, 1.0, 5.2])
+
+        with ctrl_col1:
+            # 全表（跨页）全选：以当前表格数据（display_df）为准
+            if st.button("☑️ Select All", key="btn_select_all_global", use_container_width=True, type="primary"):
+                if '__row_key' in display_df.columns:
+                    target_keys = display_df['__row_key'].tolist()
+                    st.session_state.df.loc[st.session_state.df['__row_key'].isin(target_keys), 'Select'] = True
+                else:
+                    st.session_state.df['Select'] = True
+                st.rerun()
+
+        with ctrl_col2:
+            if st.button("☐ Cancel All", key="btn_deselect_all", use_container_width=True, type="primary"):
+                st.session_state.df['Select'] = False
+                st.rerun()
+
+        with ctrl_col3:
+            # 当前页全选（header 勾选不稳定时的兜底）
+            if st.button("☑️ Select page", key="btn_select_current_page", use_container_width=True):
+                if '__row_key' in display_df.columns:
+                    start_idx = (st.session_state.testcases_current_page - 1) * st.session_state.testcases_page_size
+                    end_idx = start_idx + st.session_state.testcases_page_size
+                    page_keys = display_df.iloc[start_idx:end_idx]['__row_key'].tolist()
+                    st.session_state.df.loc[st.session_state.df['__row_key'].isin(page_keys), 'Select'] = True
+                st.rerun()
+
+        with ctrl_col4:
+            selected_count = st.session_state.df[st.session_state.df.get('Select', False) == True].shape[0] if 'Select' in st.session_state.df.columns else 0
+            filter_info = f"筛选: {filtered_count}/{total_count}" if filtered_count < total_count else f"共 {total_count} 条"
+            st.markdown('<div style="padding-top: 8px;">📊 {} | ✅ 已选: <b>{}</b> 条</div>'.format(filter_info, selected_count), unsafe_allow_html=True)
+
+        with ctrl_col5:
+            page_opts = [20, 30, 50, 100]
+            if st.session_state.testcases_page_size not in page_opts:
+                page_opts.append(st.session_state.testcases_page_size)
+                page_opts.sort()
+
+            selected_page_size = st.selectbox(
+                "每页显示",
+                options=page_opts,
+                index=page_opts.index(st.session_state.testcases_page_size),
+                label_visibility="collapsed",
+                key="page_size_selector"
+            )
+
+            if selected_page_size != st.session_state.testcases_page_size:
+                st.session_state.testcases_page_size = selected_page_size
+                st.session_state.testcases_current_page = 1
+                st.rerun()
+
+        items_per_page = st.session_state.testcases_page_size
         total_pages = max(1, (total_items - 1) // items_per_page + 1)
-        
+
         if "testcases_current_page" not in st.session_state:
             st.session_state.testcases_current_page = 1
-        else:
-            try:
-                st.session_state.testcases_current_page = int(st.session_state.testcases_current_page)
-            except (ValueError, TypeError):
-                st.session_state.testcases_current_page = 1
-                
         st.session_state.testcases_current_page = max(1, min(st.session_state.testcases_current_page, total_pages))
-        
-        def prev_page():
-            st.session_state.testcases_current_page -= 1
-        def next_page():
-            st.session_state.testcases_current_page += 1
-        def go_page():
-            st.session_state.testcases_current_page = st.session_state.page_input_widget
-        
-        # Pagination UI
-        st.write("")
-        page_cols = st.columns([1.5, 2, 1.5, 5])
-        
-        with page_cols[0]:
-            st.button("⬅️ 上一页", disabled=st.session_state.testcases_current_page <= 1, use_container_width=True, on_click=prev_page, key="prev_button")
-        with page_cols[1]:
-            st.number_input("跳转页", min_value=1, max_value=total_pages, value=st.session_state.testcases_current_page, step=1, label_visibility="collapsed", key="page_input_widget", on_change=go_page)
-        with page_cols[2]:
-            st.button("下一页 ➡️", disabled=st.session_state.testcases_current_page >= total_pages, use_container_width=True, on_click=next_page, key="next_button")
-        with page_cols[3]:
-            st.markdown(f"<div style='padding-top: 5px; color: gray;'>共 {total_pages} 页，总计 {total_items} 条数据</div>", unsafe_allow_html=True)
+
+        with ctrl_col6:
+            import streamlit_antd_components as sac
+            current_page_idx = sac.pagination(
+                total=total_items,
+                index=st.session_state.testcases_current_page,
+                page_size=items_per_page,
+                align='start',
+                show_total=True,
+                jump=True,
+                key=f"sac_testcases_pagination_{filter_category}"
+            )
+
+            if current_page_idx != st.session_state.testcases_current_page:
+                st.session_state.testcases_current_page = current_page_idx
+                st.rerun()
 
         start_idx = (st.session_state.testcases_current_page - 1) * items_per_page
         end_idx = start_idx + items_per_page
-        page_df = st.session_state.df.iloc[start_idx:end_idx].copy()
+        page_df = display_df.iloc[start_idx:end_idx].copy()
 
         edited_page_df = st.data_editor(
             page_df,
@@ -385,49 +672,63 @@ def render_testcases_page():
                 "overall_criteria": st.column_config.Column("Overall Criteria", help="用于评估打分的特殊判定要求或全局自定义标准。"),
                 "validation": st.column_config.Column("Validation", help="验证规则 (JSON格式)。例: {\"type\": \"contains\", \"keywords\": [\"正确\"]} 或 {\"type\": \"semantic\"}。"),
                 "turn_index": st.column_config.NumberColumn("Turn", width="small", help="多轮对话的顺序编号"),
+                "category_id": None,
+                "__raw_id": None,
+                "__row_key": None,
             },
             num_rows="dynamic",
-            use_container_width=True,
-            height=min(600 + 40, max(200, (len(page_df) + 1) * 35 + 40)), # Ensure table height adapts to row count nicely
-            key=f"main_data_editor_{st.session_state.testcases_current_page}"
+            use_container_width=False,
+            height=(len(page_df) + 1) * 35 + 40,
+            key=f"main_data_editor_{filter_category}_{st.session_state.testcases_current_page}_{st.session_state.testcases_page_size}"
         )
 
-        # Reconstruct the full dataframe securely from chunks
-        current_edited_df = pd.concat([
-            st.session_state.df.iloc[:start_idx],
-            edited_page_df,
-            st.session_state.df.iloc[end_idx:]
-        ], ignore_index=True)
+        # 同步选择状态（按 __row_key）
+        if 'Select' in edited_page_df.columns and '__row_key' in edited_page_df.columns:
+            for i in range(len(edited_page_df)):
+                rk = edited_page_df.iloc[i]['__row_key']
+                st.session_state.df.loc[st.session_state.df['__row_key'] == rk, 'Select'] = edited_page_df.iloc[i]['Select']
 
-        # ------------------
-        # Auto-Save Logic
-        # ------------------
-        current_sig = get_content_signature(current_edited_df)
-        
-        if current_sig != getattr(st.session_state, "df_content_sig", ""):
-            saved_df_clean = save_data(current_edited_df)
-            
-            if "Select" in current_edited_df.columns:
-                saved_df_clean.insert(0, "Select", current_edited_df["Select"].values)
-            else:
-                 saved_df_clean.insert(0, "Select", False)
+        # 自动保存：仅当内容列被修改时
+        page_edited = not edited_page_df.equals(page_df)
+        if page_edited:
+            for _, row in edited_page_df.iterrows():
+                rk = row['__row_key']
+                main_mask = st.session_state.df['__row_key'] == rk
+                for col in edited_page_df.columns:
+                    if col in st.session_state.df.columns:
+                        st.session_state.df.loc[main_mask, col] = row[col]
+
+            # 保存时恢复原始唯一ID，并剔除内部列
+            save_df = prepare_df_for_persistence(st.session_state.df)
+            saved_df_clean = save_data(save_df)
+
+            if "Select" not in saved_df_clean.columns:
+                saved_df_clean.insert(0, "Select", False)
+
+            # 重新补回内部键并恢复规范化展示ID
+            saved_df_clean = rebuild_internal_ids(saved_df_clean)
 
             st.session_state.df = saved_df_clean
-            st.session_state.df_content_sig = current_sig
-            
+            st.session_state.df_content_sig = get_content_signature(st.session_state.df)
             st.toast("✅ Changes saved automatically!", icon="💾")
-        else:
-            # ONLY Select state changed (or nothing changed). 
-            # We MUST save it to global state in memory so checkboxes aren't lost on page switch!
-            st.session_state.df = current_edited_df
-        
-        logger.debug(">>> render_paginated_table() fragment 结束")
-        return current_edited_df
 
-    # Render table and capture edited global DF
+        logger.debug(">>> render_paginated_table() fragment 结束")
+        return display_df
+
+    # Render table
     logger.debug(">>> 准备调用 render_paginated_table()...")
-    edited_df = render_paginated_table()
+    render_paginated_table(filtered_df)
     logger.debug(">>> render_paginated_table() 返回完成")
+
+    # 重新从主数据集计算当前筛选视图，确保执行逻辑拿到最新选择状态
+    edited_df = filter_test_cases(
+        st.session_state.df,
+        category_id=filter_category,
+        tags=filter_tags,
+        id_from=filter_id_from,
+        id_to=filter_id_to,
+        keyword=filter_keyword
+    )
 
 
     # ------------------
@@ -440,34 +741,52 @@ def render_testcases_page():
         if selected_rows.empty:
             st.warning("Please select cases to run.")
         else:
-             cases_to_run = selected_rows.drop(columns=["Select"]).to_dict(orient="records")
+             cases_to_run = selected_rows.drop(columns=["Select", "__row_key", "__raw_id"], errors='ignore').to_dict(orient="records")
              
     elif delete_selected_clicked:
         selected_rows = edited_df[edited_df["Select"] == True]
         if selected_rows.empty:
             st.warning("Please select cases to delete.")
         else:
-            ids_to_delete = selected_rows["id"].tolist()
+            id_col = "__raw_id" if "__raw_id" in selected_rows.columns else "id"
+            ids_to_delete = selected_rows[id_col].tolist()
             confirm_delete_dialog(ids_to_delete)
     
-    elif run_range_clicked:
-        start_id = st.session_state.start_tc
-        end_id = st.session_state.end_tc
-        mask = (edited_df['id'] >= start_id) & (edited_df['id'] <= end_id)
-        range_rows = edited_df[mask]
-        if range_rows.empty:
-            st.warning(f"No cases found in range {start_id} to {end_id}")
+    elif move_to_category_clicked:
+        selected_rows = edited_df[edited_df["Select"] == True]
+        if selected_rows.empty:
+            st.warning("请先选择要移动的测试用例")
         else:
-            cases_to_run = range_rows.drop(columns=["Select"]).to_dict(orient="records")
+            id_col = "__raw_id" if "__raw_id" in selected_rows.columns else "id"
+            ids_to_move = selected_rows[id_col].tolist()
+            move_to_category_dialog(ids_to_move)
+    
+    elif run_range_clicked:
+        start_id = st.session_state.get('filter_id_from', '').strip()
+        end_id = st.session_state.get('filter_id_to', '').strip()
+        if not start_id and not end_id:
+            st.warning("请在筛选条件中填写 From ID 或 To ID")
+        else:
+            # 构建筛选条件
+            mask = pd.Series([True] * len(edited_df))
+            if start_id:
+                mask = mask & (edited_df['id'] >= start_id)
+            if end_id:
+                mask = mask & (edited_df['id'] <= end_id)
+            range_rows = edited_df[mask]
+            if range_rows.empty:
+                st.warning(f"No cases found in range {start_id or '*'} to {end_id or '*'}")
+            else:
+                cases_to_run = range_rows.drop(columns=["Select", "__row_key", "__raw_id"], errors='ignore').to_dict(orient="records")
             
     elif run_tags_clicked:
-        if not action_tags:
-            st.warning("Please select tags.")
+        if not filter_tags:
+            st.warning("请在筛选条件中选择标签")
         else:
             # Filter by tags
             def row_has_tag(row_tags):
                 if not isinstance(row_tags, list): return False
-                return any(tag in row_tags for tag in action_tags)
+                return any(tag in row_tags for tag in filter_tags)
             
             mask = edited_df['tags'].apply(row_has_tag)
             tags_rows = edited_df[mask]
@@ -475,7 +794,7 @@ def render_testcases_page():
             if tags_rows.empty:
                 st.warning("No cases found with selected tags.")
             else:
-                 cases_to_run = tags_rows.drop(columns=["Select"]).to_dict(orient="records")
+                 cases_to_run = tags_rows.drop(columns=["Select", "__row_key", "__raw_id"], errors='ignore').to_dict(orient="records")
                  
     if cases_to_run:
         try:

@@ -1,0 +1,27 @@
+from sqlalchemy import Column, String, Text, Float, DateTime, JSON, ForeignKey
+from sqlalchemy.orm import relationship
+from datetime import datetime
+from app.database import Base, SCHEMA
+from sqlalchemy.dialects.postgresql import JSONB
+
+class TestCase(Base):
+    __tablename__ = 'test_cases'
+    __table_args__ = {'schema': SCHEMA}
+    
+    id = Column(String(50), primary_key=True)
+    type = Column(String(20), default='single')
+    input = Column(Text, nullable=False)
+    expected_output = Column(Text)
+    retrieval_context = Column(Text)
+    description = Column(Text)
+    turn_index = Column(Float)
+    validation = Column(Text)
+    overall_criteria = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # 目录关联
+    category_id = Column(String(50), ForeignKey(f'{SCHEMA}.categories.id', ondelete='CASCADE'), default='root')
+    category = relationship('Category', back_populates='test_cases')
+    
+    tags = Column(JSONB, default=list)
