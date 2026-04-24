@@ -94,19 +94,24 @@ def migrate_test_cases(json_path: str, dry_run: bool = False):
                 if not isinstance(tags, list):
                     tags = []
                 
-                # 检查是否已存在（用于去重的复合键：id + turn_index）
-                query = db.query(TestCase).filter(TestCase.id == case_id)
-                if turn_index is not None:
-                    query = query.filter(TestCase.turn_index == turn_index)
-                existing = query.first()
-                
+                # 优先按 input 查重：重叠时以服务器数据覆盖，但保留数据库 category_id
+                existing = db.query(TestCase).filter(TestCase.input == input_text).first()
+
+                # 未命中 input 时，回退到历史兼容逻辑（id + turn_index）
+                if not existing:
+                    query = db.query(TestCase).filter(TestCase.id == case_id)
+                    if turn_index is not None:
+                        query = query.filter(TestCase.turn_index == turn_index)
+                    existing = query.first()
+
                 if existing:
-                    # 更新现有记录
+                    # 更新现有记录（不更新 category_id，保留数据库原值）
                     existing.type = case_type
                     existing.input = input_text
                     existing.expected_output = expected_output
                     existing.retrieval_context = retrieval_context
                     existing.description = description
+                    existing.turn_index = turn_index
                     existing.validation = validation
                     existing.overall_criteria = overall_criteria
                     existing.tags = tags
@@ -118,7 +123,7 @@ def migrate_test_cases(json_path: str, dry_run: bool = False):
                     unique_id = case_id
                     if turn_index is not None and turn_index > 1:
                         unique_id = f"{case_id}_T{int(turn_index)}"
-                    
+
                     test_case = TestCase(
                         id=unique_id,
                         type=case_type,

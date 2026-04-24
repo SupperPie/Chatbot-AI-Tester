@@ -85,7 +85,8 @@ python scripts/migrate_categories.py
 冲突判断标准：`input`
 
 处理规则：
-- 若数据库中存在相同 `input`，则整条业务数据以服务器数据覆盖数据库
+- 若数据库中存在相同 `input`，则以服务器数据覆盖数据库业务字段（如 `type/input/expected_output/tags/validation` 等）
+- 若数据库中存在相同 `input`，`category_id` 保留数据库原值，不随服务器数据覆盖
 - 若不存在相同 `input`，插入新记录
 
 伪代码：
@@ -93,14 +94,14 @@ python scripts/migrate_categories.py
 ```python
 existing = db.query(TestCase).filter(TestCase.input == src_input).first()
 if existing:
-    # 服务器覆盖数据库
+    # 服务器覆盖数据库业务字段（保留数据库 category_id）
     existing.expected_output = src_expected_output
     existing.tags = src_tags
     existing.type = src_type
     existing.turn_index = src_turn_index
     existing.validation = src_validation
     existing.overall_criteria = src_overall_criteria
-    existing.category_id = src_category_id
+    # 不更新 existing.category_id
 else:
     db.add(TestCase(...))
 ```
