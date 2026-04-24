@@ -21,8 +21,8 @@
 
 ## Git 提交结果
 - 分支：`release/2.1`
-- 提交：`0dc78d1`
-- 提交信息：`release/2.1: deployment guide and migration policy update`
+- 提交1：`0dc78d1`（`release/2.1: deployment guide and migration policy update`）
+- 提交2：`19e54e4`（`release/2.1: complete deployment spec execution summary`）
 - 推送结果：已成功推送远端并建立跟踪分支 `origin/release/2.1`
 
 ## 备注
