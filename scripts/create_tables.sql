@@ -135,7 +135,9 @@ CREATE TABLE IF NOT EXISTS api_configs (
     name VARCHAR(100) PRIMARY KEY,
     url TEXT NOT NULL,
     description TEXT,
-    type VARCHAR(50)
+    type VARCHAR(50),
+    token TEXT,
+    request_params JSONB DEFAULT '{}'
 );
 
 -- 10. 草稿批次管理表（Tester 页面大量生成时用）

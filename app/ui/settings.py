@@ -7,7 +7,7 @@ def render_settings_page():
     st.title("⚙️ API Configuration")
     st.info("Manage the API endpoints used by TestMate.")
     
-    # Load configs
+    # Load configs (DB first, JSON fallback)
     configs = load_api_configs()
     
     st.subheader("Endpoint List")
@@ -15,21 +15,27 @@ def render_settings_page():
     # Convert dict to list for editor
     data_list = []
     for name, details in configs.items():
+        rp = details.get("request_params") or {}
+        rp_str = json.dumps(rp, ensure_ascii=False) if rp else ""
+        token = details.get("token") or ""
+        if token == "None":
+            token = ""
         data_list.append({
             "Name": name,
             "URL": details.get("url", ""),
             "Description": details.get("description", ""),
             "Type": details.get("type", "bundle"),
-            "Token": details.get("token", "")
+            "Token": token,
+            "Request Params": rp_str,
         })
     
     # If empty, provide empty row
     if not data_list:
-         data_list = [{"Name": "", "URL": "", "Description": "", "Type": "bundle", "Token": ""}]
+         data_list = [{"Name": "", "URL": "", "Description": "", "Type": "bundle", "Token": "", "Request Params": ""}]
          
     df_config = pd.DataFrame(data_list)
     
-    st.caption("💡 **Token** field is only needed for `dify` type APIs (Bearer app token, e.g. `app-xxxxx`).")
+    st.caption("💡 **Token**: `dify` 类型填 Bearer token (app-xxx)；`dify_workflow` 填 x-app-code|x-app-passport。**Request Params**: JSON 格式自定义请求参数，留空使用 Type 默认值。")
     
     edited_df = st.data_editor(
         df_config,
@@ -45,6 +51,7 @@ def render_settings_page():
                 help="dify = Dify /v1/chat-messages; dify_workflow = Dify Workflow API; ai_engineering = AI Engineering 流式接口; skills/bundle/limo/flight/agent_qa/hotel = internal APIs"
             ),
             "Token": st.column_config.TextColumn("Token (Dify/Workflow)", help="Dify: Bearer token (app-xxx); Workflow: x-app-code|x-app-passport"),
+            "Request Params": st.column_config.TextColumn("Request Params (JSON)", help="自定义请求参数，JSON 格式。留空则使用 Type 默认值。", width="large"),
         },
         use_container_width=True,
         key="settings_api_editor"
@@ -53,25 +60,62 @@ def render_settings_page():
     if st.button("💾 Save Changes", type="primary", key="btn_save_config"):
         # Convert back to dict
         new_configs = {}
+        has_error = False
         for _, row in edited_df.iterrows():
              name = row.get("Name")
              if name and str(name).strip():
                  entry = {
-                     "url": row.get("URL"),
-                     "description": row.get("Description"),
-                     "type": row.get("Type")
+                     "url": row.get("URL", ""),
+                     "description": row.get("Description", ""),
+                     "type": row.get("Type", "bundle"),
                  }
                  token = str(row.get("Token", "")).strip()
-                 if token:
+                 if token and token != "None":
                      entry["token"] = token
+                 else:
+                     entry["token"] = ""
+                 # Parse request_params JSON
+                 rp_str = str(row.get("Request Params", "")).strip()
+                 if rp_str:
+                     try:
+                         rp = json.loads(rp_str)
+                         if not isinstance(rp, dict):
+                             st.error(f"'{name}' 的 Request Params 必须是 JSON 对象（dict），当前类型: {type(rp).__name__}")
+                             has_error = True
+                             continue
+                         entry["request_params"] = rp
+                     except json.JSONDecodeError as e:
+                         st.error(f"'{name}' 的 Request Params JSON 解析失败: {e}")
+                         has_error = True
+                         continue
+                 else:
+                     entry["request_params"] = {}
                  new_configs[str(name).strip()] = entry
         
-        # Save to file
+        if has_error:
+            return
+
+        # 保存到 DB + JSON 双写
+        try:
+            from app.services.api_config_service import ApiConfigService
+            service = ApiConfigService()
+            service.save_all(new_configs)
+        except Exception as e:
+            st.warning(f"DB 写入失败（已回退 JSON 保存）: {e}")
+
         try:
             from chat_client import CONFIG_FILE
-            config_path = CONFIG_FILE
-            with open(config_path, "w", encoding="utf-8") as f:
-                json.dump(new_configs, f, indent=4, ensure_ascii=False)
+            # JSON 备份：去掉 request_params 为空 dict 的字段以保持兼容
+            json_configs = {}
+            for k, v in new_configs.items():
+                entry = {kk: vv for kk, vv in v.items()}
+                if not entry.get("request_params"):
+                    entry.pop("request_params", None)
+                if not entry.get("token"):
+                    entry.pop("token", None)
+                json_configs[k] = entry
+            with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+                json.dump(json_configs, f, indent=4, ensure_ascii=False)
             st.success("Configuration saved successfully!")
             st.rerun()
         except Exception as e:

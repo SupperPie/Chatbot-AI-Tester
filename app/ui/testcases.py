@@ -693,10 +693,16 @@ def render_testcases_page():
         if page_edited:
             for _, row in edited_page_df.iterrows():
                 rk = row['__row_key']
-                main_mask = st.session_state.df['__row_key'] == rk
+                main_idx = st.session_state.df.index[st.session_state.df['__row_key'] == rk]
                 for col in edited_page_df.columns:
                     if col in st.session_state.df.columns:
-                        st.session_state.df.loc[main_mask, col] = row[col]
+                        val = row[col]
+                        # 对 list/dict 等可迭代值，需逐行用 at 赋值避免 pandas 展开
+                        if isinstance(val, (list, dict)):
+                            for idx in main_idx:
+                                st.session_state.df.at[idx, col] = val
+                        else:
+                            st.session_state.df.loc[main_idx, col] = val
 
             # 保存时恢复原始唯一ID，并剔除内部列
             save_df = prepare_df_for_persistence(st.session_state.df)

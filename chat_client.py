@@ -11,14 +11,169 @@ logger = logging.getLogger(__name__)
 # Configuration File Path
 CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "api_config.json")
 
+# 各 Type 的默认可覆盖请求参数模板
+TYPE_DEFAULTS = {
+    "bundle": {
+        "request_params": {
+            "config": {
+                "struc_properties_filter": [
+                    "meta.semantic_info.intent",
+                    "data.bundle_list"
+                ]
+            }
+        }
+    },
+    "skills": {
+        "request_params": {
+            "stream_mode": "MESSAGES",
+            "anchor": "",
+            "mobile_no": "13112748887"
+        }
+    },
+    "flight": {
+        "request_params": {
+            "line_of_business": "dev_lob",
+            "additionalProp1": {}
+        }
+    },
+    "limo": {
+        "request_params": {
+            "config": {
+                "struc_properties_filter": [
+                    "meta.semantic_info.flight_no",
+                    "meta.semantic_info.flight_date",
+                    "meta.semantic_info.service_type",
+                    "meta.semantic_info.address_keywords",
+                    "meta.semantic_info.service_time",
+                    "meta.semantic_info.arrival_time",
+                    "meta.semantic_info.airport_code",
+                    "meta.semantic_info.adult",
+                    "meta.semantic_info.child",
+                    "meta.semantic_info.luggage",
+                    "data.flight_info",
+                    "data.car_info",
+                    "data.address_info"
+                ]
+            }
+        }
+    },
+    "dify": {
+        "request_params": {
+            "inputs": {},
+            "response_mode": "streaming"
+        }
+    },
+    "dify_workflow": {
+        "request_params": {
+            "inputs": {},
+            "response_mode": "streaming",
+            "files": []
+        }
+    },
+    "agent_qa": {
+        "request_params": {
+            "lob": "dc"
+        }
+    },
+    "hotel": {
+        "request_params": {
+            "ex": {
+                "max_results": 5,
+                "use_ai_description": False,
+                "use_ai_commentary": True,
+                "previous_params": {},
+                "semantic_info": {
+                    "lang": "zh-CN",
+                    "userMessage": "",
+                    "destination": "",
+                    "cityCode": "",
+                    "hotelName": "",
+                    "checkInDate": "",
+                    "checkOutDate": "",
+                    "adultNum": 1,
+                    "childNum": 0,
+                    "childAgeList": [],
+                    "roomNum": 1,
+                    "hotelBrandName": "",
+                    "hotelFacilityList": [],
+                    "hotelRoomeFacilityList": [],
+                    "hotelStarCode": "",
+                    "hotelTypeCode": "",
+                    "sortList": []
+                },
+                "ambiguous_fields": {},
+                "missing_fields": {}
+            }
+        }
+    },
+    "ai_engineering": {
+        "request_params": {
+            "lob": "ata"
+        }
+    },
+    "translation": {
+        "request_params": {
+            "config": {
+                "translate_config": {
+                    "sys_lang": "pt-BR"
+                }
+            }
+        }
+    }
+}
+
+
+def deep_merge(base: dict, override: dict) -> dict:
+    """递归合并字典，override 优先"""
+    result = base.copy()
+    for key, value in override.items():
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            result[key] = deep_merge(result[key], value)
+        else:
+            result[key] = value
+    return result
+
+
+def merge_config_with_defaults(config: dict) -> dict:
+    """将配置行与 Type 默认模板合并，配置值优先"""
+    api_type = config.get("type", "bundle")
+    defaults = TYPE_DEFAULTS.get(api_type, {})
+
+    merged = {}
+    # URL: 配置有值则用配置
+    merged["url"] = config.get("url") or ""
+    # Token: "None" 字符串视为空值
+    token = config.get("token") or ""
+    if token == "None":
+        token = ""
+    merged["token"] = token
+    # Request Params: 深合并，配置层覆盖默认层
+    default_params = defaults.get("request_params", {})
+    config_params = config.get("request_params") or {}
+    merged["request_params"] = deep_merge(default_params, config_params)
+
+    return merged
+
 def load_api_configs():
-    """Load API configurations from JSON file"""
-    logger.debug(f"load_api_configs() 调用, CONFIG_FILE={CONFIG_FILE}")
+    """Load API configurations: DB first, JSON fallback"""
+    # 优先从数据库加载
+    try:
+        from app.services.api_config_service import ApiConfigService
+        service = ApiConfigService()
+        configs = service.get_all()
+        if configs:
+            logger.debug(f"load_api_configs() 从 DB 加载 {len(configs)} 个API配置")
+            return configs
+    except Exception as e:
+        logger.warning(f"load_api_configs() DB 读取失败，回退 JSON: {e}")
+
+    # 回退到 JSON 文件
+    logger.debug(f"load_api_configs() 回退 JSON, CONFIG_FILE={CONFIG_FILE}")
     if os.path.exists(CONFIG_FILE):
         try:
             with open(CONFIG_FILE, "r", encoding="utf-8") as f:
                 config = json.load(f)
-                logger.debug(f"load_api_configs() 成功加载 {len(config)} 个API配置")
+                logger.debug(f"load_api_configs() 从 JSON 加载 {len(config)} 个API配置")
                 return config
         except Exception as e:
             logger.error(f"Error loading API config: {e}")
@@ -26,7 +181,7 @@ def load_api_configs():
     logger.warning(f"配置文件不存在: {CONFIG_FILE}")
     return {}
 
-def get_bundle_response(message: str, url: str, user_id: str = None, session_id: str = None) -> str:
+def get_bundle_response(message: str, url: str, user_id: str = None, session_id: str = None, extra_params: dict = None) -> str:
     """Bundle API client with session support"""
     # Generate IDs if not provided
     if user_id is None:
@@ -38,13 +193,9 @@ def get_bundle_response(message: str, url: str, user_id: str = None, session_id:
         "message": message,
         "thread_id": session_id,
         "user_id": user_id,
-        "config": {
-            "struc_properties_filter": [
-                "meta.semantic_info.intent",
-                "data.bundle_list"
-            ]
-        }
     }
+    if extra_params:
+        payload.update(extra_params)
     
     headers = {
         "Content-Type": "application/json"
@@ -125,7 +276,7 @@ def get_bundle_response(message: str, url: str, user_id: str = None, session_id:
 
 
 
-def get_skills_response(message: str, url: str, user_id: str = None, session_id: str = None) -> str:
+def get_skills_response(message: str, url: str, user_id: str = None, session_id: str = None, extra_params: dict = None) -> str:
     """Skills API client"""
     # Generate IDs if not provided
     if user_id is None:
@@ -133,15 +284,12 @@ def get_skills_response(message: str, url: str, user_id: str = None, session_id:
     if session_id is None:
         session_id = str(uuid.uuid4())[:8]
     
-    
-    # Updated payload based on user request (2026-02-09)
     payload = {
         "session_id": session_id,
-        "message": message,  # Renamed from 'query'
-        "stream_mode": "MESSAGES", # Changed from 'MESSAGE'
-        "anchor": "", # Renamed from 'step'
-        "mobile_no": "13112748887" # Renamed from 'phone' and added default
+        "message": message,
     }
+    if extra_params:
+        payload.update(extra_params)
     
     headers = {
         "Content-Type": "application/json",
@@ -251,11 +399,11 @@ def get_skills_response(message: str, url: str, user_id: str = None, session_id:
         return f"Error: {e}"
 
 
-def get_flight_response(message: str, url: str, user_id: str = None, session_id: str = None) -> str:
+def get_flight_response(message: str, url: str, user_id: str = None, session_id: str = None, extra_params: dict = None) -> str:
     """Flight API client"""
     # Generate IDs if not provided
     if user_id is None:
-        user_id = "12345" # Using default as per user request example, or uuid
+        user_id = "12345"
     if session_id is None:
         session_id = str(uuid.uuid4())[:8]
     
@@ -263,9 +411,9 @@ def get_flight_response(message: str, url: str, user_id: str = None, session_id:
         "query": message,
         "user_id": user_id,
         "thread_id": session_id,
-        "line_of_business": "dev_lob",
-        "additionalProp1": {}
     }
+    if extra_params:
+        payload.update(extra_params)
     
     headers = {
         "Content-Type": "application/json",
@@ -305,7 +453,7 @@ def get_flight_response(message: str, url: str, user_id: str = None, session_id:
         print(f"Error calling Flight API: {e}")
         return f"Error: {str(e)}"
 
-def get_limo_response(message: str, url: str, user_id: str = None, session_id: str = None) -> str:
+def get_limo_response(message: str, url: str, user_id: str = None, session_id: str = None, extra_params: dict = None) -> str:
     """Limo streaming API client"""
     if user_id is None:
         user_id = str(uuid.uuid4())
@@ -316,24 +464,9 @@ def get_limo_response(message: str, url: str, user_id: str = None, session_id: s
         "message": message,
         "thread_id": session_id,
         "user_id": user_id,
-        "config": {
-            "struc_properties_filter": [
-                "meta.semantic_info.flight_no",
-                "meta.semantic_info.flight_date",
-                "meta.semantic_info.service_type",
-                "meta.semantic_info.address_keywords",
-                "meta.semantic_info.service_time",
-                "meta.semantic_info.arrival_time",
-                "meta.semantic_info.airport_code",
-                "meta.semantic_info.adult",
-                "meta.semantic_info.child",
-                "meta.semantic_info.luggage",
-                "data.flight_info",
-                "data.car_info",
-                "data.address_info"
-            ]
-        }
     }
+    if extra_params:
+        payload.update(extra_params)
     
     headers = {
         "Content-Type": "application/json",
@@ -396,7 +529,7 @@ def get_limo_response(message: str, url: str, user_id: str = None, session_id: s
         print(f"Error calling Limo API: {e}")
         return f"Error: {str(e)}"
 
-def get_dify_response(message: str, url: str, token: str = None, user_id: str = None, session_id: str = None) -> str:
+def get_dify_response(message: str, url: str, token: str = None, user_id: str = None, session_id: str = None, extra_params: dict = None) -> str:
     """Dify /v1/chat-messages streaming API client.
     
     Expects config with:
@@ -405,9 +538,6 @@ def get_dify_response(message: str, url: str, token: str = None, user_id: str = 
     """
     if user_id is None:
         user_id = str(uuid.uuid4())
-    # Dify requires conversation_id to be a valid UUID (36-char) or empty string.
-    # Our test engine passes 8-char truncated IDs which Dify rejects with a 400 error.
-    # Validate and fall back to "" (Dify will create a new conversation).
     import re as _re
     _uuid_pattern = _re.compile(
         r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', _re.IGNORECASE
@@ -415,12 +545,12 @@ def get_dify_response(message: str, url: str, token: str = None, user_id: str = 
     conversation_id = session_id if session_id and _uuid_pattern.match(session_id) else ""
 
     payload = {
-        "inputs": {},
         "query": message,
-        "response_mode": "streaming",
         "conversation_id": conversation_id,
         "user": user_id,
     }
+    if extra_params:
+        payload.update(extra_params)
 
     headers = {
         "Content-Type": "application/json",
@@ -502,7 +632,7 @@ def get_dify_response(message: str, url: str, token: str = None, user_id: str = 
         return f"Error: {str(e)}"
 
 
-def get_translation_response(message: str, url: str, user_id: str = None, session_id: str = None, sys_lang: str = "pt-BR") -> str:
+def get_translation_response(message: str, url: str, user_id: str = None, session_id: str = None, extra_params: dict = None) -> str:
     """Translation 流式接口客户端
     
     响应解析规则：
@@ -510,12 +640,9 @@ def get_translation_response(message: str, url: str, user_id: str = None, sessio
     """
     payload = {
         "query": message,
-        "config": {
-            "translate_config": {
-                "sys_lang": sys_lang
-            }
-        }
     }
+    if extra_params:
+        payload.update(extra_params)
     
     headers = {
         "Content-Type": "application/json",
@@ -597,7 +724,7 @@ def get_translation_response(message: str, url: str, user_id: str = None, sessio
         return f"Error: {e}"
 
 
-def get_ai_engineering_response(message: str, url: str, user_id: str = None, session_id: str = None, lob: str = "ata") -> str:
+def get_ai_engineering_response(message: str, url: str, user_id: str = None, session_id: str = None, extra_params: dict = None) -> str:
     """AI Engineering 流式接口客户端
     
     响应解析规则：
@@ -613,8 +740,9 @@ def get_ai_engineering_response(message: str, url: str, user_id: str = None, ses
         "query": message,
         "user_id": user_id,
         "thread_id": session_id,
-        "lob": lob
     }
+    if extra_params:
+        payload.update(extra_params)
     
     headers = {
         "Content-Type": "application/json",
@@ -700,7 +828,7 @@ def get_ai_engineering_response(message: str, url: str, user_id: str = None, ses
         return f"Error: {e}"
 
 
-def get_agent_qa_response(message: str, url: str, user_id: str = None, session_id: str = None) -> str:
+def get_agent_qa_response(message: str, url: str, user_id: str = None, session_id: str = None, extra_params: dict = None) -> str:
     """Agent Q&A API client"""
     # Generate IDs if not provided
     if user_id is None:
@@ -708,14 +836,13 @@ def get_agent_qa_response(message: str, url: str, user_id: str = None, session_i
     if session_id is None:
         session_id = str(uuid.uuid4())[:8]
     
-    # Payload based on user specification
-    # Note: API expects 'session_id' not 'thread_id'
     payload = {
         "query": message,
         "user_id": user_id,
-        "session_id": session_id,  # API expects 'session_id'
-        "lob": "dc"  # Default to 'dc', can be 'dc' or 'ata'
+        "session_id": session_id,
     }
+    if extra_params:
+        payload.update(extra_params)
     
     headers = {
         "Content-Type": "application/json",
@@ -816,7 +943,7 @@ def get_agent_qa_response(message: str, url: str, user_id: str = None, session_i
         return f"Error: {e}"
 
 
-def get_hotel_response(message: str, url: str, user_id: str = None, session_id: str = None) -> str:
+def get_hotel_response(message: str, url: str, user_id: str = None, session_id: str = None, extra_params: dict = None) -> str:
     """Hotel streaming API client
     
     Uses the health check payload format with 'ex' field containing semantic_info.
@@ -827,39 +954,19 @@ def get_hotel_response(message: str, url: str, user_id: str = None, session_id: 
     if session_id is None:
         session_id = str(uuid.uuid4())[:8]
     
-    # Health check payload with semantic_info for Hotel API
     payload = {
         "message": message,
         "thread_id": session_id,
         "user_id": user_id,
-        "ex": {
-            "max_results": 5,
-            "use_ai_description": False,
-            "use_ai_commentary": True,
-            "previous_params": {},
-            "semantic_info": {
-                "lang": "zh-CN",
-                "userMessage": message,
-                "destination": "广州",
-                "cityCode": "10112",
-                "hotelName": "",
-                "checkInDate": "2026-04-02",
-                "checkOutDate": "2026-04-03",
-                "adultNum": 1,
-                "childNum": 0,
-                "childAgeList": [],
-                "roomNum": 1,
-                "hotelBrandName": "",
-                "hotelFacilityList": [],
-                "hotelRoomeFacilityList": [],
-                "hotelStarCode": "",
-                "hotelTypeCode": "",
-                "sortList": []
-            },
-            "ambiguous_fields": {},
-            "missing_fields": {}
-        }
     }
+    if extra_params:
+        # 对 hotel 的 ex.semantic_info.userMessage 自动填充当前 message
+        ex = extra_params.get("ex", {})
+        if isinstance(ex, dict):
+            semantic = ex.get("semantic_info", {})
+            if isinstance(semantic, dict) and not semantic.get("userMessage"):
+                extra_params = deep_merge(extra_params, {"ex": {"semantic_info": {"userMessage": message}}})
+        payload.update(extra_params)
     
     headers = {
         "Content-Type": "application/json",
@@ -948,7 +1055,7 @@ def get_hotel_response(message: str, url: str, user_id: str = None, session_id: 
         return f"Error: {str(e)}"
 
 
-def get_dify_workflow_response(message: str, url: str, token: str = None, user_id: str = None, session_id: str = None) -> str:
+def get_dify_workflow_response(message: str, url: str, token: str = None, user_id: str = None, session_id: str = None, extra_params: dict = None) -> str:
     """Dify Workflow API client (extracts answer from workflow_finished event).
     
     This is for Dify APIs that return the final answer in the workflow_finished event's
@@ -965,7 +1072,6 @@ def get_dify_workflow_response(message: str, url: str, token: str = None, user_i
         parts = token.split("|", 1)
         app_code, app_passport = parts[0], parts[1]
     
-    # Validate conversation_id (must be UUID format or empty)
     import re as _re
     _uuid_pattern = _re.compile(
         r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', _re.IGNORECASE
@@ -973,12 +1079,11 @@ def get_dify_workflow_response(message: str, url: str, token: str = None, user_i
     conversation_id = session_id if session_id and _uuid_pattern.match(session_id) else ""
 
     payload = {
-        "inputs": {},
         "query": message,
-        "response_mode": "streaming",
         "conversation_id": conversation_id,
-        "files": [],
     }
+    if extra_params:
+        payload.update(extra_params)
 
     headers = {
         "Content-Type": "application/json",
@@ -1061,37 +1166,37 @@ def get_chat_response(message: str, api_name: str = "Bundle API", user_id: str =
     if not config:
         return f"Error: API Configuration '{api_name}' not found."
     
-    url = config.get("url")
+    # 合并默认值
+    merged = merge_config_with_defaults(config)
+    url = merged["url"]
+    token = merged["token"]
+    extra_params = merged["request_params"]
+
     if not url:
         return f"Error: No URL configured for '{api_name}'."
         
-    api_type = config.get("type", "bundle") # Default to bundle type if not specified
+    api_type = config.get("type", "bundle")
     
     if api_type == "skills":
-        return get_skills_response(message, url=url, user_id=user_id, session_id=session_id)
+        return get_skills_response(message, url=url, user_id=user_id, session_id=session_id, extra_params=extra_params)
     elif api_type == "flight":
-        return get_flight_response(message, url=url, user_id=user_id, session_id=session_id)
+        return get_flight_response(message, url=url, user_id=user_id, session_id=session_id, extra_params=extra_params)
     elif api_type == "limo":
-        return get_limo_response(message, url=url, user_id=user_id, session_id=session_id)
+        return get_limo_response(message, url=url, user_id=user_id, session_id=session_id, extra_params=extra_params)
     elif api_type == "dify":
-        token = config.get("token", "")
-        return get_dify_response(message, url=url, token=token, user_id=user_id, session_id=session_id)
+        return get_dify_response(message, url=url, token=token, user_id=user_id, session_id=session_id, extra_params=extra_params)
     elif api_type == "agent_qa":
-        return get_agent_qa_response(message, url=url, user_id=user_id, session_id=session_id)
+        return get_agent_qa_response(message, url=url, user_id=user_id, session_id=session_id, extra_params=extra_params)
     elif api_type == "ai_engineering":
-        lob = config.get("lob", "ata")
-        return get_ai_engineering_response(message, url=url, user_id=user_id, session_id=session_id, lob=lob)
+        return get_ai_engineering_response(message, url=url, user_id=user_id, session_id=session_id, extra_params=extra_params)
     elif api_type == "translation":
-        sys_lang = config.get("sys_lang", "pt-BR")
-        return get_translation_response(message, url=url, user_id=user_id, session_id=session_id, sys_lang=sys_lang)
+        return get_translation_response(message, url=url, user_id=user_id, session_id=session_id, extra_params=extra_params)
     elif api_type == "hotel":
-        return get_hotel_response(message, url=url, user_id=user_id, session_id=session_id)
+        return get_hotel_response(message, url=url, user_id=user_id, session_id=session_id, extra_params=extra_params)
     elif api_type == "dify_workflow":
-        token = config.get("token", "")
-        return get_dify_workflow_response(message, url=url, token=token, user_id=user_id, session_id=session_id)
+        return get_dify_workflow_response(message, url=url, token=token, user_id=user_id, session_id=session_id, extra_params=extra_params)
     else:
-        # Default to Bundle type structure
-        return get_bundle_response(message, url=url, user_id=user_id, session_id=session_id)
+        return get_bundle_response(message, url=url, user_id=user_id, session_id=session_id, extra_params=extra_params)
 
 
 def get_available_apis():
