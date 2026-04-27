@@ -30,10 +30,14 @@ def get_category_options():
         return [('root', '全部用例')]
 
 def get_category_ids_with_children(category_id: str) -> list:
-    """获取目录及其所有子目录的 ID 列表"""
-    if category_id == 'root':
-        return None  # None 表示不筛选，显示全部
+    """获取目录及其所有子目录的 ID 列表
     
+    对于 'root'（顶层全部用例节点），只返回 ['root']，
+    仅显示直接归属 root 的用例，不递归展开所有子目录。
+    """
+    if category_id == 'root':
+        return ['root']
+
     try:
         db = SessionLocal()
         db.execute(text(f"SET search_path TO {DATABASE_SCHEMA}, public"))
@@ -46,7 +50,7 @@ def get_category_ids_with_children(category_id: str) -> list:
             db.close()
             return [category_id]
         
-        # 获取所有子目录
+        # 获取当前目录 + 所有子目录
         children = db.query(Category.id).filter(
             (Category.id == category_id) | (Category.path.like(f"{category.path}/%"))
         ).all()

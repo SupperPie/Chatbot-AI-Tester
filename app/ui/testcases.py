@@ -14,14 +14,14 @@ ENABLE_CATEGORY_FEATURE = True
 def render_category_widget_safe():
     """渲染目录 Widget（带错误处理），返回选中的目录 ID"""
     if not ENABLE_CATEGORY_FEATURE:
-        return 'root'
+        return '__all__'
     try:
         from app.ui.components.category_widget import render_category_widget
         return render_category_widget()
     except Exception as e:
         logger.warning(f"目录功能加载失败: {e}")
         st.warning(f"目录功能暂不可用: {e}")
-        return 'root'
+        return '__all__'
 
 def filter_test_cases(df, category_id=None, tags=None, id_from=None, id_to=None, keyword=None):
     """多维度筛选测试用例
@@ -39,8 +39,8 @@ def filter_test_cases(df, category_id=None, tags=None, id_from=None, id_to=None,
     """
     filtered = df.copy()
     
-    # 目录筛选（含子目录）
-    if category_id and category_id not in ('root', 'all', '') and ENABLE_CATEGORY_FEATURE:
+    # 目录筛选（含子目录）；'__all__' 表示不筛选
+    if category_id and category_id not in ('__all__', 'all', '') and ENABLE_CATEGORY_FEATURE:
         if 'category_id' in filtered.columns:
             try:
                 from app.ui.components.category_selector import get_category_ids_with_children
@@ -58,11 +58,23 @@ def filter_test_cases(df, category_id=None, tags=None, id_from=None, id_to=None,
             return any(tag in row_tags for tag in tags)
         filtered = filtered[filtered['tags'].apply(has_any_tag)]
     
-    # ID 范围筛选
+    # ID 范围筛选（优先数值比较，回退字符串比较）
     if id_from and str(id_from).strip():
-        filtered = filtered[filtered['id'] >= str(id_from).strip()]
+        val = str(id_from).strip()
+        try:
+            num_val = float(val)
+            numeric_ids = pd.to_numeric(filtered['id'], errors='coerce')
+            filtered = filtered[numeric_ids >= num_val]
+        except ValueError:
+            filtered = filtered[filtered['id'] >= val]
     if id_to and str(id_to).strip():
-        filtered = filtered[filtered['id'] <= str(id_to).strip()]
+        val = str(id_to).strip()
+        try:
+            num_val = float(val)
+            numeric_ids = pd.to_numeric(filtered['id'], errors='coerce')
+            filtered = filtered[numeric_ids <= num_val]
+        except ValueError:
+            filtered = filtered[filtered['id'] <= val]
     
     # 关键词搜索（匹配 input 字段）
     if keyword and str(keyword).strip():
@@ -133,7 +145,7 @@ def render_testcases_page():
     # Layout: Top Section
     top_left_col, top_right_col = st.columns([1, 2.5])
     
-    selected_category = 'root'
+    selected_category = '__all__'
     if ENABLE_CATEGORY_FEATURE:
         with top_left_col:
             selected_category = render_category_widget_safe()
@@ -174,12 +186,19 @@ def render_testcases_page():
                 st.rerun()
         with col2:
             if st.button("🗑️ Yes, Delete", type="primary", use_container_width=True):
-                # Drop selected rows from the original DF (use raw unique ID if provided)
+                # 1. 先从 DB 删除
+                try:
+                    from app.services.test_case_service import TestCaseService
+                    service = TestCaseService()
+                    service.delete_by_ids(ids_to_delete)
+                except Exception as e:
+                    logger.warning(f"DB delete failed: {e}")
+
+                # 2. 从 session state 移除并保存（JSON backup）
                 current_df = st.session_state.df
                 key_col = '__raw_id' if '__raw_id' in current_df.columns else 'id'
                 new_df = current_df[~current_df[key_col].isin(ids_to_delete)]
                 
-                # Save using raw unique IDs
                 final_df = save_data(prepare_df_for_persistence(new_df))
 
                 # Update session state
@@ -252,6 +271,7 @@ def render_testcases_page():
                             st.session_state.df['category_id'] = 'root'
                         key_col = '__raw_id' if '__raw_id' in st.session_state.df.columns else 'id'
                         st.session_state.df.loc[st.session_state.df[key_col].isin(ids_to_move), 'category_id'] = selected
+                        st.session_state.df['Select'] = False
                         
                         st.toast(f"✅ 已将 {len(ids_to_move)} 个用例移动到目录")
                         st.rerun()
@@ -286,7 +306,7 @@ def render_testcases_page():
 
         # 顶部右侧：Import（与参数说明手册同一行，下移避免贴顶裁剪）
         with import_container:
-            st.markdown('<div style="height: 34px;"></div>', unsafe_allow_html=True)
+            st.markdown('<div style="height: 34px;"></div><div class="import-popover-anchor"></div>', unsafe_allow_html=True)
             with st.popover("📤 Import", use_container_width=True):
                  st.markdown("### Import Test Cases")
                  
@@ -595,18 +615,19 @@ def render_testcases_page():
                 st.rerun()
 
         with ctrl_col2:
-            if st.button("☐ Cancel All", key="btn_deselect_all", use_container_width=True, type="primary"):
-                st.session_state.df['Select'] = False
-                st.rerun()
-
-        with ctrl_col3:
-            # 当前页全选（header 勾选不稳定时的兜底）
+            # 当前页全选（与 Cancel All 交换位置）
             if st.button("☑️ Select page", key="btn_select_current_page", use_container_width=True):
                 if '__row_key' in display_df.columns:
                     start_idx = (st.session_state.testcases_current_page - 1) * st.session_state.testcases_page_size
                     end_idx = start_idx + st.session_state.testcases_page_size
                     page_keys = display_df.iloc[start_idx:end_idx]['__row_key'].tolist()
                     st.session_state.df.loc[st.session_state.df['__row_key'].isin(page_keys), 'Select'] = True
+                st.rerun()
+
+        with ctrl_col3:
+            # Cancel All（紫色背景，与 Select Page 交换位置）
+            if st.button("Cancel All", key="btn_deselect_all", use_container_width=True):
+                st.session_state.df['Select'] = False
                 st.rerun()
 
         with ctrl_col4:
@@ -688,14 +709,75 @@ def render_testcases_page():
                 rk = edited_page_df.iloc[i]['__row_key']
                 st.session_state.df.loc[st.session_state.df['__row_key'] == rk, 'Select'] = edited_page_df.iloc[i]['Select']
 
-        # 自动保存：仅当内容列被修改时
-        page_edited = not edited_page_df.equals(page_df)
+        # 检测 data_editor 中被用户直接删除的行，同步到 DB 和 session state
+        if '__row_key' in edited_page_df.columns and len(edited_page_df) < len(page_df):
+            edited_keys = set(edited_page_df['__row_key'].tolist())
+            original_keys = set(page_df['__row_key'].tolist())
+            deleted_keys = original_keys - edited_keys
+            if deleted_keys:
+                # 获取被删行的 raw_id 用于 DB 删除
+                deleted_raw_ids = st.session_state.df[
+                    st.session_state.df['__row_key'].isin(deleted_keys)
+                ]['__raw_id'].tolist()
+                try:
+                    from app.services.test_case_service import TestCaseService
+                    TestCaseService().delete_by_ids(deleted_raw_ids)
+                except Exception as e:
+                    logger.warning(f"DB delete (data_editor) failed: {e}")
+                # 从 session state 移除
+                st.session_state.df = st.session_state.df[
+                    ~st.session_state.df['__row_key'].isin(deleted_keys)
+                ].reset_index(drop=True)
+                st.session_state.df_content_sig = get_content_signature(st.session_state.df)
+                st.toast(f"🗑️ Deleted {len(deleted_keys)} row(s)", icon="🗑️")
+                st.rerun()
+
+        # 检测新增行（用户通过 data_editor 底部 "+" 按钮添加的行）
+        if '__row_key' in page_df.columns and len(edited_page_df) > len(page_df):
+            original_keys = set(page_df['__row_key'].tolist())
+            new_rows = []
+            for i in range(len(edited_page_df)):
+                rk = edited_page_df.iloc[i].get('__row_key')
+                if pd.isna(rk) or rk == '' or rk not in original_keys:
+                    new_rows.append(edited_page_df.iloc[i])
+            if new_rows:
+                max_rk = max(
+                    (int(k.split('_')[1]) for k in st.session_state.df['__row_key']
+                     if isinstance(k, str) and k.startswith('rk_')),
+                    default=-1
+                )
+                for row in new_rows:
+                    max_rk += 1
+                    new_row_dict = row.to_dict()
+                    new_row_dict['__row_key'] = f'rk_{max_rk}'
+                    new_row_dict['__raw_id'] = ''
+                    new_row_dict.setdefault('category_id', filter_category if filter_category not in ('__all__', '') else 'root')
+                    new_row_dict.setdefault('type', 'single')
+                    new_row_dict['Select'] = False
+                    st.session_state.df = pd.concat(
+                        [st.session_state.df, pd.DataFrame([new_row_dict])], ignore_index=True
+                    )
+                save_df = prepare_df_for_persistence(st.session_state.df)
+                saved_df_clean = save_data(save_df)
+                if "Select" not in saved_df_clean.columns:
+                    saved_df_clean.insert(0, "Select", False)
+                saved_df_clean = rebuild_internal_ids(saved_df_clean)
+                st.session_state.df = saved_df_clean
+                st.session_state.df_content_sig = get_content_signature(st.session_state.df)
+                st.toast(f"New row(s) added and saved!", icon="➕")
+                st.rerun()
+
+        # 自动保存：仅当内容列被修改时（排除 Select 列，避免勾选触发保存并丢失选中状态）
+        _content_cols = [c for c in page_df.columns if c != 'Select']
+        page_edited = not edited_page_df[_content_cols].reset_index(drop=True).equals(
+            page_df[_content_cols].reset_index(drop=True)
+        )
         if page_edited:
             for _, row in edited_page_df.iterrows():
                 rk = row['__row_key']
                 main_idx = st.session_state.df.index[st.session_state.df['__row_key'] == rk]
                 for col in edited_page_df.columns:
-                    if col in st.session_state.df.columns:
+                    if col in st.session_state.df.columns and col != 'Select':
                         val = row[col]
                         # 对 list/dict 等可迭代值，需逐行用 at 赋值避免 pandas 展开
                         if isinstance(val, (list, dict)):
@@ -703,6 +785,9 @@ def render_testcases_page():
                                 st.session_state.df.at[idx, col] = val
                         else:
                             st.session_state.df.loc[main_idx, col] = val
+
+            # 保存前记住当前选中状态
+            select_backup = st.session_state.df[['__row_key', 'Select']].copy()
 
             # 保存时恢复原始唯一ID，并剔除内部列
             save_df = prepare_df_for_persistence(st.session_state.df)
@@ -713,6 +798,12 @@ def render_testcases_page():
 
             # 重新补回内部键并恢复规范化展示ID
             saved_df_clean = rebuild_internal_ids(saved_df_clean)
+
+            # 恢复选中状态
+            for _, bk_row in select_backup.iterrows():
+                mask = saved_df_clean['__row_key'] == bk_row['__row_key']
+                if mask.any():
+                    saved_df_clean.loc[mask, 'Select'] = bk_row['Select']
 
             st.session_state.df = saved_df_clean
             st.session_state.df_content_sig = get_content_signature(st.session_state.df)

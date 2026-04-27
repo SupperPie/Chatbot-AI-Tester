@@ -24,10 +24,10 @@ def render_category_widget():
         tree = service.get_tree()
 
         if 'selected_category' not in st.session_state:
-            st.session_state.selected_category = 'root'
+            st.session_state.selected_category = '__all__'
 
         with st.container():
-            col_title, col_action = st.columns([5, 1.5])
+            col_title, col_action = st.columns([6, 0.7])
             with col_title:
                 st.markdown("### 📂 Category")
 
@@ -35,19 +35,19 @@ def render_category_widget():
             selected_id = _render_tree(tree, service)
 
             with col_action:
-                st.markdown('<div style="height: 10px;"></div>', unsafe_allow_html=True)
-                with st.popover("⚙️", use_container_width=True, help="Manage Category"):
-                    if st.button("➕ 新建目录", use_container_width=True, key="btn_add_cat"):
+                st.markdown('<div style="height: 10px;"></div><div class="gear-popover-anchor"></div>', unsafe_allow_html=True)
+                with st.popover("⚙️", use_container_width=False, help="Manage Category"):
+                    if st.button("➕ 新建", key="btn_add_cat"):
                         st.session_state.show_add_category_dialog = True
                         st.session_state.add_category_parent_id = None if selected_id == 'root' else selected_id
                         st.rerun()
-                    if st.button("✏️ 重命名", use_container_width=True, disabled=(selected_id == 'root'), key="btn_rename_cat"):
+                    if st.button("✏️ 重命名", disabled=(selected_id == 'root'), key="btn_rename_cat"):
                         st.session_state.show_rename_dialog = True
                         st.session_state.rename_category_id = selected_id
                         cat_obj = service.db.query(Category).filter(Category.id == selected_id).first()
                         st.session_state.rename_category_name = cat_obj.name if cat_obj else ""
                         st.rerun()
-                    if st.button("🗑️ 删除目录", use_container_width=True, disabled=(selected_id == 'root'), key="btn_del_cat"):
+                    if st.button("🗑️ 删除", disabled=(selected_id == 'root'), key="btn_del_cat"):
                         st.session_state.show_delete_dialog = True
                         st.session_state.delete_category_id = selected_id
                         cat_obj = service.db.query(Category).filter(Category.id == selected_id).first()
@@ -61,20 +61,20 @@ def render_category_widget():
 
     except Exception as e:
         st.error(f"目录加载失败: {e}")
-        return 'root'
+        return '__all__'
 
 
 def _render_tree(tree: list, service: CategoryService):
     """渲染目录树 (sac.tree)"""
-    current_selected_id = st.session_state.get('selected_category', 'root')
+    current_selected_id = st.session_state.get('selected_category', '__all__')
 
     index_map = {}
     id_to_index = {}
     current_index = 0
 
-    # root 节点索引固定为 0
-    index_map[current_index] = 'root'
-    id_to_index['root'] = current_index
+    # 顶层"全部用例"包装节点，表示不筛选
+    index_map[current_index] = '__all__'
+    id_to_index['__all__'] = current_index
     current_index += 1
 
     def build_sac_tree(nodes):
@@ -250,7 +250,7 @@ def _delete_category_dialog(service: CategoryService):
                 st.toast(f"✅ 目录 '{cat_name}' 已删除")
                 # 如果删除的是当前选中的目录，切换到 root
                 if st.session_state.get('selected_category') == cat_id:
-                    st.session_state.selected_category = 'root'
+                    st.session_state.selected_category = '__all__'
                     st.session_state.sac_category_tree = [0]
                 st.session_state.show_delete_dialog = False
                 st.rerun()

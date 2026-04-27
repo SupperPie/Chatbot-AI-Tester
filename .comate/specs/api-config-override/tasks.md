@@ -30,7 +30,7 @@
     - 6.3: 保存逻辑改为 DB 写入 + JSON 备份双写
     - 6.4: Token 为 `"None"` 字符串时视为空值处理
 
-- [ ] Task 7: 功能验证与收尾
+- [x] Task 7: 功能验证与收尾
     - 7.1: 在 Settings Debug 面板发送测试请求验证参数覆盖生效
     - 7.2: 确认 Testcases / Report 页面下拉列表正常加载
     - 7.3: 验证旧配置数据（无 request_params）的向后兼容性

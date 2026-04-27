@@ -193,9 +193,11 @@ def save_data(df: pd.DataFrame):
             last_assigned_id = row_id
     
     to_save = to_save_df.to_dict(orient="records")
-            
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(to_save, f, indent=4, ensure_ascii=False)
+
+    # 写 DB
+    from app.services.test_case_service import TestCaseService
+    service = TestCaseService()
+    service.upsert_all(to_save)
     
     return to_save_df
 

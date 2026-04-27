@@ -14,7 +14,7 @@ for module in ['app', 'chat_client', '__main__']:
     logging.getLogger(module).setLevel(logging.DEBUG)
 
 # Apply Layout immediately
-_ICON_PATH = Path(__file__).resolve().parent / "img" / "eva_avatar.png"
+_ICON_PATH = Path(__file__).resolve().parent / "app" / "ui" / "icon.jpeg"
 _PAGE_ICON = str(_ICON_PATH) if _ICON_PATH.exists() else "🤖"
 st.set_page_config(layout="wide", page_title="AI Test Manager", page_icon=_PAGE_ICON)
 
