@@ -8,6 +8,12 @@ services:
       - STREAMLIT_PORT=${STREAMLIT_PORT:-54321}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - OPENAI_BASE_URL=${OPENAI_BASE_URL:-}
+      - OPENAI_MODEL_NAME=${OPENAI_MODEL_NAME:-}
+      - COMPATIBLE_MODEL=${COMPATIBLE_MODEL:-}
+      - COMPATIBLE_API_KEY=${COMPATIBLE_API_KEY:-}
+      - COMPATIBLE_BASE_URL=${COMPATIBLE_BASE_URL:-}
+      - DATABASE_URL=${DATABASE_URL:-}
+      - DATABASE_SCHEMA=${DATABASE_SCHEMA:-ai_chatbot_tester}
     env_file:
       - path: .env
         required: false
