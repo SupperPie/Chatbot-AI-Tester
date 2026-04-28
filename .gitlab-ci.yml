@@ -1,0 +1,4 @@
+include:
+  - project: 'dpops/cicd-files'
+    ref: master
+    file: '/gitlab/backend/platform-ai/chatbot-ai-tester.yml'
