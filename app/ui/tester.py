@@ -260,7 +260,11 @@ ONLY return the highly-structured JSON array. Do not include markdown blocks lik
                     if not final_row.empty:
                         case_id = final_row.iloc[0]['id']
                         # 检查是否已存在
-                        existing = db.query(TestCase).filter(TestCase.id == case_id).first()
+                        ti = int(case.get('turn_index') or 1)
+                        existing = db.query(TestCase).filter(
+                            TestCase.id == case_id,
+                            TestCase.turn_index == ti
+                        ).first()
                         if not existing:
                             test_case = TestCase(
                                 id=case_id,
@@ -269,7 +273,7 @@ ONLY return the highly-structured JSON array. Do not include markdown blocks lik
                                 expected_output=case.get('expected_output', ''),
                                 retrieval_context=case.get('retrieval_context'),
                                 description=case.get('description'),
-                                turn_index=case.get('turn_index'),
+                                turn_index=ti,
                                 tags=case.get('tags', []),
                                 category_id=save_category,
                                 created_at=datetime.utcnow()

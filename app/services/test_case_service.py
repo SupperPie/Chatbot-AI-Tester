@@ -69,13 +69,31 @@ class TestCaseService:
 
     def upsert_all(self, records: List[Dict]) -> int:
         """全量同步：以 records 为准，更新已有、新增缺少、删除 DB 中多余的行"""
-        incoming_ids = {r['id'] for r in records if r.get('id')}
+        # 构建 incoming 的 (id, turn_index) 复合键集合
+        incoming_keys = set()
+        incoming_ids = set()
+        for r in records:
+            if r.get('id'):
+                ti = int(r.get('turn_index') or 1)
+                incoming_keys.add((r['id'], ti))
+                incoming_ids.add(r['id'])
 
-        # 删除 DB 中不在 records 里的行
+        # 删除 DB 中 id 不在 incoming 里的行
         if incoming_ids:
             self.db.query(TestCase).filter(~TestCase.id.in_(incoming_ids)).delete(synchronize_session=False)
         else:
             self.db.query(TestCase).delete(synchronize_session=False)
+
+        # 对于 id 在 incoming 中但 (id, turn_index) 不在的行，也需要删除
+        if incoming_ids:
+            all_db = self.db.query(TestCase.id, TestCase.turn_index).filter(
+                TestCase.id.in_(incoming_ids)
+            ).all()
+            for db_id, db_ti in all_db:
+                if (db_id, db_ti) not in incoming_keys:
+                    self.db.query(TestCase).filter(
+                        TestCase.id == db_id, TestCase.turn_index == db_ti
+                    ).delete(synchronize_session=False)
 
         # Upsert 每条记录
         allowed_fields = {c.name for c in TestCase.__table__.columns}
@@ -83,14 +101,20 @@ class TestCaseService:
             if not r.get('id'):
                 continue
             clean = _sanitize_record(r)
-            existing = self.db.query(TestCase).filter(TestCase.id == clean['id']).first()
+            ti = int(clean.get('turn_index') or 1)
+            clean['turn_index'] = ti
+            existing = self.db.query(TestCase).filter(
+                TestCase.id == clean['id'],
+                TestCase.turn_index == ti
+            ).first()
             if existing:
                 for k, v in clean.items():
-                    if k != 'id' and k in allowed_fields:
+                    if k not in ('id', 'turn_index') and k in allowed_fields:
                         setattr(existing, k, v)
                 existing.updated_at = datetime.utcnow()
             else:
                 fields = {k: v for k, v in clean.items() if k in allowed_fields}
+                fields['turn_index'] = ti
                 fields.setdefault('created_at', datetime.utcnow())
                 fields.setdefault('updated_at', datetime.utcnow())
                 self.db.add(TestCase(**fields))

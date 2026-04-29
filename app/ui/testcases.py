@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import ast
 import logging
-from app.utils import load_data, save_data, run_tests_sync, save_history, normalize_case_id
+from app.utils import load_data, save_data, run_tests_sync, save_history
 from chat_client import get_available_apis
 
 # 获取 logger（配置在 streamlit_app.py 入口统一处理）
@@ -136,9 +136,7 @@ def render_testcases_page():
     if not all(col in st.session_state.df.columns for col in required_cols):
         st.session_state.df = load_data()
 
-    # Internal IDs (frontend only), do NOT persist to backend
-    if '__raw_id' not in st.session_state.df.columns:
-        st.session_state.df['__raw_id'] = st.session_state.df['id'].apply(lambda x: "" if pd.isna(x) else str(x).strip())
+    # Internal row key (frontend only), do NOT persist to backend
     if '__row_key' not in st.session_state.df.columns:
         st.session_state.df['__row_key'] = [f"rk_{i}" for i in range(len(st.session_state.df))]
     
@@ -152,24 +150,17 @@ def render_testcases_page():
     
     # Track content signature
     def get_content_signature(df):
-        content_df = df.drop(columns=["Select", "__row_key", "__raw_id"], errors='ignore')
+        content_df = df.drop(columns=["Select", "__row_key"], errors='ignore')
         return content_df.to_json(orient='records', force_ascii=False)
 
     def prepare_df_for_persistence(df: pd.DataFrame) -> pd.DataFrame:
-        """Persist using raw unique IDs, never normalized display IDs."""
-        out = df.copy()
-        if '__raw_id' in out.columns:
-            raw_ids = out['__raw_id'].apply(lambda x: "" if pd.isna(x) else str(x).strip())
-            display_ids = out['id'].apply(lambda x: "" if pd.isna(x) else str(x).strip()) if 'id' in out.columns else raw_ids
-            out['id'] = raw_ids.where(raw_ids != "", display_ids)
-        return out.drop(columns=['__row_key', '__raw_id'], errors='ignore')
+        """Prepare DataFrame for DB persistence by removing UI-only columns."""
+        return df.drop(columns=['Select', '__row_key'], errors='ignore')
 
     def rebuild_internal_ids(df: pd.DataFrame) -> pd.DataFrame:
         out = df.copy()
         if 'id' not in out.columns:
             out['id'] = ""
-        out['__raw_id'] = out['id'].apply(lambda x: "" if pd.isna(x) else str(x).strip())
-        out['id'] = out['__raw_id'].apply(normalize_case_id)
         out['__row_key'] = [f"rk_{i}" for i in range(len(out))]
         return out
     
@@ -196,8 +187,7 @@ def render_testcases_page():
 
                 # 2. 从 session state 移除并保存（JSON backup）
                 current_df = st.session_state.df
-                key_col = '__raw_id' if '__raw_id' in current_df.columns else 'id'
-                new_df = current_df[~current_df[key_col].isin(ids_to_delete)]
+                new_df = current_df[~current_df['id'].isin(ids_to_delete)]
                 
                 final_df = save_data(prepare_df_for_persistence(new_df))
 
@@ -269,8 +259,7 @@ def render_testcases_page():
                         # 同时更新本地 DataFrame
                         if 'category_id' not in st.session_state.df.columns:
                             st.session_state.df['category_id'] = 'root'
-                        key_col = '__raw_id' if '__raw_id' in st.session_state.df.columns else 'id'
-                        st.session_state.df.loc[st.session_state.df[key_col].isin(ids_to_move), 'category_id'] = selected
+                        st.session_state.df.loc[st.session_state.df['id'].isin(ids_to_move), 'category_id'] = selected
                         st.session_state.df['Select'] = False
                         
                         st.toast(f"✅ 已将 {len(ids_to_move)} 个用例移动到目录")
@@ -471,7 +460,11 @@ def render_testcases_page():
                                             if not final_row.empty:
                                                 case_id = final_row.iloc[0]['id']
                                                 # 检查是否已存在
-                                                existing = db.query(TestCase).filter(TestCase.id == case_id).first()
+                                                ti = int(row.get('turn_index') or 1)
+                                                existing = db.query(TestCase).filter(
+                                                    TestCase.id == case_id,
+                                                    TestCase.turn_index == ti
+                                                ).first()
                                                 if not existing:
                                                     test_case = TestCase(
                                                         id=case_id,
@@ -480,6 +473,7 @@ def render_testcases_page():
                                                         expected_output=row.get('expected_output', ''),
                                                         retrieval_context=row.get('retrieval_context'),
                                                         description=row.get('description'),
+                                                        turn_index=ti,
                                                         tags=row.get('tags', []),
                                                         category_id=import_category,
                                                         created_at=datetime.utcnow()
@@ -694,7 +688,6 @@ def render_testcases_page():
                 "validation": st.column_config.Column("Validation", help="验证规则 (JSON格式)。例: {\"type\": \"contains\", \"keywords\": [\"正确\"]} 或 {\"type\": \"semantic\"}。"),
                 "turn_index": st.column_config.NumberColumn("Turn", width="small", help="多轮对话的顺序编号"),
                 "category_id": None,
-                "__raw_id": None,
                 "__row_key": None,
             },
             num_rows="dynamic",
@@ -715,13 +708,13 @@ def render_testcases_page():
             original_keys = set(page_df['__row_key'].tolist())
             deleted_keys = original_keys - edited_keys
             if deleted_keys:
-                # 获取被删行的 raw_id 用于 DB 删除
-                deleted_raw_ids = st.session_state.df[
+                # 获取被删行的 id 用于 DB 删除
+                deleted_ids = st.session_state.df[
                     st.session_state.df['__row_key'].isin(deleted_keys)
-                ]['__raw_id'].tolist()
+                ]['id'].tolist()
                 try:
                     from app.services.test_case_service import TestCaseService
-                    TestCaseService().delete_by_ids(deleted_raw_ids)
+                    TestCaseService().delete_by_ids(deleted_ids)
                 except Exception as e:
                     logger.warning(f"DB delete (data_editor) failed: {e}")
                 # 从 session state 移除
@@ -750,7 +743,6 @@ def render_testcases_page():
                     max_rk += 1
                     new_row_dict = row.to_dict()
                     new_row_dict['__row_key'] = f'rk_{max_rk}'
-                    new_row_dict['__raw_id'] = ''
                     new_row_dict.setdefault('category_id', filter_category if filter_category not in ('__all__', '') else 'root')
                     new_row_dict.setdefault('type', 'single')
                     new_row_dict['Select'] = False
@@ -838,15 +830,14 @@ def render_testcases_page():
         if selected_rows.empty:
             st.warning("Please select cases to run.")
         else:
-             cases_to_run = selected_rows.drop(columns=["Select", "__row_key", "__raw_id"], errors='ignore').to_dict(orient="records")
+             cases_to_run = selected_rows.drop(columns=["Select", "__row_key"], errors='ignore').to_dict(orient="records")
              
     elif delete_selected_clicked:
         selected_rows = edited_df[edited_df["Select"] == True]
         if selected_rows.empty:
             st.warning("Please select cases to delete.")
         else:
-            id_col = "__raw_id" if "__raw_id" in selected_rows.columns else "id"
-            ids_to_delete = selected_rows[id_col].tolist()
+            ids_to_delete = selected_rows['id'].tolist()
             confirm_delete_dialog(ids_to_delete)
     
     elif move_to_category_clicked:
@@ -854,8 +845,7 @@ def render_testcases_page():
         if selected_rows.empty:
             st.warning("请先选择要移动的测试用例")
         else:
-            id_col = "__raw_id" if "__raw_id" in selected_rows.columns else "id"
-            ids_to_move = selected_rows[id_col].tolist()
+            ids_to_move = selected_rows['id'].tolist()
             move_to_category_dialog(ids_to_move)
     
     elif run_range_clicked:
@@ -874,7 +864,7 @@ def render_testcases_page():
             if range_rows.empty:
                 st.warning(f"No cases found in range {start_id or '*'} to {end_id or '*'}")
             else:
-                cases_to_run = range_rows.drop(columns=["Select", "__row_key", "__raw_id"], errors='ignore').to_dict(orient="records")
+                cases_to_run = range_rows.drop(columns=["Select", "__row_key"], errors='ignore').to_dict(orient="records")
             
     elif run_tags_clicked:
         if not filter_tags:
@@ -891,7 +881,7 @@ def render_testcases_page():
             if tags_rows.empty:
                 st.warning("No cases found with selected tags.")
             else:
-                 cases_to_run = tags_rows.drop(columns=["Select", "__row_key", "__raw_id"], errors='ignore').to_dict(orient="records")
+                 cases_to_run = tags_rows.drop(columns=["Select", "__row_key"], errors='ignore').to_dict(orient="records")
                  
     if cases_to_run:
         try:
@@ -907,37 +897,21 @@ def render_testcases_page():
             status_text = st.empty()
             
             import time
-            from app.utils import HISTORY_JSON
-            import json
-            import os
             
-            # Poll for completion
+            # Poll for completion from DB
             while True:
-                time.sleep(1) # Poll interval
+                time.sleep(1)
                 
-                # Check status from History check
-                # (JobManager updates history.json)
-                job_data = None
-                read_success = False
-                if os.path.exists(HISTORY_JSON):
-                    try:
-                        with open(HISTORY_JSON, "r", encoding="utf-8") as f:
-                            content = f.read()
-                            if content.strip():
-                                hist = json.loads(content)
-                                read_success = True
-                                for h in hist:
-                                    if h.get("id") == job_id:
-                                        job_data = h
-                                        break
-                    except Exception:
-                        # Could be a read/write race condition where file is halfway written
-                        pass
+                try:
+                    from app.services.history_service import HistoryService
+                    svc = HistoryService()
+                    job_data = svc.get_by_id(job_id)
+                except Exception:
+                    continue
                 
                 if job_data:
                     status = job_data.get("status", "running")
                     
-                    # Update Progress
                     started = job_data.get("started_count", 0)
                     total = job_data.get("total", 1)
                     if total == 0: total = 1
@@ -948,11 +922,7 @@ def render_testcases_page():
                     if status in ["completed", "failed", "cancelled"]:
                         progress_bar.progress(1.0, text=f"Finished: {status}")
                         break
-                elif not read_success:
-                    # Ignore and try again on next loop because file might be mid-write
-                    continue
                 else:
-                    # Successfully parsed the file, but job_id is definitely not in it
                     status_text.warning("Job data not found...")
                     break
             

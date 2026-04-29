@@ -2,7 +2,6 @@ import os
 import json
 import pandas as pd
 import datetime
-import re
 import streamlit as st
 from typing import List, Dict
 from fpdf import FPDF
@@ -11,7 +10,6 @@ from app.test_engine import TestEngine
 # Constants - absolute paths to avoid CWD issues on deployed servers
 _BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_FILE = os.path.join(_BASE_DIR, "data", "test_cases.json")
-HISTORY_JSON = os.path.join(_BASE_DIR, "data", "history.json")
 
 # Ensure data directory exists
 os.makedirs(os.path.join(_BASE_DIR, "data"), exist_ok=True)
@@ -23,16 +21,6 @@ def get_test_engine():
 
 def generate_tc_id(index: int) -> str:
     return f"TC{str(index + 1).zfill(4)}"
-
-
-def normalize_case_id(case_id: str) -> str:
-    """Normalize business case ID by removing only trailing _TT<digits>."""
-    if case_id is None:
-        return ""
-    cid = str(case_id).strip()
-    if not cid:
-        return ""
-    return re.sub(r"_T\d+$", "", cid)
 
 
 def load_data() -> pd.DataFrame:
@@ -81,7 +69,7 @@ def load_data() -> pd.DataFrame:
                 
         if not data:
             # Return empty structure with Select column
-            return pd.DataFrame(columns=["Select", "id", "__raw_id", "turn_index", "input", "expected_output", "tags", "category_id"])
+            return pd.DataFrame(columns=["Select", "id", "turn_index", "input", "expected_output", "tags", "category_id"])
 
         df = pd.DataFrame(data)
         # Add default category_id for JSON data
@@ -103,6 +91,11 @@ def load_data() -> pd.DataFrame:
             except:
                 pass
 
+    # Ensure turn_index exists and default to 1
+    if "turn_index" not in df.columns:
+        df["turn_index"] = 1
+    df["turn_index"] = df["turn_index"].apply(lambda x: int(x) if not pd.isna(x) else 1)
+
     last_assigned_id = None
     for idx, row in df.iterrows():
         row_id = str(row.get("id", "")).strip()
@@ -110,7 +103,7 @@ def load_data() -> pd.DataFrame:
             turn_idx = row.get("turn_index")
             row_type = row.get("type", "single")
             # If it's a continuing turn of a multi_turn, try to use the last assigned ID
-            if row_type == "multi_turn" and turn_idx and not pd.isna(turn_idx) and int(turn_idx) > 1 and last_assigned_id:
+            if row_type == "multi_turn" and turn_idx and int(turn_idx) > 1 and last_assigned_id:
                 df.at[idx, "id"] = last_assigned_id
             else:
                 # Generate new ID
@@ -120,14 +113,6 @@ def load_data() -> pd.DataFrame:
                 last_assigned_id = new_id
         else:
             last_assigned_id = row_id
-    
-    # Preserve raw unique ID and expose normalized business ID
-    if "__raw_id" not in df.columns:
-        df["__raw_id"] = df["id"].apply(lambda x: str(x).strip() if not pd.isna(x) else "")
-    else:
-        df["__raw_id"] = df["__raw_id"].apply(lambda x: str(x).strip() if not pd.isna(x) else "")
-
-    df["id"] = df["__raw_id"].apply(normalize_case_id)
 
     # Add Select column if not present (for row selection in UI)
     if "Select" not in df.columns:
@@ -160,11 +145,18 @@ def load_data() -> pd.DataFrame:
 
 def save_data(df: pd.DataFrame):
     # Remove UI/internal columns before saving
-    to_save_df = df.drop(columns=["Select", "__row_key", "__raw_id"], errors='ignore').copy()
+    to_save_df = df.drop(columns=["Select", "__row_key"], errors='ignore').copy()
     
     if "id" not in to_save_df.columns:
         to_save_df["id"] = ""
         
+    # Ensure turn_index exists and default to 1
+    if "turn_index" not in to_save_df.columns:
+        to_save_df["turn_index"] = 1
+    to_save_df["turn_index"] = to_save_df["turn_index"].apply(
+        lambda x: int(x) if not pd.isna(x) else 1
+    )
+
     # Find existing max TCxxxx to avoid collisions
     current_max_id_num = 0
     for existing_id in to_save_df["id"].dropna():
@@ -179,10 +171,10 @@ def save_data(df: pd.DataFrame):
     for idx, row in to_save_df.iterrows():
         row_id = str(row.get("id", "")).strip()
         if not row_id or row_id.lower() == "nan":
-            turn_idx = row.get("turn_index")
+            turn_idx = row.get("turn_index", 1)
             row_type = row.get("type", "single")
             # Only share ID if it is explicitly a multi_turn continuing conversation
-            if row_type == "multi_turn" and turn_idx and not pd.isna(turn_idx) and float(turn_idx) > 1 and last_assigned_id:
+            if row_type == "multi_turn" and turn_idx and int(turn_idx) > 1 and last_assigned_id:
                 to_save_df.at[idx, "id"] = last_assigned_id
             else:
                 current_max_id_num += 1
@@ -202,31 +194,10 @@ def save_data(df: pd.DataFrame):
     return to_save_df
 
 def save_history(results: List[Dict], api_name: str = "Unknown"):
-    history = []
-    if os.path.exists(HISTORY_JSON):
-        try:
-            with open(HISTORY_JSON, "r", encoding="utf-8") as f:
-                history = json.load(f)
-        except:
-            history = []
-    
-    passed_count = sum(1 for r in results if r.get("passed", False))
-    total_count = len(results)
-    
-    entry = {
-         "id": datetime.datetime.now().strftime("%Y%m%d%H%M%S"),
-         "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-         "api_name": api_name,
-         "total": total_count,
-         "passed": passed_count,
-         "failed": total_count - passed_count,
-         "results": results
-    }
-    
-    history.insert(0, entry) # Prepend
-    
-    with open(HISTORY_JSON, "w", encoding="utf-8") as f:
-        json.dump(history, f, indent=4, ensure_ascii=False)
+    """保存测试执行结果到 DB"""
+    from app.services.history_service import HistoryService
+    service = HistoryService()
+    service.save(results, api_name=api_name)
 
 def run_tests_sync(selected_cases: List[Dict], api_name: str = "Skills", progress_bar=None):
     engine = get_test_engine()  # Use cached instance
@@ -241,19 +212,11 @@ def run_tests_sync(selected_cases: List[Dict], api_name: str = "Skills", progres
     return results
 
 def delete_reports(report_ids: List[str]):
-    """Delete reports by their IDs from history.json"""
-    if not os.path.exists(HISTORY_JSON):
-        return
-        
+    """Delete reports by their IDs from DB"""
     try:
-        with open(HISTORY_JSON, "r", encoding="utf-8") as f:
-            history = json.load(f)
-            
-        new_history = [entry for entry in history if entry.get("id") not in report_ids]
-        
-        with open(HISTORY_JSON, "w", encoding="utf-8") as f:
-            json.dump(new_history, f, indent=4, ensure_ascii=False)
-            
+        from app.services.history_service import HistoryService
+        service = HistoryService()
+        service.delete(report_ids)
         return True
     except Exception as e:
         print(f"Error deleting reports: {e}")
@@ -306,34 +269,10 @@ def get_job_manager():
 
 def update_history_entry(entry_id: str, new_results: List[Dict]):
     """Update a specific history entry with new results (e.g. manual review edits)"""
-    if not os.path.exists(HISTORY_JSON):
-        return False
-    
     try:
-        with open(HISTORY_JSON, "r", encoding="utf-8") as f:
-            history = json.load(f)
-        
-        updated = False
-        for entry in history:
-            if entry.get("id") == entry_id:
-                entry["results"] = new_results
-                # Recalculate stats
-                passed_count = 0
-                for r in new_results:
-                     if r.get("passed", False):
-                         passed_count += 1
-                
-                entry["passed"] = passed_count
-                entry["total"] = len(new_results)
-                entry["failed"] = len(new_results) - passed_count
-                updated = True
-                break
-        
-        if updated:
-            with open(HISTORY_JSON, "w", encoding="utf-8") as f:
-                json.dump(history, f, indent=4, ensure_ascii=False)
-            return True
-        return False
+        from app.services.history_service import HistoryService
+        service = HistoryService()
+        return service.update_results(entry_id, new_results)
     except Exception as e:
         print(f"Error updating history: {e}")
         return False

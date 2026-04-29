@@ -1,33 +1,15 @@
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 from typing import List
-import json
-import os
-import datetime
 from app.test_engine import TestEngine
 from app.routers.cases import load_cases
 
 router = APIRouter()
-HISTORY_FILE = "data/history.json"
 engine = TestEngine()
 
 class RunRequest(BaseModel):
     case_ids: List[str]
 
-def load_history():
-    if not os.path.exists(HISTORY_FILE):
-        return []
-    try:
-        with open(HISTORY_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except:
-        return []
-
-def save_history_entry(entry):
-    history = load_history()
-    history.insert(0, entry) # Prepend new entry
-    with open(HISTORY_FILE, "w", encoding="utf-8") as f:
-        json.dump(history, f, indent=4, ensure_ascii=False)
 
 @router.post("")
 async def run_tests(request: RunRequest):
@@ -41,34 +23,28 @@ async def run_tests(request: RunRequest):
     # Run tests
     results = await engine.run_batch(selected_cases)
     
-    # Calculate stats
-    passed_count = sum(1 for r in results if r["passed"])
-    total_count = len(results)
-    
-    # Create history entry
-    entry = {
-        "id": datetime.datetime.now().strftime("%Y%m%d%H%M%S"),
-        "timestamp": datetime.datetime.now().isoformat(),
-        "total": total_count,
-        "passed": passed_count,
-        "failed": total_count - passed_count,
+    # Save to DB
+    from app.services.history_service import HistoryService
+    service = HistoryService()
+    history_id = service.save(results)
+
+    return {
+        "id": history_id,
+        "total": len(results),
+        "passed": sum(1 for r in results if r.get("passed")),
+        "failed": sum(1 for r in results if not r.get("passed")),
         "results": results
     }
-    
-    save_history_entry(entry)
-    
-    return entry
 
 @router.get("/history")
 def get_history():
-    return load_history()
+    from app.services.history_service import HistoryService
+    service = HistoryService()
+    return service.get_all()
 
 @router.delete("/history/{entry_id}")
 def delete_history(entry_id: str):
-    history = load_history()
-    new_history = [h for h in history if h["id"] != entry_id]
-    
-    with open(HISTORY_FILE, "w", encoding="utf-8") as f:
-        json.dump(new_history, f, indent=4, ensure_ascii=False)
-        
+    from app.services.history_service import HistoryService
+    service = HistoryService()
+    service.delete([entry_id])
     return {"status": "success"}

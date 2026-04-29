@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Text, Float, DateTime, JSON, ForeignKey
+from sqlalchemy import Column, String, Text, Integer, DateTime, JSON, ForeignKey
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.database import Base, SCHEMA
@@ -9,12 +9,12 @@ class TestCase(Base):
     __table_args__ = {'schema': SCHEMA}
     
     id = Column(String(50), primary_key=True)
+    turn_index = Column(Integer, primary_key=True, default=1)
     type = Column(String(20), default='single')
     input = Column(Text, nullable=False)
     expected_output = Column(Text)
     retrieval_context = Column(Text)
     description = Column(Text)
-    turn_index = Column(Float)
     validation = Column(Text)
     overall_criteria = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)

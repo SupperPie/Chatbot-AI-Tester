@@ -3,43 +3,23 @@ import pandas as pd
 import json
 import os
 import time
-from app.utils import HISTORY_JSON, export_pdf, delete_reports, run_tests_sync, save_history, update_history_entry
+from app.utils import export_pdf, delete_reports, run_tests_sync, save_history, update_history_entry
 from chat_client import get_available_apis
 
-def render_report_page():
-    st.title("📊 Test Report History")
-    
-    if not os.path.exists(HISTORY_JSON):
-        st.info("No history found.")
-        return
-
-    try:
-        with open(HISTORY_JSON, "r", encoding="utf-8") as f:
-            history = json.load(f)
-    except Exception as e:
-        st.error(f"Error reading history: {e}")
-        return
-
-    if not history:
-        st.info("No history available.")
-        return
 
 def render_report_page():
     st.title("📊 Test Report History")
-    
-    if not os.path.exists(HISTORY_JSON):
-        st.info("No history found.")
-        return
 
     try:
-        with open(HISTORY_JSON, "r", encoding="utf-8") as f:
-            history = json.load(f)
+        from app.services.history_service import HistoryService
+        service = HistoryService()
+        history = service.get_all()
     except Exception as e:
-        st.error(f"Error reading history: {e}")
+        st.error(f"Error reading history from DB: {e}")
         return
 
     if not history:
-        st.info("No history available.")
+        st.info("No history found.")
         return
 
     # API Selector for Rerun

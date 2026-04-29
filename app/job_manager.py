@@ -8,13 +8,12 @@ from app.test_engine import TestEngine
 
 # Path to history file (absolute to avoid CWD issues on servers)
 _BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-HISTORY_JSON = os.path.join(_BASE_DIR, "data", "history.json")
-os.makedirs(os.path.join(_BASE_DIR, "data"), exist_ok=True)
+
 
 class JobManager:
     _instance = None
     _lock = threading.Lock()
-    _file_lock = threading.Lock()
+    _db_lock = threading.Lock()
 
     def __new__(cls):
         if cls._instance is None:
@@ -31,23 +30,12 @@ class JobManager:
         """
         report_id = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
         
-        # 1. Create initial empty entry in history
-        initial_entry = {
-            "id": report_id,
-            "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "total": len(cases), # This is approximate, depends on multi-turn expansion. Updated periodically.
-            "passed": 0,
-            "failed": 0,
-            "status": "running",
-            "results": [],
-            "api_name": api_name
-        }
-        
-        self._safe_append_history(initial_entry)
+        # 1. Create initial entry in DB with status=running
+        self._create_history_entry(report_id, api_name, len(cases))
         
         # 2. Start Thread
         thread = threading.Thread(target=self._worker, args=(report_id, cases, api_name))
-        thread.daemon = True # Daemon thread so it doesn't block app exit (though st works differently)
+        thread.daemon = True
         self.active_jobs[report_id] = {
             "thread": thread,
             "cancelled": False
@@ -75,10 +63,8 @@ class JobManager:
 
         try:
             engine = TestEngine()
-            # Run the batch
             engine.run_batch(cases, api_name=api_name, on_step_complete=on_step_complete, should_stop=should_stop)
             
-            # Finalize status (check if actually cancelled during last step)
             if should_stop():
                  self._finalize_job(report_id, status="cancelled")
             else:
@@ -91,84 +77,115 @@ class JobManager:
             if report_id in self.active_jobs:
                 del self.active_jobs[report_id]
 
-    def _safe_append_history(self, new_entry: Dict):
-        """Prepend new entry to history safely."""
-        with self._file_lock:
-            history = []
-            if os.path.exists(HISTORY_JSON):
-                try:
-                    with open(HISTORY_JSON, "r", encoding="utf-8") as f:
-                        history = json.load(f)
-                except:
-                    history = []
-            
-            history.insert(0, new_entry)
-            
-            with open(HISTORY_JSON, "w", encoding="utf-8") as f:
-                json.dump(history, f, indent=4, ensure_ascii=False)
+    def _create_history_entry(self, report_id: str, api_name: str, total: int):
+        """Create initial history entry in DB with status=running"""
+        with self._db_lock:
+            try:
+                from app.database import SessionLocal
+                from app.models.test_history import TestHistory
+                db = SessionLocal()
+                now = datetime.datetime.utcnow()
+                entry = TestHistory(
+                    id=report_id,
+                    timestamp=now,
+                    api_name=api_name,
+                    total=total,
+                    passed=0,
+                    failed=0,
+                    status='running',
+                    started_count=0,
+                    source='local',
+                    created_at=now
+                )
+                db.add(entry)
+                db.commit()
+                db.close()
+            except Exception as e:
+                print(f"Error creating history entry {report_id}: {e}")
 
     def _update_job_progress(self, report_id: str, new_result: Dict, current_count: int, total_count: int):
-        """Update specific job in history with new result."""
-        with self._file_lock:
-            if not os.path.exists(HISTORY_JSON):
-                return
-
+        """Update job progress: add result row and update stats"""
+        with self._db_lock:
             try:
-                with open(HISTORY_JSON, "r", encoding="utf-8") as f:
-                    history = json.load(f)
-                
-                # Find the entry
-                for entry in history:
-                    if entry.get("id") == report_id:
-                        # Append result
-                        if "results" not in entry:
-                            entry["results"] = []
-                        entry["results"].append(new_result)
-                        
-                        # Update stats
-                        entry["total"] = total_count # Real total from engine
-                        entry["started_count"] = current_count # Track progress
-                        
-                        # Recalculate passed
-                        passed_count = sum(1 for r in entry["results"] if r.get("passed", False))
-                        entry["passed"] = passed_count
-                        entry["failed"] = len(entry["results"]) - passed_count
-                        
-                        break
-                
-                with open(HISTORY_JSON, "w", encoding="utf-8") as f:
-                    json.dump(history, f, indent=4, ensure_ascii=False)
-                    
+                from app.database import SessionLocal
+                from app.models.test_history import TestHistory, TestResult
+                db = SessionLocal()
+
+                # Add result row
+                tr = TestResult(
+                    history_id=report_id,
+                    case_id=new_result.get('id') or new_result.get('case_id'),
+                    input=new_result.get('input'),
+                    actual_output=new_result.get('actual_output'),
+                    expected_output=new_result.get('expected_output'),
+                    retrieval_context=new_result.get('retrieval_context'),
+                    score=new_result.get('score'),
+                    reason=new_result.get('reason'),
+                    faithfulness_score=new_result.get('faithfulness_score'),
+                    faithfulness_reason=new_result.get('faithfulness_reason'),
+                    passed=new_result.get('passed', False),
+                    thinking=new_result.get('thinking'),
+                    inform_base=new_result.get('inform_base'),
+                    raw=new_result.get('raw'),
+                    latency=new_result.get('latency'),
+                    ttft=new_result.get('ttft'),
+                    type=new_result.get('type'),
+                    total_turns=new_result.get('total_turns'),
+                    passed_turns=new_result.get('passed_turns'),
+                    success_rate=new_result.get('success_rate'),
+                    overall_score=new_result.get('overall_score'),
+                    overall_passed=new_result.get('overall_passed'),
+                    turns=new_result.get('turns'),
+                    user_id=new_result.get('user_id'),
+                    session_id=new_result.get('session_id'),
+                    created_at=datetime.datetime.utcnow()
+                )
+                db.add(tr)
+
+                # Update history stats
+                entry = db.query(TestHistory).filter(TestHistory.id == report_id).first()
+                if entry:
+                    entry.total = total_count
+                    entry.started_count = current_count
+                    # Recalculate passed/failed from DB
+                    passed = db.query(TestResult).filter(
+                        TestResult.history_id == report_id,
+                        TestResult.passed == True
+                    ).count() + (1 if new_result.get('passed') else 0)
+                    entry.passed = passed
+                    entry.failed = current_count - passed
+
+                db.commit()
+                db.close()
             except Exception as e:
                 print(f"Error updating job {report_id}: {e}")
 
     def _finalize_job(self, report_id: str, status: str, error: str = None):
-        """Mark job as completed/failed."""
-        with self._file_lock:
-            if not os.path.exists(HISTORY_JSON):
-                return
-                
+        """Mark job as completed/failed in DB"""
+        with self._db_lock:
             try:
-                with open(HISTORY_JSON, "r", encoding="utf-8") as f:
-                    history = json.load(f)
-                
-                for entry in history:
-                    if entry.get("id") == report_id:
-                        entry["status"] = status
-                        if error:
-                            entry["error"] = error
-                        # Final stats check
-                        passed_count = sum(1 for r in entry.get("results", []) if r.get("passed", False))
-                        entry["passed"] = passed_count
-                        entry["total"] = len(entry.get("results", [])) # Final total
-                        entry["failed"] = entry["total"] - passed_count
-                        break
-                        
-                with open(HISTORY_JSON, "w", encoding="utf-8") as f:
-                    json.dump(history, f, indent=4, ensure_ascii=False)
-            except:
-                pass
+                from app.database import SessionLocal
+                from app.models.test_history import TestHistory, TestResult
+                db = SessionLocal()
 
-# Global Accessor
-def get_job_manager():
+                entry = db.query(TestHistory).filter(TestHistory.id == report_id).first()
+                if entry:
+                    entry.status = status
+                    # Final stats
+                    total_results = db.query(TestResult).filter(TestResult.history_id == report_id).count()
+                    passed_count = db.query(TestResult).filter(
+                        TestResult.history_id == report_id,
+                        TestResult.passed == True
+                    ).count()
+                    entry.total = total_results
+                    entry.passed = passed_count
+                    entry.failed = total_results - passed_count
+
+                db.commit()
+                db.close()
+            except Exception as e:
+                print(f"Error finalizing job {report_id}: {e}")
+
+
+def get_job_manager() -> JobManager:
     return JobManager()

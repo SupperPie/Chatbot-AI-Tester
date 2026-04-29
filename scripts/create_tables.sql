@@ -34,29 +34,30 @@ CREATE TABLE IF NOT EXISTS tags (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- 3. 测试用例表
+-- 3. 测试用例表（复合主键：id + turn_index，支持多轮对话共用同一 ID）
 CREATE TABLE IF NOT EXISTS test_cases (
-    id VARCHAR(50) PRIMARY KEY,
+    id VARCHAR(50) NOT NULL,
     type VARCHAR(20) DEFAULT 'single',
     input TEXT NOT NULL,
     expected_output TEXT,
     retrieval_context TEXT,
     description TEXT,
-    turn_index FLOAT,
+    turn_index INTEGER NOT NULL DEFAULT 1,
     validation TEXT,
     overall_criteria TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     category_id VARCHAR(50) REFERENCES categories(id) ON DELETE SET NULL DEFAULT 'root',
-    tags JSONB DEFAULT '[]'
+    tags JSONB DEFAULT '[]',
+    PRIMARY KEY (id, turn_index)
 );
 
 CREATE INDEX IF NOT EXISTS idx_test_cases_category ON test_cases(category_id);
 CREATE INDEX IF NOT EXISTS idx_test_cases_type ON test_cases(type);
 
--- 4. 测试用例-标签关联表
+-- 4. 测试用例-标签关联表（注意：该表未被应用层使用，tags 存储在 test_cases.tags JSONB 列中）
 CREATE TABLE IF NOT EXISTS test_case_tags (
-    test_case_id VARCHAR(50) REFERENCES test_cases(id) ON DELETE CASCADE,
+    test_case_id VARCHAR(50),
     tag_id INTEGER REFERENCES tags(id) ON DELETE CASCADE,
     PRIMARY KEY (test_case_id, tag_id)
 );
