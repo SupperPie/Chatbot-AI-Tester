@@ -52,10 +52,27 @@ def filter_test_cases(df, category_id=None, tags=None, id_from=None, id_to=None,
     
     # 标签筛选（OR 逻辑：包含任一标签即可）
     if tags and len(tags) > 0:
+        def _normalize_tags(row_tags):
+            """将任意格式的 tags 值统一转换为 Python list"""
+            if isinstance(row_tags, list):
+                return row_tags
+            if not row_tags or (isinstance(row_tags, float) and pd.isna(row_tags)):
+                return []
+            import ast
+            s = str(row_tags).strip()
+            try:
+                parsed = ast.literal_eval(s)
+                if isinstance(parsed, list):
+                    return parsed
+            except Exception:
+                pass
+            # comma-separated plain string e.g. "guardrail, test"
+            return [t.strip() for t in s.split(',') if t.strip()]
+
         def has_any_tag(row_tags):
-            if not isinstance(row_tags, list):
-                return False
-            return any(tag in row_tags for tag in tags)
+            normalized = _normalize_tags(row_tags)
+            return any(tag in normalized for tag in tags)
+
         filtered = filtered[filtered['tags'].apply(has_any_tag)]
     
     # ID 范围筛选（优先数值比较，回退字符串比较）
@@ -276,11 +293,22 @@ def render_testcases_page():
         # Control Panel
         # ------------------
         def get_all_tags(df):
+            import ast as _ast
             all_tags = set()
             if "tags" in df.columns:
                 for tags_value in df["tags"]:
                     if isinstance(tags_value, list):
                         all_tags.update(tags_value)
+                    elif tags_value and not (isinstance(tags_value, float) and pd.isna(tags_value)):
+                        s = str(tags_value).strip()
+                        try:
+                            parsed = _ast.literal_eval(s)
+                            if isinstance(parsed, list):
+                                all_tags.update(parsed)
+                                continue
+                        except Exception:
+                            pass
+                        all_tags.update(t.strip() for t in s.split(',') if t.strip())
             return sorted(list(all_tags))
         
         available_tags = get_all_tags(st.session_state.df)
