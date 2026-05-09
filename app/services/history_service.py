@@ -8,12 +8,16 @@ class HistoryService:
     def __init__(self):
         self.db = SessionLocal()
 
-    def get_all(self) -> List[Dict]:
-        """获取所有 history 记录（含 results），按时间倒序"""
+    def get_all(self, include_results: bool = True) -> List[Dict]:
+        """获取所有 history 记录，按时间倒序
+        
+        Args:
+            include_results: 是否包含 results 详情，False 时只返回摘要（更快）
+        """
         entries = self.db.query(TestHistory).order_by(TestHistory.timestamp.desc()).all()
         result = []
         for entry in entries:
-            result.append(self._entry_to_dict(entry))
+            result.append(self._entry_to_dict(entry, include_results=include_results))
         return result
 
     def get_by_id(self, history_id: str) -> Optional[Dict]:
@@ -137,40 +141,13 @@ class HistoryService:
         self.db.commit()
         return True
 
-    def _entry_to_dict(self, entry: TestHistory) -> Dict:
-        """将 ORM 对象转为 dict（兼容现有 report.py 格式）"""
-        results = []
-        for r in entry.results:
-            result_dict = {
-                'id': r.case_id,
-                'case_id': r.case_id,
-                'input': r.input,
-                'actual_output': r.actual_output,
-                'expected_output': r.expected_output,
-                'retrieval_context': r.retrieval_context,
-                'score': r.score,
-                'reason': r.reason,
-                'faithfulness_score': r.faithfulness_score,
-                'faithfulness_reason': r.faithfulness_reason,
-                'passed': r.passed,
-                'thinking': r.thinking,
-                'inform_base': r.inform_base,
-                'raw': r.raw,
-                'latency': r.latency,
-                'ttft': r.ttft,
-                'type': r.type,
-                'total_turns': r.total_turns,
-                'passed_turns': r.passed_turns,
-                'success_rate': r.success_rate,
-                'overall_score': r.overall_score,
-                'overall_passed': r.overall_passed,
-                'turns': r.turns,
-                'user_id': r.user_id,
-                'session_id': r.session_id,
-            }
-            results.append(result_dict)
-
-        return {
+    def _entry_to_dict(self, entry: TestHistory, include_results: bool = True) -> Dict:
+        """将 ORM 对象转为 dict（兼容现有 report.py 格式）
+        
+        Args:
+            include_results: 是否包含 results 详情
+        """
+        base_dict = {
             'id': entry.id,
             'timestamp': entry.timestamp.strftime("%Y-%m-%d %H:%M:%S") if entry.timestamp else '',
             'api_name': entry.api_name,
@@ -180,8 +157,44 @@ class HistoryService:
             'status': entry.status or 'completed',
             'started_count': entry.started_count or 0,
             'source': entry.source or 'local',
-            'results': results,
         }
+        
+        if include_results:
+            results = []
+            for r in entry.results:
+                result_dict = {
+                    'id': r.case_id,
+                    'case_id': r.case_id,
+                    'input': r.input,
+                    'actual_output': r.actual_output,
+                    'expected_output': r.expected_output,
+                    'retrieval_context': r.retrieval_context,
+                    'score': r.score,
+                    'reason': r.reason,
+                    'faithfulness_score': r.faithfulness_score,
+                    'faithfulness_reason': r.faithfulness_reason,
+                    'passed': r.passed,
+                    'thinking': r.thinking,
+                    'inform_base': r.inform_base,
+                    'raw': r.raw,
+                    'latency': r.latency,
+                    'ttft': r.ttft,
+                    'type': r.type,
+                    'total_turns': r.total_turns,
+                    'passed_turns': r.passed_turns,
+                    'success_rate': r.success_rate,
+                    'overall_score': r.overall_score,
+                    'overall_passed': r.overall_passed,
+                    'turns': r.turns,
+                    'user_id': r.user_id,
+                    'session_id': r.session_id,
+                }
+                results.append(result_dict)
+            base_dict['results'] = results
+        else:
+            base_dict['results'] = []  # 占位，避免 KeyError
+        
+        return base_dict
 
     def __del__(self):
         if hasattr(self, 'db'):

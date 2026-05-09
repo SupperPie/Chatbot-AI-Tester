@@ -638,11 +638,12 @@ def get_translation_response(message: str, url: str, user_id: str = None, sessio
     响应解析规则：
     - type="done": 提取 data.translation_result 作为结果
     """
-    payload = {
-        "query": message,
-    }
+    # 使用 extra_params 作为基础 payload，只替换 query
     if extra_params:
-        payload.update(extra_params)
+        payload = extra_params.copy()
+        payload["query"] = message  # 只替换 query 为测试用例的 input
+    else:
+        payload = {"query": message}
     
     headers = {
         "Content-Type": "application/json",
@@ -736,13 +737,16 @@ def get_ai_engineering_response(message: str, url: str, user_id: str = None, ses
     if session_id is None:
         session_id = str(uuid.uuid4())[:8]
     
-    payload = {
-        "query": message,
-        "user_id": user_id,
-        "thread_id": session_id,
-    }
+    # 使用 extra_params 作为基础 payload，只替换 query
     if extra_params:
-        payload.update(extra_params)
+        payload = extra_params.copy()
+        payload["query"] = message  # 只替换 query 为测试用例的 input
+    else:
+        payload = {
+            "query": message,
+            "user_id": user_id,
+            "thread_id": session_id,
+        }
     
     headers = {
         "Content-Type": "application/json",
@@ -825,6 +829,159 @@ def get_ai_engineering_response(message: str, url: str, user_id: str = None, ses
         return "Error: AI Engineering API Request Timed Out (600s)"
     except Exception as e:
         print(f"[AI Engineering] Error: {e}")
+        return f"Error: {e}"
+
+
+def get_entitlements_response(message: str, url: str, user_id: str = None, session_id: str = None, extra_params: dict = None) -> str:
+    """Entitlements 流式接口客户端
+    
+    Payload 格式:
+    {
+        "query": "...",
+        "user_id": "",
+        "session_id": "",
+        "lob": "",
+        "extra_args": {
+            "sass_user_id": "",
+            "dpid": "xxx",
+            "trace_id": 111
+        }
+    }
+    
+    响应解析规则：
+    - type="token": 流式输出中
+    - type="done": 流式结束，提取 content 作为 result
+    """
+    if user_id is None:
+        user_id = str(uuid.uuid4())
+    if session_id is None:
+        session_id = str(uuid.uuid4())[:8]
+    
+    # 使用 extra_params 作为基础 payload，只替换 query
+    if extra_params:
+        payload = extra_params.copy()
+        payload["query"] = message  # 只替换 query 为测试用例的 input
+    else:
+        # 默认 payload 结构
+        payload = {
+            "query": message,
+            "user_id": user_id,
+            "session_id": session_id,
+            "lob": "",
+            "extra_args": {
+                "sass_user_id": "",
+                "dpid": "",
+                "trace_id": 111
+            }
+        }
+    
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream"
+    }
+
+    print("=" * 60, flush=True)
+    print(f"[Entitlements] URL: {url}", flush=True)
+    print(f"[Entitlements] Request Payload:\n{json.dumps(payload, ensure_ascii=False, indent=2)}", flush=True)
+    print(f"[Entitlements] Request Headers: {headers}", flush=True)
+    print("=" * 60, flush=True)
+    
+    try:
+        start_time = time.time()
+        response = requests.post(url, json=payload, headers=headers, stream=True, timeout=600)
+        
+        if not response.ok:
+            print(f"[Entitlements] API Error {response.status_code}: {response.text}")
+            return f"❌ SERVER DETAIL ({response.status_code}): {response.text}"
+            
+        final_answer = ""
+        raw_chunks = []
+        
+        ttft = 0.0
+        got_first_token = False
+        
+        for line in response.iter_lines():
+            if line:
+                decoded_line = line.decode('utf-8')
+                if decoded_line.startswith("data: "):
+                    json_str = decoded_line[6:]
+                    if json_str.strip() == "[DONE]":
+                        break
+                    
+                    try:
+                        data = json.loads(json_str)
+                        raw_chunks.append(json.dumps(data, ensure_ascii=False))
+
+                        msg_type = data.get("type")
+                        content = data.get("content", "")
+                        
+                        if msg_type == "token":
+                            # 流式输出中
+                            if content:
+                                if not got_first_token:
+                                    ttft = time.time() - start_time
+                                    got_first_token = True
+                                final_answer += content
+                                    
+                        elif msg_type == "done":
+                            # 流式结束，提取最终内容
+                            if not got_first_token:
+                                ttft = time.time() - start_time
+                                got_first_token = True
+                            if content:
+                                final_answer = content
+                            break
+
+                    except json.JSONDecodeError:
+                        raw_chunks.append(f"Decode Error: {json_str}")
+                        continue
+                else:
+                    # 非 SSE 格式，尝试直接解析 JSON
+                    try:
+                        data = json.loads(decoded_line)
+                        raw_chunks.append(json.dumps(data, ensure_ascii=False))
+
+                        msg_type = data.get("type")
+                        content = data.get("content", "")
+                        
+                        if msg_type == "token":
+                            if content:
+                                if not got_first_token:
+                                    ttft = time.time() - start_time
+                                    got_first_token = True
+                                final_answer += content
+                                    
+                        elif msg_type == "done":
+                            if not got_first_token:
+                                ttft = time.time() - start_time
+                                got_first_token = True
+                            if content:
+                                final_answer = content
+                            break
+                    except json.JSONDecodeError:
+                        raw_chunks.append(decoded_line)
+                        continue
+        
+        raw_full_str = "\n".join(raw_chunks)
+        
+        if not final_answer:
+            if raw_chunks:
+                final_answer = "Raw data captured (parsing failed). See Raw Data."
+            else:
+                final_answer = "Error: No response content found."
+
+        return json.dumps({
+            "result": final_answer, 
+            "thinking": "",
+            "inform_base": "",
+            "raw": raw_full_str,
+            "ttft": ttft
+        }, ensure_ascii=False)
+
+    except requests.exceptions.Timeout:
+        return "Error: Entitlements API Request Timed Out (600s)"
+    except Exception as e:
+        print(f"[Entitlements] Error: {e}")
         return f"Error: {e}"
 
 
@@ -1189,6 +1346,8 @@ def get_chat_response(message: str, api_name: str = "Bundle API", user_id: str =
         return get_agent_qa_response(message, url=url, user_id=user_id, session_id=session_id, extra_params=extra_params)
     elif api_type == "ai_engineering":
         return get_ai_engineering_response(message, url=url, user_id=user_id, session_id=session_id, extra_params=extra_params)
+    elif api_type == "entitlements":
+        return get_entitlements_response(message, url=url, user_id=user_id, session_id=session_id, extra_params=extra_params)
     elif api_type == "translation":
         return get_translation_response(message, url=url, user_id=user_id, session_id=session_id, extra_params=extra_params)
     elif api_type == "hotel":

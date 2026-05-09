@@ -1,40 +1,28 @@
 {
+    "Agent Q&A": {
+        "url": "http://agent-question-and-answer.platform-ai.svc.dragon/stream",
+        "description": "Agent Question and Answer API (仅服务器可访问)",
+        "type": "agent_qa"
+    },
     "Bundle API": {
         "url": "http://192.168.22.252:12345/bundle/stream",
         "description": "Bundle API",
         "type": "bundle"
-    },
-    "机场礼遇": {
-        "url": "https://air-assis-dev.dragonpass.com.cn/skills",
-        "description": "Skills API",
-        "type": "skills"
     },
     "Flight API": {
         "url": "http://192.168.22.252:12306/flights/invoke",
         "description": "Filght",
         "type": "flight"
     },
+    "Hotel API": {
+        "url": "http://192.168.22.252:10010/stream",
+        "description": "Agent Hotel",
+        "type": "hotel"
+    },
     "Limo API": {
         "url": "http://192.168.22.252:10089/limo/stream",
         "description": "Limo",
         "type": "limo"
-    },
-    "劳斯莱斯": {
-        "url": "http://192.168.25.247/v1/chat-messages",
-        "description": "",
-        "type": "dify",
-        "token": "app-4pWDPCJ9GeR9OYjF9l26JvVT"
-    },
-    "Agent Q&A": {
-        "url": "http://agent-question-and-answer.platform-ai.svc.dragon/stream",
-        "description": "Agent Question and Answer API (仅服务器可访问)",
-        "type": "agent_qa"
-    },
-    "Hotel API": {
-        "url": "http://192.168.22.252:10010/stream",
-        "description": "Agent Hotel",
-        "type": "hotel",
-        "token": "None"
     },
     "MC 问答": {
         "url": "https://ai-flow-app-uk.dp-svc.com/api/chat-messages",
@@ -45,13 +33,52 @@
     "Supervisor Agent": {
         "url": "https://ai-engineering-test.dragonpass.com.cn/stream",
         "description": "Supervisor",
-        "type": "ai_engineering",
-        "token": "None"
+        "type": "ai_engineering"
     },
     "Translation": {
         "url": "http://192.168.22.252:12315/translation/stream",
         "description": "Translation",
-        "type": "translation",
-        "token": "None"
+        "type": "translation"
+    },
+    "劳斯莱斯": {
+        "url": "http://192.168.25.247/v1/chat-messages",
+        "description": "",
+        "type": "dify",
+        "token": "app-4pWDPCJ9GeR9OYjF9l26JvVT"
+    },
+    "机场礼遇": {
+        "url": "https://air-assis-dev.dragonpass.com.cn/skills",
+        "description": "Skills API",
+        "type": "skills"
+    },
+    "权益(国内）": {
+        "url": "https://dp-entitlements-dev.dragonpass.com.cn/stream",
+        "description": "国内权益查询",
+        "type": "entitlements",
+        "token": "nan",
+        "request_params": {
+            "lob": "",
+            "query": "查询我的权益 13060606210",
+            "user_id": "13112748887",
+            "extra_args": {},
+            "session_id": ""
+        }
+    },
+    "权益(国际）": {
+        "url": "https://ai-engineering-test.dragonpass.com.cn/entitlement_search/stream",
+        "description": "国际权益查询",
+        "type": "entitlements",
+        "token": "nan",
+        "request_params": {
+            "lob": "",
+            "query": "查我的在新加坡机场的休息室权益和怎么使用",
+            "user_id": "",
+            "extra_args": {
+                "dpid": "8084999066816888",
+                "trace_id": 111,
+                "sass_user_id": ""
+            },
+            "session_id": ""
+        }
     }
 }

@@ -46,9 +46,9 @@ def render_settings_page():
             "Description": st.column_config.TextColumn("Description"),
             "Type": st.column_config.SelectboxColumn(
                 "Type",
-                options=["bundle", "skills", "flight", "limo", "dify", "dify_workflow", "agent_qa", "hotel", "ai_engineering", "translation"],
+                options=["bundle", "skills", "flight", "limo", "dify", "dify_workflow", "agent_qa", "hotel", "ai_engineering", "entitlements", "translation"],
                 default="bundle",
-                help="dify = Dify /v1/chat-messages; dify_workflow = Dify Workflow API; ai_engineering = AI Engineering 流式接口; skills/bundle/limo/flight/agent_qa/hotel = internal APIs"
+                help="dify = Dify /v1/chat-messages; dify_workflow = Dify Workflow API; ai_engineering = AI Engineering 流式接口; entitlements = 权益查询; skills/bundle/limo/flight/agent_qa/hotel = internal APIs"
             ),
             "Token": st.column_config.TextColumn("Token (Dify/Workflow)", help="Dify: Bearer token (app-xxx); Workflow: x-app-code|x-app-passport"),
             "Request Params": st.column_config.TextColumn("Request Params (JSON)", help="自定义请求参数，JSON 格式。留空则使用 Type 默认值。", width="large"),

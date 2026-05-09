@@ -3,6 +3,7 @@ import pandas as pd
 import json
 import os
 import time
+import math
 from app.utils import export_pdf, delete_reports, run_tests_sync, save_history, update_history_entry
 from chat_client import get_available_apis
 
@@ -13,7 +14,8 @@ def render_report_page():
     try:
         from app.services.history_service import HistoryService
         service = HistoryService()
-        history = service.get_all()
+        # 初始加载只获取摘要，不加载 results（性能优化）
+        history = service.get_all(include_results=False)
     except Exception as e:
         st.error(f"Error reading history from DB: {e}")
         return
@@ -22,20 +24,88 @@ def render_report_page():
         st.info("No history found.")
         return
 
-    # API Selector for Rerun
-    available_apis = get_available_apis() if get_available_apis() else ["Bundle API"]
-    
-    st.caption("Expand a report to view details or manage it.")
+    # API Selector for Rerun (只调用一次)
+    available_apis = get_available_apis() or ["Bundle API"]
+
+    # --------------------------------------------------
+    # Filter Controls
+    # --------------------------------------------------
+    all_apis_in_history = sorted(set(
+        e.get('api_name') or 'Unknown' for e in history
+    ))
+    api_filter_options = ["All"] + all_apis_in_history
+
+    f_col1, f_col2, f_col3 = st.columns([2, 2, 1])
+    with f_col1:
+        filter_date = st.date_input("Date", value=None, key="rpt_filter_date", label_visibility="collapsed",
+                                    help="Filter by date")
+    with f_col2:
+        filter_api = st.selectbox("API", api_filter_options, key="rpt_filter_api", label_visibility="collapsed")
+    with f_col3:
+        if st.button("Clear Filters", use_container_width=True):
+            for _k in ['rpt_filter_date', 'rpt_filter_api']:
+                if _k in st.session_state:
+                    del st.session_state[_k]
+            st.session_state.report_page = 1
+            st.rerun()
+
+    # Apply filters (preserve original timestamp-desc order)
+    filtered_history = history
+    if filter_date is not None:
+        date_str = filter_date.strftime("%Y-%m-%d")
+        filtered_history = [e for e in filtered_history if e.get('timestamp', '')[:10] == date_str]
+    if filter_api != "All":
+        filtered_history = [e for e in filtered_history
+                            if (e.get('api_name') or 'Unknown') == filter_api]
+
+    if not filtered_history:
+        st.info("No reports match the current filters.")
+        return
+
+    # --------------------------------------------------
+    # Pagination
+    # --------------------------------------------------
+    if 'report_page' not in st.session_state:
+        st.session_state.report_page = 1
+    if 'report_page_size' not in st.session_state:
+        st.session_state.report_page_size = 10
+
+    # Reset to page 1 when filters change
+    prev_filter_key = f"__rpt_prev_filter_{filter_date}_{filter_api}"
+    if prev_filter_key not in st.session_state:
+        st.session_state[prev_filter_key] = True
+        st.session_state.report_page = 1
+
+    page_size = st.session_state.report_page_size
+    total = len(filtered_history)
+    total_pages = max(1, math.ceil(total / page_size))
+    if st.session_state.report_page > total_pages:
+        st.session_state.report_page = total_pages
+
+    page = st.session_state.report_page
+    start_idx = (page - 1) * page_size
+    end_idx = min(start_idx + page_size, total)
+    page_history = filtered_history[start_idx:end_idx]
+
+    # Stats + page size row
+    s_col1, s_col2 = st.columns([3, 1])
+    with s_col1:
+        st.caption(f"Showing {start_idx + 1}–{end_idx} of {total} reports · Expand a report to view details.")
+    with s_col2:
+        new_page_size = st.selectbox("Per page", [10, 20], index=[10, 20].index(page_size),
+                                     key="rpt_page_size_sel", label_visibility="collapsed")
+        if new_page_size != page_size:
+            st.session_state.report_page_size = new_page_size
+            st.session_state.report_page = 1
+            st.rerun()
 
     # Check if any job is running to decide on auto-refresh
-    any_running = any(e.get("status") == "running" for e in history)
+    any_running = any(e.get("status") == "running" for e in page_history)
     if any_running:
         if st.button("🔄 Refresh Progress"):
             st.rerun()
-        # Optional: Auto-refresh via sleep (can be annoying if typing, so button is safer or use empty container)
-        # st.empty().text("Running...") 
 
-    for i, entry in enumerate(history):
+    for i, entry in enumerate(page_history):
         entry_id = entry.get('id')
         status = entry.get('status', 'completed')
         
@@ -43,6 +113,7 @@ def render_report_page():
         total_count = entry.get('total', 0)
         
         # Stats display
+        api_name = entry.get('api_name') or 'Unknown'
         if status == "running":
             # Estimate or use started_count if available
             started = entry.get('started_count', 0)
@@ -51,12 +122,17 @@ def render_report_page():
             if total_count == 0: total_count = 1 
             progress = min(started / total_count, 1.0)
             
-            label = f"⏳ {entry.get('timestamp')} - Running... {started}/{total_count}"
+            label = f"⏳ {entry.get('timestamp')} - Running... {started}/{total_count} - API: {api_name}"
         else:
             pass_rate = (passed_count / total_count * 100) if total_count > 0 else 0
-            label = f"{entry.get('timestamp')} - Pass Rate: {pass_rate:.1f}% ({passed_count}/{total_count})"
+            label = f"{entry.get('timestamp')} - Pass Rate: {pass_rate:.1f}% ({passed_count}/{total_count}) - API: {api_name}"
         
         with st.expander(label):
+            # 懒加载：展开时才加载 results 详情
+            entry_detail = service.get_by_id(entry_id)
+            if entry_detail:
+                entry = entry_detail  # 使用包含 results 的完整数据
+            
             # SHOW PROGRESS BAR IF RUNNING
             if status == "running":
                 st.progress(progress, text=f"Processing {started}/{total_count} cases...")
@@ -457,4 +533,24 @@ def render_report_page():
                     st.caption("Check server terminal logs for full traceback. Common causes: deepeval not installed, missing .env variables, or API connection issues.")
                 else:
                     st.text("No results data.")
+
+    # --------------------------------------------------
+    # Bottom Pagination Controls
+    # --------------------------------------------------
+    if total_pages > 1:
+        st.divider()
+        p_col1, p_col2, p_col3 = st.columns([1, 2, 1])
+        with p_col1:
+            if st.button("← Prev", disabled=(page <= 1), use_container_width=True):
+                st.session_state.report_page -= 1
+                st.rerun()
+        with p_col2:
+            st.markdown(
+                f'<p style="text-align:center; margin-top:6px;">Page {page} of {total_pages}</p>',
+                unsafe_allow_html=True
+            )
+        with p_col3:
+            if st.button("Next →", disabled=(page >= total_pages), use_container_width=True):
+                st.session_state.report_page += 1
+                st.rerun()
 

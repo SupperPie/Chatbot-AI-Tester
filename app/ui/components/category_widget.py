@@ -27,32 +27,67 @@ def render_category_widget():
             st.session_state.selected_category = '__all__'
 
         with st.container():
-            col_title, col_action = st.columns([6, 0.7])
-            with col_title:
-                st.markdown("### 📂 Category")
+            # 自定义样式：
+            # 1. 隐藏 popover 默认的下箭头符号
+            # 2. 改变 popover 展开后的气泡宽度，让其变窄
+            # 3. 设置树形目录容器的固定高度和滚动条
+            st.markdown("""
+            <style>
+            /* 隐藏 popover button 里面的下箭头图标 (svg) */
+            button[data-testid="stPopoverButton"] svg {
+                display: none !important;
+            }
+            
+            /* 当 popover 展开时，改变 button 的背景色和颜色 */
+            button[data-testid="stPopoverButton"][aria-expanded="true"] {
+                background-color: #E6F4EA !important;
+                border-color: #1890FF !important;
+                color: #1890FF !important;
+            }
 
-            # 先渲染树，拿到稳定的当前选中值
-            selected_id = _render_tree(tree, service)
+            /* 修改 popover 弹出框的最小宽度和 padding，只对当前组件内的生效 */
+            .gear-popover-container div[data-testid="stPopoverBody"] {
+                min-width: 120px !important;
+                width: 140px !important;
+                padding: 10px !important;
+            }
+            
+            /* 树形容器：隐藏默认滚动条，使用细滚动条更美观 */
+            div[data-testid="stVerticalBlock"] > div.element-container > div.stHtml {
+                /* Optional custom styling for the container */
+            }
+            </style>
+            """, unsafe_allow_html=True)
+
+            # 调整标题和设置按钮的布局：2 列，标题 + 齿轮按钮同行
+            col_title, col_action = st.columns([5, 1])
+            with col_title:
+                st.markdown('<h3 style="white-space: nowrap; margin: 0; padding: 0; line-height: 2;">📂 Category</h3>', unsafe_allow_html=True)
 
             with col_action:
-                st.markdown('<div style="height: 10px;"></div><div class="gear-popover-anchor"></div>', unsafe_allow_html=True)
-                with st.popover("⚙️", use_container_width=False, help="Manage Category"):
-                    if st.button("➕ 新建", key="btn_add_cat"):
+                st.markdown('<div class="gear-popover-container">', unsafe_allow_html=True)
+                with st.popover("⚙️", use_container_width=True):
+                    if st.button("➕ 新建", key="btn_add_cat", use_container_width=True):
                         st.session_state.show_add_category_dialog = True
-                        st.session_state.add_category_parent_id = None if selected_id == 'root' else selected_id
+                        st.session_state.add_category_parent_id = None if st.session_state.get('selected_category') == 'root' else st.session_state.get('selected_category')
                         st.rerun()
-                    if st.button("✏️ 重命名", disabled=(selected_id == 'root'), key="btn_rename_cat"):
+                    if st.button("✏️ 重命名", disabled=(st.session_state.get('selected_category') == 'root'), key="btn_rename_cat", use_container_width=True):
                         st.session_state.show_rename_dialog = True
-                        st.session_state.rename_category_id = selected_id
-                        cat_obj = service.db.query(Category).filter(Category.id == selected_id).first()
+                        st.session_state.rename_category_id = st.session_state.get('selected_category')
+                        cat_obj = service.db.query(Category).filter(Category.id == st.session_state.rename_category_id).first()
                         st.session_state.rename_category_name = cat_obj.name if cat_obj else ""
                         st.rerun()
-                    if st.button("🗑️ 删除", disabled=(selected_id == 'root'), key="btn_del_cat"):
+                    if st.button("🗑️ 删除", disabled=(st.session_state.get('selected_category') == 'root'), key="btn_del_cat", use_container_width=True):
                         st.session_state.show_delete_dialog = True
-                        st.session_state.delete_category_id = selected_id
-                        cat_obj = service.db.query(Category).filter(Category.id == selected_id).first()
+                        st.session_state.delete_category_id = st.session_state.get('selected_category')
+                        cat_obj = service.db.query(Category).filter(Category.id == st.session_state.delete_category_id).first()
                         st.session_state.delete_category_name = cat_obj.name if cat_obj else ""
                         st.rerun()
+                st.markdown('</div>', unsafe_allow_html=True)
+
+            # 渲染树（包裹在一个固定高度可滚动的 container 里，高度与右侧 Filter 区域底部近似对齐）
+            with st.container(height=260, border=False):
+                selected_id = _render_tree(tree, service)
 
             _handle_dialogs(service)
 

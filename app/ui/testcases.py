@@ -88,7 +88,6 @@ def render_testcases_page():
     title_col, manual_col, import_col = st.columns([5.8, 2.1, 2.1])
     with title_col:
         st.title("📋 Test Cases Management")
-        st.markdown("Manage, edit, and run your test cases.")
 
     manual_container = manual_col
     import_container = import_col
@@ -125,7 +124,10 @@ def render_testcases_page():
     with manual_container:
         st.markdown('<div style="height: 34px;"></div>', unsafe_allow_html=True)
         with st.popover("📖 参数说明手册", use_container_width=True):
+            # 使用一个宽 div 强行撑开手册的宽度（因为前面的全局样式限制了宽度，强制覆盖）
+            st.markdown('<div style="width: 500px; max-width: 90vw;">', unsafe_allow_html=True)
             render_manual_content()
+            st.markdown('</div>', unsafe_allow_html=True)
     
     # Initialize df in session state
     if "df" not in st.session_state:
@@ -216,12 +218,12 @@ def render_testcases_page():
             tree = service.get_tree()
             db.close()
             
-            # 构建目录选项列表
+            # 构建目录选项列表 - 使用完整路径以区分同名目录
             category_options = []
             def build_options(nodes, prefix=""):
                 for node in nodes:
-                    indent = "　" * (node['level'] - 1)  # 用全角空格缩进
-                    label = f"{indent}📁 {node['name']}"
+                    # 使用完整路径而非仅名称，避免同名目录混淆
+                    label = f"📁 {node['path']}"
                     category_options.append((node['id'], label))
                     if node.get('children'):
                         build_options(node['children'], prefix + "  ")
@@ -297,6 +299,7 @@ def render_testcases_page():
         with import_container:
             st.markdown('<div style="height: 34px;"></div><div class="import-popover-anchor"></div>', unsafe_allow_html=True)
             with st.popover("📤 Import", use_container_width=True):
+                 st.markdown('<div style="width: 400px; max-width: 90vw;">', unsafe_allow_html=True)
                  st.markdown("### Import Test Cases")
                  
                  # 目录选择
@@ -345,6 +348,16 @@ def render_testcases_page():
                             update_existing = st.checkbox("Update existing cases by ID (if ID matches)", value=False, key="chk_update_cases")
                         
                             if st.button(f"Confirm Import", type="primary", key="btn_confirm_import"):
+                                # 过滤掉 input 为空的记录
+                                original_count = len(import_df)
+                                import_df = import_df[import_df['input'].notna() & (import_df['input'].astype(str).str.strip() != '')]
+                                filtered_count = original_count - len(import_df)
+                                if filtered_count > 0:
+                                    st.warning(f"已跳过 {filtered_count} 条 input 为空的记录")
+                                if import_df.empty:
+                                    st.error("没有有效的测试用例可导入（所有记录的 input 都为空）")
+                                    st.stop()
+                                
                                 # Prepare data
                                 # Ensure tags are lists
                                 if "tags" in import_df.columns:
@@ -496,6 +509,7 @@ def render_testcases_page():
                             
                     except Exception as e:
                         st.error(f"Error: {e}")
+                 st.markdown('</div>', unsafe_allow_html=True)
     
     with top_right_col:
         st.markdown('<div style="height: 10px"></div>', unsafe_allow_html=True)
@@ -532,6 +546,9 @@ def render_testcases_page():
             run_range_clicked = st.button("▶ Run Range", use_container_width=True, type="primary", key="btn_run_range", help="执行 From ID 到 To ID 范围内的用例")
         with run_col3:
             run_tags_clicked = st.button("▶ Run by Tags", use_container_width=True, type="primary", key="btn_run_tags") if filter_tags else False
+
+        # 为执行状态留一个占位符，位于运行按钮的正下方
+        execution_placeholder = st.empty()
 
     # 使用左侧目录树的选择作为目录筛选条件
     filter_category = selected_category
@@ -828,47 +845,50 @@ def render_testcases_page():
     if run_selected_clicked:
         selected_rows = edited_df[edited_df["Select"] == True]
         if selected_rows.empty:
-            st.warning("Please select cases to run.")
+            execution_placeholder.warning("Please select cases to run.")
         else:
              cases_to_run = selected_rows.drop(columns=["Select", "__row_key"], errors='ignore').to_dict(orient="records")
              
     elif delete_selected_clicked:
         selected_rows = edited_df[edited_df["Select"] == True]
         if selected_rows.empty:
-            st.warning("Please select cases to delete.")
+            execution_placeholder.warning("Please select cases to delete.")
         else:
             ids_to_delete = selected_rows['id'].tolist()
             confirm_delete_dialog(ids_to_delete)
     
     elif move_to_category_clicked:
         selected_rows = edited_df[edited_df["Select"] == True]
-        if selected_rows.empty:
-            st.warning("请先选择要移动的测试用例")
-        else:
+        start_id = st.session_state.get('filter_id_from', '').strip()
+        end_id = st.session_state.get('filter_id_to', '').strip()
+        
+        if not selected_rows.empty:
             ids_to_move = selected_rows['id'].tolist()
             move_to_category_dialog(ids_to_move)
+        elif start_id or end_id:
+            if edited_df.empty:
+                execution_placeholder.warning(f"No cases found in range {start_id or '*'} to {end_id or '*'}")
+            else:
+                ids_to_move = edited_df['id'].tolist()
+                move_to_category_dialog(ids_to_move)
+        else:
+            execution_placeholder.warning("请先选择要移动的测试用例")
     
     elif run_range_clicked:
         start_id = st.session_state.get('filter_id_from', '').strip()
         end_id = st.session_state.get('filter_id_to', '').strip()
         if not start_id and not end_id:
-            st.warning("请在筛选条件中填写 From ID 或 To ID")
+            execution_placeholder.warning("请在筛选条件中填写 From ID 或 To ID")
         else:
-            # 构建筛选条件
-            mask = pd.Series([True] * len(edited_df))
-            if start_id:
-                mask = mask & (edited_df['id'] >= start_id)
-            if end_id:
-                mask = mask & (edited_df['id'] <= end_id)
-            range_rows = edited_df[mask]
-            if range_rows.empty:
-                st.warning(f"No cases found in range {start_id or '*'} to {end_id or '*'}")
+            # edited_df 已经根据 ID 范围筛选过了，直接使用
+            if edited_df.empty:
+                execution_placeholder.warning(f"No cases found in range {start_id or '*'} to {end_id or '*'}")
             else:
-                cases_to_run = range_rows.drop(columns=["Select", "__row_key"], errors='ignore').to_dict(orient="records")
+                cases_to_run = edited_df.drop(columns=["Select", "__row_key"], errors='ignore').to_dict(orient="records")
             
     elif run_tags_clicked:
         if not filter_tags:
-            st.warning("请在筛选条件中选择标签")
+            execution_placeholder.warning("请在筛选条件中选择标签")
         else:
             # Filter by tags
             def row_has_tag(row_tags):
@@ -879,7 +899,7 @@ def render_testcases_page():
             tags_rows = edited_df[mask]
             
             if tags_rows.empty:
-                st.warning("No cases found with selected tags.")
+                execution_placeholder.warning("No cases found with selected tags.")
             else:
                  cases_to_run = tags_rows.drop(columns=["Select", "__row_key"], errors='ignore').to_dict(orient="records")
                  
@@ -892,56 +912,57 @@ def render_testcases_page():
             # Start Job
             job_id = mgr.run_background_job(cases_to_run, api_name=selected_api)
             
-            # Progress UI
-            progress_bar = st.progress(0, text="Initializing...")
-            status_text = st.empty()
-            
-            import time
-            
-            # Poll for completion from DB
-            while True:
-                time.sleep(1)
+            with execution_placeholder.container():
+                # Progress UI
+                progress_bar = st.progress(0, text="Initializing...")
+                status_text = st.empty()
                 
-                try:
-                    from app.services.history_service import HistoryService
-                    svc = HistoryService()
-                    job_data = svc.get_by_id(job_id)
-                except Exception:
-                    continue
+                import time
                 
-                if job_data:
-                    status = job_data.get("status", "running")
+                # Poll for completion from DB
+                while True:
+                    time.sleep(1)
                     
-                    started = job_data.get("started_count", 0)
-                    total = job_data.get("total", 1)
-                    if total == 0: total = 1
+                    try:
+                        from app.services.history_service import HistoryService
+                        svc = HistoryService()
+                        job_data = svc.get_by_id(job_id)
+                    except Exception:
+                        continue
                     
-                    pct = min(started / total, 1.0)
-                    progress_bar.progress(pct, text=f"Running... {started}/{total}")
-                    
-                    if status in ["completed", "failed", "cancelled"]:
-                        progress_bar.progress(1.0, text=f"Finished: {status}")
+                    if job_data:
+                        status = job_data.get("status", "running")
+                        
+                        started = job_data.get("started_count", 0)
+                        total = job_data.get("total", 1)
+                        if total == 0: total = 1
+                        
+                        pct = min(started / total, 1.0)
+                        progress_bar.progress(pct, text=f"Running... {started}/{total}")
+                        
+                        if status in ["completed", "failed", "cancelled"]:
+                            progress_bar.progress(1.0, text=f"Finished: {status}")
+                            break
+                    else:
+                        status_text.warning("Job data not found...")
                         break
-                else:
-                    status_text.warning("Job data not found...")
-                    break
-            
-            # Show results if completed
-            if job_data and job_data.get("status") == "completed":
-                st.toast(f"Completed! Ran {len(cases_to_run)} tests.", icon="🏃")
-                st.success(f"Successfully ran {len(cases_to_run)} tests. View details in **Test Report**.")
                 
-                # Show simplified results result
-                results = job_data.get("results", [])
-                res_df = pd.DataFrame(results)
-                cols = ["id", "input", "passed", "score", "reason"]
-                cols = [c for c in cols if c in res_df.columns]
-                st.dataframe(res_df[cols].style.format({"score": "{:.2f}"}), use_container_width=True)
-                
-            elif job_data and job_data.get("status") == "failed":
-                st.error(f"Job failed: {job_data.get('error')}")
+                # Show results if completed
+                if job_data and job_data.get("status") == "completed":
+                    st.toast(f"Completed! Ran {len(cases_to_run)} tests.", icon="🏃")
+                    st.success(f"Successfully ran {len(cases_to_run)} tests. View details in **Test Report**.")
+                    
+                    # Show simplified results result
+                    results = job_data.get("results", [])
+                    res_df = pd.DataFrame(results)
+                    cols = ["id", "input", "passed", "score", "reason"]
+                    cols = [c for c in cols if c in res_df.columns]
+                    st.dataframe(res_df[cols].style.format({"score": "{:.2f}"}), use_container_width=True)
+                    
+                elif job_data and job_data.get("status") == "failed":
+                    st.error(f"Job failed: {job_data.get('error')}")
             
         except Exception as e:
-            st.error(f"Failed to run tests: {e}")
+            execution_placeholder.error(f"Failed to run tests: {e}")
 
     logger.debug("=== render_testcases_page() 结束 ===")
