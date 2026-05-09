@@ -93,10 +93,14 @@ def filter_test_cases(df, category_id=None, tags=None, id_from=None, id_to=None,
         except ValueError:
             filtered = filtered[filtered['id'] <= val]
     
-    # 关键词搜索（匹配 input 字段）
+    # 关键词搜索（匹配 input / expected_output / retrieval_context 字段）
     if keyword and str(keyword).strip():
         keyword_lower = str(keyword).strip().lower()
-        filtered = filtered[filtered['input'].str.lower().str.contains(keyword_lower, na=False)]
+        search_cols = [c for c in ['input', 'expected_output', 'retrieval_context'] if c in filtered.columns]
+        mask = pd.Series(False, index=filtered.index)
+        for col in search_cols:
+            mask |= filtered[col].astype(str).str.lower().str.contains(keyword_lower, na=False)
+        filtered = filtered[mask]
     
     return filtered
 
