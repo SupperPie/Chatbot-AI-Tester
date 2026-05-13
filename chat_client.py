@@ -985,6 +985,124 @@ def get_entitlements_response(message: str, url: str, user_id: str = None, sessi
         return f"Error: {e}"
 
 
+def get_trip_planner_response(message: str, url: str, user_id: str = None, session_id: str = None, extra_params: dict = None) -> str:
+    """Trip Planner 接口客户端（支持 SSE 流式与直接 JSON 两种响应格式）
+
+    Payload 格式:
+    {
+        "query": "...",
+        "user_id": "123",
+        "session_id": "151",
+        "lob": "dc",
+        "extra_args": {
+            "trace_id": "123",
+            "api_token": ""
+        }
+    }
+
+    响应解析规则：
+    - type="token": 流式输出中（忽略，等待 done）
+    - type="done": 提取 data.summary_state.details 作为最终 result；
+                   若 details 为空则回退到 content 字段
+    """
+    if user_id is None:
+        user_id = str(uuid.uuid4())
+    if session_id is None:
+        session_id = str(uuid.uuid4())[:8]
+
+    # 使用 extra_params 作为基础 payload，只替换 query
+    if extra_params:
+        payload = extra_params.copy()
+        payload["query"] = message
+    else:
+        payload = {
+            "query": message,
+            "user_id": user_id,
+            "session_id": session_id,
+            "lob": "dc",
+            "extra_args": {
+                "trace_id": "",
+                "api_token": ""
+            }
+        }
+
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream"
+    }
+
+    print("=" * 60, flush=True)
+    print(f"[TripPlanner] URL: {url}", flush=True)
+    print(f"[TripPlanner] Request Payload:\n{json.dumps(payload, ensure_ascii=False, indent=2)}", flush=True)
+    print("=" * 60, flush=True)
+
+    def _extract_result(data: dict):
+        """从 type=done 的数据块中提取最终结果"""
+        details = (data.get("data") or {}).get("summary_state", {}).get("details", "")
+        if details:
+            return details
+        return data.get("content", "")
+
+    try:
+        start_time = time.time()
+        response = requests.post(url, json=payload, headers=headers, stream=True, timeout=600)
+
+        if not response.ok:
+            print(f"[TripPlanner] API Error {response.status_code}: {response.text}")
+            return f"❌ SERVER DETAIL ({response.status_code}): {response.text}"
+
+        final_answer = ""
+        raw_chunks = []
+        ttft = 0.0
+        got_first_token = False
+
+        for line in response.iter_lines():
+            if not line:
+                continue
+            decoded_line = line.decode('utf-8')
+
+            # 剥离 SSE "data: " 前缀
+            json_str = decoded_line[6:] if decoded_line.startswith("data: ") else decoded_line
+            if json_str.strip() == "[DONE]":
+                break
+
+            try:
+                data = json.loads(json_str)
+                raw_chunks.append(json.dumps(data, ensure_ascii=False))
+
+                msg_type = data.get("type")
+                if not got_first_token:
+                    ttft = time.time() - start_time
+                    got_first_token = True
+
+                if msg_type == "done":
+                    final_answer = _extract_result(data)
+                    break
+                # type="token" 时忽略，等待 done
+            except json.JSONDecodeError:
+                raw_chunks.append(f"Decode Error: {json_str}")
+                continue
+
+        raw_full_str = "\n".join(raw_chunks)
+
+        if not final_answer:
+            final_answer = "Error: No response content found." if not raw_chunks else "Raw data captured (parsing failed). See Raw Data."
+
+        return json.dumps({
+            "result": final_answer,
+            "thinking": "",
+            "inform_base": "",
+            "raw": raw_full_str,
+            "ttft": ttft
+        }, ensure_ascii=False)
+
+    except requests.exceptions.Timeout:
+        return "Error: Trip Planner API Request Timed Out (600s)"
+    except Exception as e:
+        print(f"[TripPlanner] Error: {e}")
+        return f"Error: {e}"
+
+
 def get_agent_qa_response(message: str, url: str, user_id: str = None, session_id: str = None, extra_params: dict = None) -> str:
     """Agent Q&A API client"""
     # Generate IDs if not provided
@@ -1348,6 +1466,8 @@ def get_chat_response(message: str, api_name: str = "Bundle API", user_id: str =
         return get_ai_engineering_response(message, url=url, user_id=user_id, session_id=session_id, extra_params=extra_params)
     elif api_type == "entitlements":
         return get_entitlements_response(message, url=url, user_id=user_id, session_id=session_id, extra_params=extra_params)
+    elif api_type == "trip_planner":
+        return get_trip_planner_response(message, url=url, user_id=user_id, session_id=session_id, extra_params=extra_params)
     elif api_type == "translation":
         return get_translation_response(message, url=url, user_id=user_id, session_id=session_id, extra_params=extra_params)
     elif api_type == "hotel":
