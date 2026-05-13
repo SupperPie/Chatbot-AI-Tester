@@ -1052,47 +1052,66 @@ def get_trip_planner_response(message: str, url: str, user_id: str = None, sessi
             return f"❌ SERVER DETAIL ({response.status_code}): {response.text}"
 
         final_answer = ""
-        raw_chunks = []
+        raw_str = ""
         ttft = 0.0
-        got_first_token = False
 
-        for line in response.iter_lines():
-            if not line:
-                continue
-            decoded_line = line.decode('utf-8')
+        content_type = response.headers.get("Content-Type", "")
+        is_sse = "text/event-stream" in content_type
 
-            # 剥离 SSE "data: " 前缀
-            json_str = decoded_line[6:] if decoded_line.startswith("data: ") else decoded_line
-            if json_str.strip() == "[DONE]":
-                break
+        if is_sse:
+            # ---- SSE 流式响应 ----
+            raw_chunks = []
+            got_first_token = False
 
-            try:
-                data = json.loads(json_str)
-                raw_chunks.append(json.dumps(data, ensure_ascii=False))
+            for line in response.iter_lines():
+                if not line:
+                    continue
+                decoded_line = line.decode("utf-8")
 
-                msg_type = data.get("type")
-                if not got_first_token:
-                    ttft = time.time() - start_time
-                    got_first_token = True
-
-                if msg_type == "done":
-                    final_answer = _extract_result(data)
+                json_str = decoded_line[6:] if decoded_line.startswith("data: ") else decoded_line
+                if json_str.strip() == "[DONE]":
                     break
-                # type="token" 时忽略，等待 done
-            except json.JSONDecodeError:
-                raw_chunks.append(f"Decode Error: {json_str}")
-                continue
 
-        raw_full_str = "\n".join(raw_chunks)
+                try:
+                    data = json.loads(json_str)
+                    if not isinstance(data, dict):
+                        continue
+                    raw_chunks.append(json.dumps(data, ensure_ascii=False))
+
+                    if not got_first_token:
+                        ttft = time.time() - start_time
+                        got_first_token = True
+
+                    if data.get("type") == "done":
+                        final_answer = _extract_result(data)
+                        break
+                except json.JSONDecodeError:
+                    raw_chunks.append(f"Decode Error: {json_str}")
+
+            raw_str = "\n".join(raw_chunks)
+        else:
+            # ---- 普通 JSON POST 响应 ----
+            ttft = time.time() - start_time
+            raw_str = response.text
+            try:
+                data = response.json()
+                if isinstance(data, dict):
+                    final_answer = _extract_result(data)
+                    print(f"[TripPlanner] Parsed JSON response, type={data.get('type')}", flush=True)
+                else:
+                    final_answer = str(data)
+            except Exception as parse_err:
+                print(f"[TripPlanner] JSON parse error: {parse_err}", flush=True)
+                final_answer = raw_str
 
         if not final_answer:
-            final_answer = "Error: No response content found." if not raw_chunks else "Raw data captured (parsing failed). See Raw Data."
+            final_answer = "Error: No response content found." if not raw_str else "Raw data captured (parsing failed). See Raw Data."
 
         return json.dumps({
             "result": final_answer,
             "thinking": "",
             "inform_base": "",
-            "raw": raw_full_str,
+            "raw": raw_str[:5000],   # 防止 raw 过大
             "ttft": ttft
         }, ensure_ascii=False)
 
