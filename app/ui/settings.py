@@ -75,8 +75,9 @@ def render_settings_page():
                  else:
                      entry["token"] = ""
                  # Parse request_params JSON
-                 rp_str = str(row.get("Request Params", "")).strip()
-                 if rp_str:
+                 rp_raw = row.get("Request Params", "")
+                 rp_str = "" if rp_raw is None else str(rp_raw).strip()
+                 if rp_str and rp_str.lower() != "none":
                      try:
                          rp = json.loads(rp_str)
                          if not isinstance(rp, dict):
