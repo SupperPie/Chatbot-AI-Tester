@@ -1051,10 +1051,12 @@ def get_trip_planner_response(message: str, url: str, user_id: str = None, sessi
 
     def _extract_result(data: dict):
         """从 type=done 的数据块中提取最终结果"""
-        details = (data.get("data") or {}).get("summary_state", {}).get("details", "")
+        data_obj = data.get("data") or {}
+        summary = data_obj.get("summary_state") or {}
+        details = summary.get("details", "") if isinstance(summary, dict) else ""
         if details:
             return details
-        return data.get("content", "")
+        return data.get("content", "") or ""
 
     try:
         start_time = time.time()
