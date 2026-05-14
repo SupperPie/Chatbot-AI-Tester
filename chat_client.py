@@ -119,6 +119,18 @@ TYPE_DEFAULTS = {
                 }
             }
         }
+    },
+    "trip_planner": {
+        "request_params": {
+            "user_id": "123",
+            "session_id": "151",
+            "lob": "dc",
+            "extra_args": {
+                "trace_id": "123",
+                "language": "",
+                "api_token": ""
+            }
+        }
     }
 }
 
@@ -1022,6 +1034,7 @@ def get_trip_planner_response(message: str, url: str, user_id: str = None, sessi
             "lob": "dc",
             "extra_args": {
                 "trace_id": "",
+                "language": "",
                 "api_token": ""
             }
         }
@@ -1048,8 +1061,13 @@ def get_trip_planner_response(message: str, url: str, user_id: str = None, sessi
         response = requests.post(url, json=payload, headers=headers, stream=True, timeout=600)
 
         if not response.ok:
-            print(f"[TripPlanner] API Error {response.status_code}: {response.text}")
-            return f"❌ SERVER DETAIL ({response.status_code}): {response.text}"
+            error_body = response.content.decode("utf-8", errors="replace")
+            print(f"[TripPlanner] API Error {response.status_code}: {error_body}", flush=True)
+            return json.dumps({
+                "result": f"❌ HTTP {response.status_code}: {error_body}",
+                "thinking": "", "inform_base": "",
+                "raw": error_body, "ttft": 0.0
+            }, ensure_ascii=False)
 
         final_answer = ""
         raw_str = ""
