@@ -267,15 +267,22 @@ def get_bundle_response(message: str, url: str, user_id: str = None, session_id:
         # 构建返回结果
         result_content = ai_content if ai_content else full_response_text
         if result_content:
+            # 提取 bundle_list 到 tools
+            tools_data = ""
+            if bundle_list:
+                try:
+                    tools_data = json.dumps(bundle_list, ensure_ascii=False, indent=2)
+                except Exception:
+                    tools_data = str(bundle_list)
+            
             result_obj = {
                 "result": result_content,
                 "thinking": "",
                 "inform_base": "",
+                "tools": tools_data,
                 "raw": "\n".join(raw_chunks),
                 "ttft": ttft
             }
-            if bundle_list:
-                result_obj["bundle_list"] = bundle_list
             return json.dumps(result_obj, ensure_ascii=False)
             
         return json.dumps({"result": "Error: No response content found.", "raw": "\n".join(raw_chunks), "ttft": 0.0}, ensure_ascii=False)

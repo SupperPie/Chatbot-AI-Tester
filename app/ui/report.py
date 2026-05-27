@@ -386,7 +386,7 @@ def render_report_page():
                 target_cols = [
                     "Select", "case_id", "turn_index", "input", "expected_output", "actual_output", "retrieval_context",
                     "score", "passed", "assertion_result", "ttft", "latency", "reason",
-                    "review_comment", "thinking", "inform_base", "raw"
+                    "review_comment", "thinking", "inform_base", "tools", "raw"
                 ]
                 # Ensure Select exists
                 if "Select" not in display_res_df.columns:
@@ -425,7 +425,8 @@ def render_report_page():
                         "actual_output": st.column_config.TextColumn("Actual Output", width="large"),
                         "retrieval_context": st.column_config.TextColumn("Retrieval Context", width="large"),
                         "thinking": st.column_config.TextColumn("Thinking Process", width="large"),
-                        "inform_base": st.column_config.TextColumn("Inform Base (Tools)", width="large"),
+                        "inform_base": st.column_config.TextColumn("Inform Base", width="large"),
+                        "tools": st.column_config.TextColumn("Tools (Bundle List)", width="large"),
                         "raw": st.column_config.TextColumn("Raw Data", width="large"),
                         "score": st.column_config.NumberColumn("Score", format="%.2f"),
                         "passed": st.column_config.CheckboxColumn("Passed", width="small"),
