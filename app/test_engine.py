@@ -359,7 +359,6 @@ class TestEngine:
         # Initialize variables to avoid UnboundLocalError if API call fails
         thinking_process = None
         inform_base = None
-        tools = None
         raw_data = None
         raw_response = None
         ttft = 0.0
@@ -381,7 +380,6 @@ class TestEngine:
                     actual_output = resp_data["result"]
                     thinking_process = resp_data.get("thinking")
                     inform_base = resp_data.get("inform_base")
-                    tools = resp_data.get("tools")
                     raw_data = resp_data.get("raw")
                     ttft = float(resp_data.get("ttft", 0.0))
                 else:
@@ -540,7 +538,6 @@ class TestEngine:
             "passed": passed,
             "thinking": thinking_process,
             "inform_base": inform_base,
-            "tools": tools,
             "raw": raw_data,
             "latency": latency,
             "ttft": ttft,
@@ -673,7 +670,6 @@ class TestEngine:
             # Call API with shared session
             turn_thinking = None
             turn_inform_base = None
-            turn_tools = None
             turn_raw_data = None
             ttft = 0.0
             turn_latency = 0.0
@@ -696,7 +692,6 @@ class TestEngine:
                         actual_output = resp_data["result"]
                         turn_thinking = resp_data.get("thinking")
                         turn_inform_base = resp_data.get("inform_base")
-                        turn_tools = resp_data.get("tools")
                         turn_raw_data = resp_data.get("raw")
                         ttft = float(resp_data.get("ttft", 0.0))
                 except Exception:
@@ -719,7 +714,6 @@ class TestEngine:
                     "retrieval_context": ", ".join(context) if isinstance(context, list) else str(context or ""),
                     "thinking": turn_thinking,
                     "inform_base": turn_inform_base,
-                    "tools": turn_tools,
                     "raw": turn_raw_data,
                     "latency": turn_latency,
                     "ttft": ttft
@@ -734,7 +728,6 @@ class TestEngine:
                 "retrieval_context": ", ".join(context) if isinstance(context, list) else str(context or ""),
                 "thinking": turn_thinking,
                 "inform_base": turn_inform_base,
-                "tools": turn_tools,
                 "raw": turn_raw_data,
                 "latency": turn_latency,
                 "ttft": ttft

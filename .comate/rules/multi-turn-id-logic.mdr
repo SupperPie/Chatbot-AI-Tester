@@ -1,0 +1,48 @@
+---
+description: 多轮对话ID共享逻辑 - 保护关键业务规则
+globs: app/ui/tester.py
+alwaysApply: false
+---
+
+# 多轮对话ID共享逻辑
+
+## 核心规则（请勿随意修改！）
+
+一个ID代表一个会话，同一多轮对话的所有turn必须共享同一个ID。
+
+## 数据库设计
+
+- 复合主键：`(id, turn_index)`
+- 允许同一ID有多条记录（不同turn_index）
+
+## 保存流程
+
+1. 生成阶段：同一会话的多个turn共享 `GEN_xxx` ID
+2. 保存时用 `_original_gen_id` 临时字段保存原始ID
+3. 用映射字典 `gen_id_to_tc_id` 确保同组turn映射到同一个 `TCxxxx` ID
+
+## 错误示例
+
+```python
+# BAD - 每条记录单独分配ID，破坏多轮会话关联
+for case in cases:
+    if not case.get('id'):
+        case['id'] = generate_tc_id(max_num)
+        max_num += 1
+```
+
+## 正确示例
+
+```python
+# GOOD - 同一会话的turn复用已分配的ID
+gen_id_to_tc_id = {}
+for case in cases:
+    original_gen_id = case.pop('_original_gen_id', None)
+    if original_gen_id and original_gen_id in gen_id_to_tc_id:
+        case['id'] = gen_id_to_tc_id[original_gen_id]  # 复用
+    else:
+        new_id = generate_tc_id(max_num)
+        case['id'] = new_id
+        if original_gen_id:
+            gen_id_to_tc_id[original_gen_id] = new_id  # 记录映射
+```

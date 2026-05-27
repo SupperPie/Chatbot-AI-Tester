@@ -267,19 +267,18 @@ def get_bundle_response(message: str, url: str, user_id: str = None, session_id:
         # 构建返回结果
         result_content = ai_content if ai_content else full_response_text
         if result_content:
-            # 提取 bundle_list 到 tools
-            tools_data = ""
+            # 提取 bundle_list 到 inform_base (tools)
+            inform_base_data = ""
             if bundle_list:
                 try:
-                    tools_data = json.dumps(bundle_list, ensure_ascii=False, indent=2)
+                    inform_base_data = json.dumps(bundle_list, ensure_ascii=False, indent=2)
                 except Exception:
-                    tools_data = str(bundle_list)
+                    inform_base_data = str(bundle_list)
             
             result_obj = {
                 "result": result_content,
                 "thinking": "",
-                "inform_base": "",
-                "tools": tools_data,
+                "inform_base": inform_base_data,
                 "raw": "\n".join(raw_chunks),
                 "ttft": ttft
             }

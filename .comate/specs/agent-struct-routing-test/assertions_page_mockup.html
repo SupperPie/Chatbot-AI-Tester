@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <title>断言组件管理 - 页面布局初稿 v2</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f8f9fa; color: #333; }
+        
+        .sidebar { position: fixed; left: 0; top: 0; width: 220px; height: 100vh; background: #1a1a2e; padding: 20px 12px; }
+        .sidebar h1 { color: #FFD700; font-size: 1.4rem; text-align: center; margin-bottom: 30px; }
+        .sidebar .nav-btn { display: block; width: 100%; padding: 10px 14px; margin: 6px 0; border: none; border-radius: 6px; background: transparent; color: #aaa; text-align: left; cursor: pointer; font-size: 0.9rem; }
+        .sidebar .nav-btn.active { background: #FFD700; color: #1a1a2e; font-weight: 600; }
+        .sidebar .nav-btn:hover:not(.active) { background: #2a2a4e; }
+        
+        .main { margin-left: 220px; padding: 30px; }
+        .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+        .page-header h2 { font-size: 1.5rem; }
+        
+        /* Tab bar */
+        .tab-bar { display: flex; gap: 0; border-bottom: 2px solid #e0e0e0; margin-bottom: 24px; }
+        .tab { padding: 10px 20px; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; color: #666; font-size: 0.95rem; }
+        .tab.active { border-bottom-color: #FFD700; color: #333; font-weight: 600; }
+        .tab:hover:not(.active) { color: #333; }
+        
+        /* Tab content visibility */
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        
+        /* AI Generate Section */
+        .ai-section { background: linear-gradient(135deg, #f0f7ff 0%, #fef9f0 100%); border: 1px solid #e0e8f0; border-radius: 12px; padding: 24px; margin-bottom: 30px; }
+        .ai-section h3 { font-size: 1.1rem; margin-bottom: 16px; color: #444; }
+        .ai-inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+        .ai-inputs textarea { width: 100%; height: 120px; border: 1px solid #ddd; border-radius: 8px; padding: 12px; font-size: 0.85rem; font-family: monospace; resize: vertical; }
+        .ai-inputs label { font-size: 0.8rem; color: #666; margin-bottom: 4px; display: block; }
+        .btn-generate { background: linear-gradient(135deg, #FFD700, #FFA500); border: none; padding: 10px 24px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.9rem; }
+        
+        .gen-results { margin-top: 16px; padding-top: 16px; border-top: 1px dashed #ccc; }
+        .gen-card { background: #fff; border: 1px solid #e8e8e8; border-radius: 8px; padding: 14px; margin: 8px 0; display: flex; justify-content: space-between; align-items: center; }
+        .gen-card .info { flex: 1; }
+        .gen-card .info .name { font-weight: 600; font-size: 0.9rem; }
+        .gen-card .info .meta { font-size: 0.75rem; color: #888; margin-top: 4px; }
+        .gen-card .actions { display: flex; gap: 8px; }
+        .gen-card .actions button { padding: 4px 10px; border-radius: 4px; border: 1px solid #ddd; background: #fff; cursor: pointer; font-size: 0.75rem; }
+        .gen-card .actions .btn-save { background: #4CAF50; color: #fff; border-color: #4CAF50; }
+        
+        /* Filter bar */
+        .filter-bar { display: flex; gap: 12px; align-items: center; margin-bottom: 20px; flex-wrap: wrap; }
+        .filter-bar select, .filter-bar input { padding: 6px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 0.85rem; }
+        .filter-bar input { width: 200px; }
+        
+        /* Component Cards Grid */
+        .cards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+        
+        .comp-card { background: #fff; border: 1px solid #e8e8e8; border-radius: 10px; padding: 18px; transition: box-shadow 0.2s; }
+        .comp-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+        .comp-card .card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
+        .comp-card .card-header .id { font-size: 0.7rem; color: #999; background: #f5f5f5; padding: 2px 6px; border-radius: 3px; }
+        .comp-card .card-header .type-badge { font-size: 0.7rem; padding: 2px 8px; border-radius: 10px; font-weight: 500; }
+        .badge-field { background: #e3f2fd; color: #1565c0; }
+        .badge-route { background: #fce4ec; color: #c62828; }
+        .comp-card .card-name { font-weight: 600; font-size: 1rem; margin-bottom: 10px; }
+        
+        .params-list { margin-bottom: 12px; }
+        .param-item { display: flex; align-items: center; gap: 8px; margin: 4px 0; font-size: 0.82rem; }
+        .param-label { color: #666; min-width: 70px; }
+        .param-value { padding: 2px 8px; border-radius: 4px; font-family: monospace; font-size: 0.8rem; }
+        .param-preset { background: #e8f5e9; border: 1px solid #c8e6c9; color: #2e7d32; }
+        .param-deferred { background: #fff3e0; border: 1px dashed #ffcc02; color: #e65100; }
+        .param-mode { font-size: 0.65rem; color: #999; margin-left: 4px; }
+        
+        .card-footer { display: flex; justify-content: space-between; align-items: center; padding-top: 10px; border-top: 1px solid #f0f0f0; }
+        .card-footer .ref-count { font-size: 0.75rem; color: #888; }
+        .card-footer .card-actions { display: flex; gap: 6px; }
+        .card-footer .card-actions button { padding: 4px 10px; border-radius: 4px; border: 1px solid #e0e0e0; background: #fafafa; cursor: pointer; font-size: 0.75rem; }
+        .card-footer .card-actions button:hover { background: #f0f0f0; }
+        
+        /* Card test expand area */
+        .card-test-area { background: #f8fafe; border: 1px solid #e0e8f0; border-radius: 8px; padding: 14px; margin-top: 12px; display: none; }
+        .card-test-area.show { display: block; }
+        .card-test-area label { font-size: 0.75rem; color: #666; display: block; margin-bottom: 4px; }
+        .card-test-area textarea { width: 100%; height: 60px; font-family: monospace; font-size: 0.78rem; border: 1px solid #ddd; border-radius: 4px; padding: 6px; margin-bottom: 8px; }
+        .card-test-area .deferred-inputs { margin-bottom: 8px; }
+        .card-test-area .deferred-inputs span { font-size: 0.8rem; margin-right: 6px; }
+        .card-test-area .deferred-inputs input { width: 100px; padding: 3px 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.8rem; }
+        
+        /* Edit Panel */
+        .edit-panel { background: #fff; border: 1px solid #e0e0e0; border-radius: 12px; padding: 24px; margin-top: 24px; }
+        .edit-panel h3 { margin-bottom: 16px; font-size: 1.1rem; }
+        .form-group { margin-bottom: 16px; }
+        .form-group label { display: block; font-size: 0.82rem; color: #555; margin-bottom: 6px; font-weight: 500; }
+        .form-group input, .form-group select, .form-group textarea { width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 0.85rem; }
+        
+        .param-config { background: #f8f9fa; border: 1px solid #e8e8e8; border-radius: 8px; padding: 14px; margin: 8px 0; }
+        .param-config .param-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+        .param-config .param-header span { font-weight: 500; font-size: 0.85rem; }
+        .radio-group { display: flex; gap: 16px; margin-bottom: 8px; }
+        .radio-group label { font-size: 0.8rem; color: #555; cursor: pointer; }
+        
+        .test-result { font-family: monospace; font-size: 0.82rem; margin-top: 8px; padding: 8px; border-radius: 4px; }
+        .test-pass { color: #2e7d32; background: #f1f8e9; }
+        .test-fail { color: #c62828; background: #fde8e8; }
+        
+        .btn-primary { background: #FFD700; border: none; padding: 8px 20px; border-radius: 6px; font-weight: 600; cursor: pointer; }
+        .btn-secondary { background: #fff; border: 1px solid #ddd; padding: 8px 20px; border-radius: 6px; cursor: pointer; }
+        .btn-sm { padding: 5px 12px; font-size: 0.8rem; }
+        
+        .section-divider { height: 1px; background: #e0e0e0; margin: 30px 0; }
+        
+        .note-box { background: #fff8e1; border: 1px solid #ffe082; border-radius: 8px; padding: 12px 16px; font-size: 0.82rem; color: #6d4c00; margin: 16px 0; }
+    </style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<div class="sidebar">
+    <h1>TestMate</h1>
+    <button class="nav-btn">🔧 Tester</button>
+    <button class="nav-btn">📋 Testcases</button>
+    <button class="nav-btn">📊 Test Report</button>
+    <button class="nav-btn active">🧩 Assertions</button>
+    <button class="nav-btn">⚙️ Settings</button>
+    <button class="nav-btn">🙈 Blind Review</button>
+</div>
+
+<!-- Main Content -->
+<div class="main">
+    
+    <div class="page-header">
+        <h2>🧩 断言组件库</h2>
+    </div>
+
+    <!-- ===== Two Tabs ===== -->
+    <div class="tab-bar">
+        <div class="tab" onclick="switchTab('ai')" id="tab-ai">AI 生成</div>
+        <div class="tab active" onclick="switchTab('list')" id="tab-list">组件列表</div>
+    </div>
+
+    <!-- ==================== TAB 1: AI 一键生成 ==================== -->
+    <div class="tab-content" id="content-ai">
+        
+        <div class="ai-section">
+            <h3>🤖 AI 一键生成断言</h3>
+            <p style="font-size: 0.82rem; color: #666; margin-bottom: 16px;">粘贴一段 API 响应 JSON，用自然语言描述你需要的断言，AI 会自动生成对应的断言组件。</p>
+            
+            <div class="ai-inputs">
+                <div>
+                    <label>API 响应示例 (粘贴实际返回的 JSON)</label>
+                    <textarea>{"type":"token","lob":"dc","content":"您好，已为您查询到以下航班","session_id":"151","user_id":"123","data":{"flights":[{"price":1200,"airline":"CA"}]},"meta":{}}</textarea>
+                </div>
+                <div>
+                    <label>断言需求描述 (自然语言)</label>
+                    <textarea>检查 lob 字段等于 dc，content 字段不为空，data.flights 是数组并且至少有一个元素，每个 flight 元素必须有 price 字段</textarea>
+                </div>
+            </div>
+            <button class="btn-generate">✨ 一键生成</button>
+
+            <!-- Generated Results -->
+            <div class="gen-results">
+                <div style="font-size: 0.85rem; color: #555; margin-bottom: 12px; font-weight: 500;">生成了 4 个断言组件:</div>
+                
+                <div class="gen-card">
+                    <div class="info">
+                        <div class="name">1. lob 值等于 dc</div>
+                        <div class="meta">field_equals | field: "lob" [固] | expected: "dc" [固]</div>
+                    </div>
+                    <div class="actions">
+                        <button>改为活参数</button>
+                        <button class="btn-save">保存</button>
+                    </div>
+                </div>
+                
+                <div class="gen-card">
+                    <div class="info">
+                        <div class="name">2. content 不为空</div>
+                        <div class="meta">field_not_empty | field: "content" [固]</div>
+                    </div>
+                    <div class="actions">
+                        <button>改为活参数</button>
+                        <button class="btn-save">保存</button>
+                    </div>
+                </div>
+                
+                <div class="gen-card">
+                    <div class="info">
+                        <div class="name">3. data.flights 是数组</div>
+                        <div class="meta">field_type | field: "data.flights" [固] | expected_type: "array" [固]</div>
+                    </div>
+                    <div class="actions">
+                        <button>改为活参数</button>
+                        <button class="btn-save">保存</button>
+                    </div>
+                </div>
+
+                <div class="gen-card">
+                    <div class="info">
+                        <div class="name">4. flight 元素包含 price 字段</div>
+                        <div class="meta">nested_check | path: "data.flights[0].price" [固] | check: field_exists</div>
+                    </div>
+                    <div class="actions">
+                        <button>改为活参数</button>
+                        <button class="btn-save">保存</button>
+                    </div>
+                </div>
+
+                <div class="note-box">
+                    💡 生成的断言会基于上方输入的 API 响应 JSON 进行验证运行。点击「验证运行」确认断言能正确执行。
+                </div>
+
+                <div style="margin-top: 12px; display: flex; gap: 10px;">
+                    <button class="btn-primary">全部保存</button>
+                    <button class="btn-secondary">验证运行 ▶</button>
+                </div>
+                
+                <!-- Validation results - 基于上方输入的 JSON 执行 -->
+                <div style="margin-top: 12px; background: #f1f8e9; border-radius: 6px; padding: 12px; font-size: 0.82rem; font-family: monospace;">
+                    <div style="font-size: 0.75rem; color: #888; margin-bottom: 6px;">基于上方 API 响应 JSON 执行:</div>
+                    <div style="color: #2e7d32;">✅ 1. lob 值等于 dc — PASS ('lob' = 'dc')</div>
+                    <div style="color: #2e7d32;">✅ 2. content 不为空 — PASS ('content' is not empty)</div>
+                    <div style="color: #2e7d32;">✅ 3. data.flights 是数组 — PASS (type is array)</div>
+                    <div style="color: #2e7d32;">✅ 4. flight 元素包含 price — PASS (field exists)</div>
+                    <div style="margin-top: 6px; font-weight: 600;">全部通过 (4/4)</div>
+                </div>
+            </div>
+        </div>
+
+    </div><!-- end tab AI -->
+
+    <!-- ==================== TAB 2: 组件列表 + 手动创建 ==================== -->
+    <div class="tab-content active" id="content-list">
+
+        <!-- Filter + Create button -->
+        <div class="filter-bar">
+            <select>
+                <option>全部类型</option>
+                <option>field_exists</option>
+                <option>field_equals</option>
+                <option>field_type</option>
+                <option>field_contains</option>
+                <option>field_not_empty</option>
+                <option>field_in</option>
+                <option>field_matches</option>
+                <option>route_equals</option>
+            </select>
+            <select>
+                <option>全部标签</option>
+                <option>结构检查</option>
+                <option>路由验证</option>
+                <option>字段验证</option>
+            </select>
+            <input type="text" placeholder="搜索组件名称...">
+            <span style="font-size: 0.8rem; color: #888;">共 6 个组件</span>
+            <button class="btn-primary btn-sm" style="margin-left: auto;">+ 手动创建</button>
+        </div>
+
+        <!-- Cards Grid -->
+        <div class="cards-grid">
+            
+            <!-- Card 1: 全预设，无活参数 -->
+            <div class="comp-card">
+                <div class="card-header">
+                    <span class="id">AC001</span>
+                    <span class="type-badge badge-field">field_exists</span>
+                </div>
+                <div class="card-name">result 字段必须存在</div>
+                <div class="params-list">
+                    <div class="param-item">
+                        <span class="param-label">field:</span>
+                        <span class="param-value param-preset">"result"</span>
+                        <span class="param-mode">固定</span>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="ref-count">引用: 12 个用例</span>
+                    <div class="card-actions">
+                        <button>编辑</button>
+                        <button onclick="toggleTest('test1')">测试</button>
+                        <button>删除</button>
+                    </div>
+                </div>
+                <!-- 测试区域：点击「测试」按钮后展开 -->
+                <div class="card-test-area show" id="test1">
+                    <label>粘贴 API 响应 JSON 进行测试:</label>
+                    <textarea>{"type":"token","lob":"dc","result":"您好","content":".","data":{}}</textarea>
+                    <!-- 无活参数，不需要额外输入 -->
+                    <button class="btn-secondary btn-sm">执行 ▶</button>
+                    <div class="test-result test-pass">✅ PASS — Field 'result' exists</div>
+                </div>
+            </div>
+
+            <!-- Card 2: 有活参数 -->
+            <div class="comp-card">
+                <div class="card-header">
+                    <span class="id">AC002</span>
+                    <span class="type-badge badge-field">field_equals</span>
+                </div>
+                <div class="card-name">lob 值检查</div>
+                <div class="params-list">
+                    <div class="param-item">
+                        <span class="param-label">field:</span>
+                        <span class="param-value param-preset">"lob"</span>
+                        <span class="param-mode">固定</span>
+                    </div>
+                    <div class="param-item">
+                        <span class="param-label">expected:</span>
+                        <span class="param-value param-deferred">关联时填写</span>
+                        <span class="param-mode">活参数</span>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="ref-count">引用: 5 个用例</span>
+                    <div class="card-actions">
+                        <button>编辑</button>
+                        <button onclick="toggleTest('test2')">测试</button>
+                        <button>删除</button>
+                    </div>
+                </div>
+                <!-- 测试区域：有活参数需要填写 -->
+                <div class="card-test-area show" id="test2">
+                    <label>粘贴 API 响应 JSON 进行测试:</label>
+                    <textarea>{"type":"token","lob":"dc","content":".","session_id":"151"}</textarea>
+                    <div class="deferred-inputs">
+                        <label>填写活参数:</label>
+                        <span>expected =</span>
+                        <input type="text" value="dc" placeholder="期望值">
+                    </div>
+                    <button class="btn-secondary btn-sm">执行 ▶</button>
+                    <div class="test-result test-pass">✅ PASS — 'lob' = 'dc', expected 'dc'</div>
+                </div>
+            </div>
+
+            <!-- Card 3: 路由断言 -->
+            <div class="comp-card">
+                <div class="card-header">
+                    <span class="id">AC003</span>
+                    <span class="type-badge badge-route">route_equals</span>
+                </div>
+                <div class="card-name">路由目标检查</div>
+                <div class="params-list">
+                    <div class="param-item">
+                        <span class="param-label">route_field:</span>
+                        <span class="param-value param-deferred">关联时填写</span>
+                        <span class="param-mode">活参数</span>
+                    </div>
+                    <div class="param-item">
+                        <span class="param-label">expected:</span>
+                        <span class="param-value param-deferred">关联时填写</span>
+                        <span class="param-mode">活参数</span>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="ref-count">引用: 3 个用例</span>
+                    <div class="card-actions">
+                        <button>编辑</button>
+                        <button>测试</button>
+                        <button>删除</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Card 4 -->
+            <div class="comp-card">
+                <div class="card-header">
+                    <span class="id">AC004</span>
+                    <span class="type-badge badge-field">field_not_empty</span>
+                </div>
+                <div class="card-name">content 不为空</div>
+                <div class="params-list">
+                    <div class="param-item">
+                        <span class="param-label">field:</span>
+                        <span class="param-value param-preset">"content"</span>
+                        <span class="param-mode">固定</span>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="ref-count">引用: 8 个用例</span>
+                    <div class="card-actions">
+                        <button>编辑</button>
+                        <button>测试</button>
+                        <button>删除</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Card 5 -->
+            <div class="comp-card">
+                <div class="card-header">
+                    <span class="id">AC005</span>
+                    <span class="type-badge badge-field">field_type</span>
+                </div>
+                <div class="card-name">data 字段是对象</div>
+                <div class="params-list">
+                    <div class="param-item">
+                        <span class="param-label">field:</span>
+                        <span class="param-value param-preset">"data"</span>
+                        <span class="param-mode">固定</span>
+                    </div>
+                    <div class="param-item">
+                        <span class="param-label">type:</span>
+                        <span class="param-value param-preset">"object"</span>
+                        <span class="param-mode">固定</span>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="ref-count">引用: 6 个用例</span>
+                    <div class="card-actions">
+                        <button>编辑</button>
+                        <button>测试</button>
+                        <button>删除</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Card 6: 通用全活参数 -->
+            <div class="comp-card">
+                <div class="card-header">
+                    <span class="id">AC006</span>
+                    <span class="type-badge badge-field">field_equals</span>
+                </div>
+                <div class="card-name">通用字段值断言</div>
+                <div class="params-list">
+                    <div class="param-item">
+                        <span class="param-label">field:</span>
+                        <span class="param-value param-deferred">关联时填写</span>
+                        <span class="param-mode">活参数</span>
+                    </div>
+                    <div class="param-item">
+                        <span class="param-label">expected:</span>
+                        <span class="param-value param-deferred">关联时填写</span>
+                        <span class="param-mode">活参数</span>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <span class="ref-count">引用: 15 个用例</span>
+                    <div class="card-actions">
+                        <button>编辑</button>
+                        <button>测试</button>
+                        <button>删除</button>
+                    </div>
+                </div>
+            </div>
+
+        </div><!-- end cards-grid -->
+
+        <!-- ===== 手动创建组件面板 (点击「+ 手动创建」后展开) ===== -->
+        <div class="section-divider"></div>
+        
+        <div class="edit-panel">
+            <h3>手动创建断言组件</h3>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <div class="form-group">
+                    <label>组件名称</label>
+                    <input type="text" value="lob 值检查" placeholder="输入组件名称">
+                </div>
+                <div class="form-group">
+                    <label>断言类型</label>
+                    <select>
+                        <option>-- 选择类型 --</option>
+                        <option selected>field_equals</option>
+                        <option>field_exists</option>
+                        <option>field_type</option>
+                        <option>field_contains</option>
+                        <option>field_not_empty</option>
+                        <option>field_in</option>
+                        <option>field_matches</option>
+                        <option>route_equals</option>
+                    </select>
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 16px;">
+                <div class="form-group">
+                    <label>描述</label>
+                    <input type="text" value="验证返回体中 lob 字段是否等于指定值" placeholder="简要说明组件用途">
+                </div>
+                <div class="form-group">
+                    <label>标签</label>
+                    <input type="text" value="结构检查, 字段验证" placeholder="逗号分隔">
+                </div>
+            </div>
+
+            <h4 style="margin: 16px 0 12px; font-size: 0.95rem; color: #555;">参数配置</h4>
+            <p style="font-size: 0.78rem; color: #888; margin-bottom: 12px;">根据选择的断言类型，配置每个参数的模式和值</p>
+
+            <!-- Param: field -->
+            <div class="param-config">
+                <div class="param-header">
+                    <span>参数: field</span>
+                    <span style="font-size: 0.75rem; color: #999;">要检查的字段路径 (支持点分隔如 data.flights[0].price)</span>
+                </div>
+                <div class="radio-group">
+                    <label><input type="radio" name="field_mode" checked> 预设值（固定）</label>
+                    <label><input type="radio" name="field_mode"> 关联时填写（活参数）</label>
+                </div>
+                <input type="text" value="lob" style="width:100%; padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.85rem;">
+            </div>
+
+            <!-- Param: expected -->
+            <div class="param-config">
+                <div class="param-header">
+                    <span>参数: expected</span>
+                    <span style="font-size: 0.75rem; color: #999;">期望的字段值</span>
+                </div>
+                <div class="radio-group">
+                    <label><input type="radio" name="expected_mode"> 预设值（固定）</label>
+                    <label><input type="radio" name="expected_mode" checked> 关联时填写（活参数）</label>
+                </div>
+                <input type="text" value="" placeholder="提示: 请输入期望的 lob 值 (如 DC, MC)" style="width:100%; padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.85rem; border-style: dashed; border-color: #ffcc02;">
+            </div>
+
+            <div style="margin-top: 20px; display: flex; gap: 12px;">
+                <button class="btn-primary">保存组件</button>
+                <button class="btn-secondary">取消</button>
+                <button class="btn-secondary" style="margin-left: auto;">测试预览 ▼</button>
+            </div>
+
+            <!-- 测试预览: 粘贴 JSON 进行测试 -->
+            <div style="margin-top: 16px; background: #f8fafe; border: 1px solid #e0e8f0; border-radius: 8px; padding: 16px;">
+                <div style="font-size: 0.85rem; font-weight: 500; margin-bottom: 10px;">测试预览</div>
+                <div>
+                    <label style="font-size: 0.75rem; color: #666; display: block; margin-bottom: 4px;">粘贴 API 响应 JSON:</label>
+                    <textarea style="width: 100%; height: 60px; font-family: monospace; font-size: 0.78rem; border: 1px solid #ddd; border-radius: 4px; padding: 6px;">{"type":"token","lob":"dc","content":".","session_id":"151","user_id":"123","data":{},"meta":{}}</textarea>
+                </div>
+                <div style="margin: 8px 0;">
+                    <label style="font-size: 0.75rem; color: #666;">填写活参数:</label>
+                    <div style="margin-top: 4px;">
+                        <span style="font-size: 0.8rem; color: #555;">expected = </span>
+                        <input type="text" value="dc" style="width: 120px; padding: 3px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.8rem;">
+                    </div>
+                </div>
+                <button class="btn-secondary btn-sm">执行测试 ▶</button>
+                <div class="test-result test-pass" style="margin-top: 8px;">✅ PASS — 'lob' = 'dc', expected 'dc'</div>
+            </div>
+        </div>
+
+    </div><!-- end tab list -->
+
+</div><!-- end main -->
+
+<script>
+function switchTab(tab) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    
+    if (tab === 'ai') {
+        document.getElementById('tab-ai').classList.add('active');
+        document.getElementById('content-ai').classList.add('active');
+    } else {
+        document.getElementById('tab-list').classList.add('active');
+        document.getElementById('content-list').classList.add('active');
+    }
+}
+
+function toggleTest(id) {
+    const el = document.getElementById(id);
+    el.classList.toggle('show');
+}
+</script>
+
+</body>
+</html>
