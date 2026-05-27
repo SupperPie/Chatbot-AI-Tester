@@ -69,8 +69,11 @@ def filter_test_cases(df, category_id=None, tags=None, id_from=None, id_to=None,
             try:
                 from app.ui.components.category_selector import get_category_ids_with_children
                 category_ids = get_category_ids_with_children(category_id)
+                logger.debug(f"filter_test_cases: category_id={category_id}, category_ids={category_ids}")
+                logger.debug(f"filter_test_cases: df中的category_id唯一值: {filtered['category_id'].unique()}")
                 if category_ids:
                     filtered = filtered[filtered['category_id'].isin(category_ids)]
+                    logger.debug(f"filter_test_cases: 筛选后剩余 {len(filtered)} 行")
             except Exception as e:
                 logger.warning(f"目录筛选失败，category_id={category_id}, error={e}")
     
@@ -175,8 +178,11 @@ def render_testcases_page():
             st.markdown('</div>', unsafe_allow_html=True)
     
     # Initialize df in session state
-    if "df" not in st.session_state:
+    # 临时：强制重新加载以修复 category_id 问题
+    if "df" not in st.session_state or st.session_state.get("_force_reload"):
         st.session_state.df = load_data()
+        st.session_state.df_preprocessed = False
+        st.session_state._force_reload = False
     
     # Ensure all required columns exist (reload from DB if missing due to cache)
     required_cols = ['category_id', 'retrieval_context', 'overall_criteria', 'validation']
@@ -622,6 +628,8 @@ def render_testcases_page():
     if st.session_state.get('last_selected_category') != filter_category:
         st.session_state.testcases_current_page = 1
         st.session_state.last_selected_category = filter_category
+        # 清除目录统计缓存，强制重新加载
+        st.session_state.pop('category_counts_cache', None)
 
     # ------------------
     # Data Editor
@@ -663,6 +671,16 @@ def render_testcases_page():
         id_to=filter_id_to,
         keyword=filter_keyword
     )
+    
+    # Debug: 输出筛选结果
+    if filter_category and filter_category not in ('__all__', ''):
+        logger.debug(f"Category filter: {filter_category}")
+        logger.debug(f"Total rows in df: {len(st.session_state.df)}")
+        logger.debug(f"Filtered rows: {len(filtered_df)}")
+        if len(filtered_df) == 0 and len(st.session_state.df) > 0:
+            # 显示有哪些 category_id
+            unique_cats = st.session_state.df['category_id'].unique() if 'category_id' in st.session_state.df.columns else []
+            logger.warning(f"筛选结果为空！现有 category_id: {unique_cats}")
     
     # 统计信息（选择控制与分页将在同一行渲染）
     total_count = len(st.session_state.df)

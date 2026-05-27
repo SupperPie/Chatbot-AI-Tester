@@ -37,6 +37,12 @@ def load_data() -> pd.DataFrame:
             service = TestCaseService()
             db_cases = service.get_all()
             if db_cases:
+                print(f"[load_data] 从数据库加载了 {len(db_cases)} 条记录")
+                # Debug: 检查前几条的 category_id
+                if len(db_cases) > 0:
+                    sample_cats = [(tc.id, tc.category_id) for tc in db_cases[:5]]
+                    print(f"[load_data] 前5条记录的 (id, category_id): {sample_cats}")
+                
                 data = []
                 for tc in db_cases:
                     record = {
@@ -46,7 +52,7 @@ def load_data() -> pd.DataFrame:
                         'tags': tc.tags or [],
                         'type': tc.type,
                         'turn_index': tc.turn_index,
-                        'category_id': tc.category_id or 'root',
+                        'category_id': tc.category_id if tc.category_id is not None else 'root',
                         'retrieval_context': tc.retrieval_context,
                         'overall_criteria': tc.overall_criteria,
                         'validation': tc.validation,
@@ -186,6 +192,12 @@ def save_data(df: pd.DataFrame):
             last_assigned_id = row_id
     
     to_save = to_save_df.to_dict(orient="records")
+    
+    # Debug: 检查 category_id
+    print(f"[save_data] 准备保存 {len(to_save)} 条记录")
+    if to_save:
+        cat_ids = [r.get('category_id') for r in to_save[:5]]  # 前5条
+        print(f"[save_data] 前5条记录的 category_id: {cat_ids}")
 
     # 写 DB
     from app.services.test_case_service import TestCaseService

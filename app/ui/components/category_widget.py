@@ -19,7 +19,7 @@ def _load_all_counts(service: CategoryService) -> dict:
     from app.models.test_case import TestCase
     from sqlalchemy import func
 
-    # 按 category_id 分组统计
+    # 按 category_id 分组统计（包括多轮对话的每个 turn）
     rows = service.db.query(
         TestCase.category_id, func.count(TestCase.id)
     ).group_by(TestCase.category_id).all()
