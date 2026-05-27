@@ -908,6 +908,7 @@ def get_entitlements_response(message: str, url: str, user_id: str = None, sessi
             
         final_answer = ""
         raw_chunks = []
+        inform_base_data = ""  # 存放 done 消息中的 data.user_equity_list
         
         ttft = 0.0
         got_first_token = False
@@ -942,6 +943,14 @@ def get_entitlements_response(message: str, url: str, user_id: str = None, sessi
                                 got_first_token = True
                             if content:
                                 final_answer = content
+                            # 提取 data.user_equity_list 到 inform_base
+                            done_data = data.get("data") or {}
+                            equity_list = done_data.get("user_equity_list")
+                            if equity_list:
+                                try:
+                                    inform_base_data = json.dumps(equity_list, ensure_ascii=False, indent=2)
+                                except Exception:
+                                    inform_base_data = str(equity_list)
                             break
 
                     except json.JSONDecodeError:
@@ -969,6 +978,14 @@ def get_entitlements_response(message: str, url: str, user_id: str = None, sessi
                                 got_first_token = True
                             if content:
                                 final_answer = content
+                            # 提取 data.user_equity_list 到 inform_base
+                            done_data = data.get("data") or {}
+                            equity_list = done_data.get("user_equity_list")
+                            if equity_list:
+                                try:
+                                    inform_base_data = json.dumps(equity_list, ensure_ascii=False, indent=2)
+                                except Exception:
+                                    inform_base_data = str(equity_list)
                             break
                     except json.JSONDecodeError:
                         raw_chunks.append(decoded_line)
@@ -985,7 +1002,7 @@ def get_entitlements_response(message: str, url: str, user_id: str = None, sessi
         return json.dumps({
             "result": final_answer, 
             "thinking": "",
-            "inform_base": "",
+            "inform_base": inform_base_data,
             "raw": raw_full_str,
             "ttft": ttft
         }, ensure_ascii=False)
@@ -1026,6 +1043,9 @@ def get_trip_planner_response(message: str, url: str, user_id: str = None, sessi
     if extra_params:
         payload = extra_params.copy()
         payload["query"] = message
+        # 关键：外部传入的 session_id 优先（多轮对话依赖此字段保持会话）
+        payload["session_id"] = session_id
+        payload["user_id"] = user_id
     else:
         payload = {
             "query": message,
@@ -1270,7 +1290,6 @@ def get_hotel_response(message: str, url: str, user_id: str = None, session_id: 
     
     payload = {
         "message": message,
-        "thread_id": session_id,
         "user_id": user_id,
     }
     if extra_params:
@@ -1280,6 +1299,11 @@ def get_hotel_response(message: str, url: str, user_id: str = None, session_id: 
             semantic = ex.get("semantic_info", {})
             if isinstance(semantic, dict) and not semantic.get("userMessage"):
                 extra_params = deep_merge(extra_params, {"ex": {"semantic_info": {"userMessage": message}}})
+            # 确保 missing_fields 是数组
+            if "missing_fields" not in ex or not isinstance(ex["missing_fields"], list):
+                if not isinstance(extra_params.get("ex", {}), dict):
+                    extra_params["ex"] = {}
+                extra_params["ex"]["missing_fields"] = ex.get("missing_fields", [])
         payload.update(extra_params)
     
     headers = {

@@ -13,6 +13,25 @@ def get_db_session():
 
 import streamlit_antd_components as sac
 
+
+def _load_all_counts(service: CategoryService) -> dict:
+    """一次性加载所有目录的 case count，返回 {cat_id: count, '__total__': total}"""
+    from app.models.test_case import TestCase
+    from sqlalchemy import func
+
+    # 按 category_id 分组统计
+    rows = service.db.query(
+        TestCase.category_id, func.count(TestCase.id)
+    ).group_by(TestCase.category_id).all()
+
+    counts = {}
+    total = 0
+    for cat_id, cnt in rows:
+        counts[cat_id or 'root'] = cnt
+        total += cnt
+    counts['__total__'] = total
+    return counts
+
 def render_category_widget():
     """
     渲染目录管理 Widget
@@ -103,6 +122,11 @@ def _render_tree(tree: list, service: CategoryService):
     """渲染目录树 (sac.tree)"""
     current_selected_id = st.session_state.get('selected_category', '__all__')
 
+    # 一次性加载所有目录 case count（避免 N+1 查询）
+    if 'category_counts_cache' not in st.session_state:
+        st.session_state.category_counts_cache = _load_all_counts(service)
+    counts_cache = st.session_state.category_counts_cache
+
     index_map = {}
     id_to_index = {}
     current_index = 0
@@ -116,7 +140,7 @@ def _render_tree(tree: list, service: CategoryService):
         nonlocal current_index
         items = []
         for node in nodes:
-            case_count = service.get_case_count(node['id'])
+            case_count = counts_cache.get(node['id'], 0)
             icon = "folder-fill" if node.get('children') else "folder"
             label = f"{node['name']} ({case_count})"
 
@@ -135,7 +159,7 @@ def _render_tree(tree: list, service: CategoryService):
         return items
 
     children_items = build_sac_tree(tree)
-    total_count = service.get_total_case_count()
+    total_count = counts_cache.get('__total__', 0)
     sac_items = [
         sac.TreeItem(
             label=f"全部用例 ({total_count})",
@@ -221,6 +245,7 @@ def _add_category_dialog(service: CategoryService):
                     service.create(name.strip(), parent_id)
                     st.toast(f"✅ 目录 '{name}' 创建成功！")
                     st.session_state.show_add_category_dialog = False
+                    st.session_state.pop('category_counts_cache', None)
                     st.rerun()
                 except ValueError as e:
                     st.error(str(e))
@@ -288,6 +313,7 @@ def _delete_category_dialog(service: CategoryService):
                     st.session_state.selected_category = '__all__'
                     st.session_state.sac_category_tree = [0]
                 st.session_state.show_delete_dialog = False
+                st.session_state.pop('category_counts_cache', None)
                 st.rerun()
             except ValueError as e:
                 st.error(str(e))

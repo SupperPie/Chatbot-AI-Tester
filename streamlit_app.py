@@ -49,6 +49,9 @@ def main():
         render_testcases_page()
     elif page == "Test Report":
         render_report_page()
+    elif page == "Assertions":
+        from app.ui.assertions import render_assertions_page
+        render_assertions_page()
     elif page == "Settings":
         render_settings_page()
     elif page == "Blind Review":

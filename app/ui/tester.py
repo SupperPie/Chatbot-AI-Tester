@@ -219,15 +219,32 @@ ONLY return the highly-structured JSON array. Do not include markdown blocks lik
             
             # Format back to real JSON from string for criteria
             clean_new_cases = []
+            # ========================================================================
+            # 【重要】多轮对话ID共享逻辑 - 请勿随意修改！
+            # ========================================================================
+            # 设计说明：
+            # - 一个ID代表一个会话，同一多轮对话的所有turn共享同一个ID
+            # - 数据库使用复合主键 (id, turn_index)，允许同ID多条记录
+            # - 生成时：同一会话的多个turn共享 GEN_xxx ID
+            # - 保存时：需要把 GEN_xxx 映射到 TCxxxx，同组turn必须映射到同一个TC ID
+            # 
+            # 实现方式：
+            # 1. 用 _original_gen_id 临时字段保存原始 GEN_xxx ID
+            # 2. 用 gen_id_to_tc_id 字典跟踪已分配的映射
+            # 3. 同一 GEN_xxx 的记录复用已分配的 TC ID
+            # ========================================================================
+            gen_id_mapping = {}  # GEN_xxx -> TC新ID 的映射，确保同一会话共享ID
+            
             for case in new_cases:
                 try:
                     case["overall_criteria"] = json.loads(case["overall_criteria"]) if isinstance(case["overall_criteria"], str) else case.get("overall_criteria", {})
                 except Exception:
                     pass # Keep as string if parsing fails
                     
-                # CLEAR the generated ID to let utils.py generate a pure TCxxxx ID
+                # 记录原始 GEN_ ID，用于后续映射
                 case_id = str(case.get("id", ""))
                 if case_id.startswith("GEN_"):
+                    case["_original_gen_id"] = case_id  # 保存原始ID用于后续分组
                     case["id"] = ""
                 
                 # 设置目录
@@ -244,45 +261,52 @@ ONLY return the highly-structured JSON array. Do not include markdown blocks lik
                 
             combined_df = pd.concat([existing_df, new_df], ignore_index=True)
             
-            # Save to JSON
-            final_df = save_data(combined_df)
-            
-            # 同步写入数据库
+            # 只插入新记录到数据库（不做全量同步）
             try:
-                from app.database import SessionLocal
-                from app.models.test_case import TestCase
-                from datetime import datetime
+                from app.services.test_case_service import TestCaseService
+                from app.utils import generate_tc_id
                 
-                db = SessionLocal()
+                service = TestCaseService()
+                
+                # 获取当前最大 ID 用于生成新 ID
+                all_ids = existing_df['id'].dropna().tolist() if 'id' in existing_df.columns else []
+                max_num = 0
+                for tid in all_ids:
+                    if tid.startswith('TC') and tid[2:].isdigit():
+                        max_num = max(max_num, int(tid[2:]))
+                
+                # 为新记录分配 ID 并插入（同一多轮会话共享同一个ID）
+                gen_id_to_tc_id = {}  # GEN_xxx -> TCxxxx 映射
                 for case in clean_new_cases:
-                    # 查找最终分配的 ID
-                    final_row = final_df[final_df['input'] == case['input']]
-                    if not final_row.empty:
-                        case_id = final_row.iloc[0]['id']
-                        # 检查是否已存在
-                        ti = int(case.get('turn_index') or 1)
-                        existing = db.query(TestCase).filter(
-                            TestCase.id == case_id,
-                            TestCase.turn_index == ti
-                        ).first()
-                        if not existing:
-                            test_case = TestCase(
-                                id=case_id,
-                                type=case.get('type', 'single'),
-                                input=case.get('input', ''),
-                                expected_output=case.get('expected_output', ''),
-                                retrieval_context=case.get('retrieval_context'),
-                                description=case.get('description'),
-                                turn_index=ti,
-                                tags=case.get('tags', []),
-                                category_id=save_category,
-                                created_at=datetime.utcnow()
-                            )
-                            db.add(test_case)
-                db.commit()
-                db.close()
+                    if not case.get('id'):
+                        original_gen_id = case.pop('_original_gen_id', None)
+                        if original_gen_id and original_gen_id in gen_id_to_tc_id:
+                            # 同一个多轮会话，复用已分配的 TC ID
+                            case['id'] = gen_id_to_tc_id[original_gen_id]
+                        else:
+                            # 新的会话，分配新 ID
+                            max_num += 1
+                            new_tc_id = generate_tc_id(max_num - 1)
+                            case['id'] = new_tc_id
+                            if original_gen_id:
+                                gen_id_to_tc_id[original_gen_id] = new_tc_id
+                    else:
+                        # 清理可能遗留的临时字段
+                        case.pop('_original_gen_id', None)
+                    case['category_id'] = save_category
+                
+                inserted = service.insert_many(clean_new_cases)
+                
+                # 更新 combined_df 中的新记录 ID
+                for i, case in enumerate(clean_new_cases):
+                    idx = len(existing_df) + i
+                    if idx < len(combined_df):
+                        combined_df.at[idx, 'id'] = case['id']
+                
             except Exception as e:
                 st.warning(f"数据库同步失败: {e}")
+            
+            final_df = combined_df
             
             # Clear generated cases
             st.session_state.generated_cases = pd.DataFrame(columns=["id", "type", "turn_index", "input", "expected_output", "retrieval_context", "description", "tags"])

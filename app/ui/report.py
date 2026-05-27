@@ -217,7 +217,7 @@ def render_report_page():
                                 from app.utils import get_job_manager
                                 mgr = get_job_manager()
                                 target_api = st.session_state.get(f"api_sel_{entry_id}", "Bundle API")
-                                job_id = mgr.run_background_job(unique_cases_to_rerun, api_name=target_api)
+                                job_id = mgr.run_background_job(unique_cases_to_rerun, api_name=target_api, execution_mode="full")
                                 
                                 st.success(f"Rerun started! Job ID: {job_id}")
                                 time.sleep(1)
@@ -233,6 +233,51 @@ def render_report_page():
                         st.warning("Stopping job... please wait.")
                         time.sleep(1)
                         st.rerun()
+            with ac_col3:
+                # EXPORT TO FEISHU BUTTON
+                if status != "running":
+                    feishu_key = f"feishu_export_{entry_id}"
+                    if st.button("📤 飞书", key=f"btn_feishu_{entry_id}", help="导出到飞书表格"):
+                        st.session_state[feishu_key] = True
+                        st.rerun()
+                    
+                    if st.session_state.get(feishu_key):
+                        with st.form(key=f"feishu_form_{entry_id}"):
+                            feishu_url = st.text_input(
+                                "飞书表格 URL",
+                                value="https://dragonpass.feishu.cn/wiki/QKLQwwM0BixcMjkTZWVc4Wvmnoh?sheet=eRNryN",
+                                help="粘贴飞书表格链接"
+                            )
+                            submitted = st.form_submit_button("确认导出")
+                            if submitted:
+                                try:
+                                    from app.feishu_client import export_report_to_feishu, parse_feishu_url
+                                    parsed = parse_feishu_url(feishu_url)
+                                    results = entry.get('results', [])
+                                    report_api_name = entry.get('api_name', 'Test')
+                                    if results:
+                                        export_result = export_report_to_feishu(
+                                            results,
+                                            spreadsheet_token=parsed.get("spreadsheet_token"),
+                                            sheet_id=parsed.get("sheet_id"),
+                                            wiki_token=parsed.get("wiki_token"),
+                                            api_name=report_api_name,
+                                            create_new_sheet=True
+                                        )
+                                        if export_result.get("success"):
+                                            st.success(export_result.get("message"))
+                                        else:
+                                            st.error(export_result.get("message"))
+                                    else:
+                                        st.warning("没有测试结果可导出")
+                                    st.session_state[feishu_key] = False
+                                except Exception as e:
+                                    st.error(f"导出失败: {e}")
+                        
+                        if st.button("取消", key=f"btn_feishu_cancel_{entry_id}"):
+                            st.session_state[feishu_key] = False
+                            st.rerun()
+
             with ac_col4:
                 # API SELECTOR
                 # Try to find index of stored api_name
@@ -318,10 +363,29 @@ def render_report_page():
                 else:
                     display_res_df["review_comment"] = display_res_df["review_comment"].fillna("").astype(str)
 
+                # 将 assertion_detail 展开为可读的列
+                if "assertion_detail" in display_res_df.columns:
+                    def _format_assertion_detail(val):
+                        if not val or (isinstance(val, float) and pd.isna(val)):
+                            return ""
+                        if isinstance(val, dict):
+                            results = val.get("results", [])
+                            if not results:
+                                return "✅" if val.get("passed") else "❌"
+                            parts = []
+                            for r in results:
+                                icon = "✅" if r.get("passed") else "❌"
+                                parts.append(f"{icon} {r.get('component_name', '?')}: {r.get('message', '')}")
+                            return " | ".join(parts)
+                        return str(val) if val else ""
+                    display_res_df["assertion_result"] = display_res_df["assertion_detail"].apply(_format_assertion_detail)
+                else:
+                    display_res_df["assertion_result"] = ""
+
                 # Configure standard columns order
                 target_cols = [
                     "Select", "case_id", "turn_index", "input", "expected_output", "actual_output", "retrieval_context",
-                    "score", "passed", "ttft", "latency", "reason", 
+                    "score", "passed", "assertion_result", "ttft", "latency", "reason",
                     "review_comment", "thinking", "inform_base", "raw"
                 ]
                 # Ensure Select exists
@@ -330,6 +394,18 @@ def render_report_page():
 
                 # Only keep columns that exist in the dataframe to prevent KeyError
                 display_cols = [c for c in target_cols if c in display_res_df.columns]
+                
+                # 优化: 当 thinking / inform_base 列全为空时，自动隐藏整列
+                def _col_all_empty(df, col):
+                    if col not in df.columns:
+                        return True
+                    s = df[col]
+                    # 视为空: NaN / None / 空字符串 / 仅空白
+                    return s.fillna("").astype(str).str.strip().eq("").all()
+                
+                for _hide_col in ("thinking", "inform_base"):
+                    if _hide_col in display_cols and _col_all_empty(display_res_df, _hide_col):
+                        display_cols.remove(_hide_col)
                 
                 # Keep Select if we need it, but we don't use Select in history table right now.
                 display_res_df = display_res_df[display_cols]
@@ -357,6 +433,7 @@ def render_report_page():
                         "ttft": st.column_config.NumberColumn("TTFT", format="%.2f s"),
                         "latency": st.column_config.NumberColumn("Latency", format="%.2f s"),
                         "reason": st.column_config.TextColumn("Reason", width="large"),
+                        "assertion_result": st.column_config.TextColumn("Assertion Result", width="large"),
                     },
                     use_container_width=True,
                     disabled=disabled_cols,

@@ -1,6 +1,7 @@
 from typing import List, Dict, Optional
 from datetime import datetime
 from app.database import SessionLocal
+import app.models  # noqa: F401 - ensure all models loaded for relationship resolution
 from app.models.test_history import TestHistory, TestResult
 
 
@@ -75,6 +76,7 @@ class HistoryService:
                 turns=r.get('turns'),
                 user_id=r.get('user_id'),
                 session_id=r.get('session_id'),
+                assertion_detail=r.get('assertion_detail'),
                 created_at=now
             )
             self.db.add(test_result)
@@ -188,6 +190,7 @@ class HistoryService:
                     'turns': r.turns,
                     'user_id': r.user_id,
                     'session_id': r.session_id,
+                    'assertion_detail': r.assertion_detail,
                 }
                 results.append(result_dict)
             base_dict['results'] = results

@@ -23,7 +23,7 @@ class JobManager:
                     cls._instance.active_jobs = {} # report_id -> thread
         return cls._instance
 
-    def run_background_job(self, cases: List[Dict], api_name: str) -> str:
+    def run_background_job(self, cases: List[Dict], api_name: str, execution_mode: str = "full") -> str:
         """
         Starts a background job.
         Returns the report_id (job_id).
@@ -34,7 +34,7 @@ class JobManager:
         self._create_history_entry(report_id, api_name, len(cases))
         
         # 2. Start Thread
-        thread = threading.Thread(target=self._worker, args=(report_id, cases, api_name))
+        thread = threading.Thread(target=self._worker, args=(report_id, cases, api_name, execution_mode))
         thread.daemon = True
         self.active_jobs[report_id] = {
             "thread": thread,
@@ -50,7 +50,7 @@ class JobManager:
             self.active_jobs[report_id]["cancelled"] = True
             print(f"Job {report_id} cancelled by user.")
 
-    def _worker(self, report_id: str, cases: List[Dict], api_name: str):
+    def _worker(self, report_id: str, cases: List[Dict], api_name: str, execution_mode: str = "full"):
         # Callback for incremental updates
         def on_step_complete(case_result: Dict, current_count: int, total_count: int):
             self._update_job_progress(report_id, case_result, current_count, total_count)
@@ -63,7 +63,7 @@ class JobManager:
 
         try:
             engine = TestEngine()
-            engine.run_batch(cases, api_name=api_name, on_step_complete=on_step_complete, should_stop=should_stop)
+            engine.run_batch(cases, api_name=api_name, on_step_complete=on_step_complete, should_stop=should_stop, execution_mode=execution_mode)
             
             if should_stop():
                  self._finalize_job(report_id, status="cancelled")
@@ -138,6 +138,7 @@ class JobManager:
                     turns=new_result.get('turns'),
                     user_id=new_result.get('user_id'),
                     session_id=new_result.get('session_id'),
+                    assertion_detail=new_result.get('assertion_detail'),
                     created_at=datetime.datetime.utcnow()
                 )
                 db.add(tr)

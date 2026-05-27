@@ -40,6 +40,11 @@
         "description": "Translation",
         "type": "translation"
     },
+    "Trip Planner": {
+        "url": "https://ai-engineering-test.dragonpass.com.cn/dc/planner_init/stream",
+        "description": "Trip Planner",
+        "type": "trip_planner"
+    },
     "劳斯莱斯": {
         "url": "http://192.168.25.247/v1/chat-messages",
         "description": "",
@@ -51,11 +56,24 @@
         "description": "Skills API",
         "type": "skills"
     },
+    "权益(中信)": {
+        "url": "http://192.168.22.252:13579/stream",
+        "description": "中信权益查询",
+        "type": "entitlements",
+        "request_params": {
+            "lob": "",
+            "query": "我有哪些权益可以用？",
+            "user_id": "90122147122720",
+            "extra_args": {
+                "context": ""
+            },
+            "session_id": "90122147122720"
+        }
+    },
     "权益(国内）": {
         "url": "https://dp-entitlements-dev.dragonpass.com.cn/stream",
         "description": "国内权益查询",
         "type": "entitlements",
-        "token": "nan",
         "request_params": {
             "lob": "",
             "query": "查询我的权益 13060606210",
@@ -68,7 +86,6 @@
         "url": "https://ai-engineering-test.dragonpass.com.cn/entitlement_search/stream",
         "description": "国际权益查询",
         "type": "entitlements",
-        "token": "nan",
         "request_params": {
             "lob": "",
             "query": "查我的在新加坡机场的休息室权益和怎么使用",

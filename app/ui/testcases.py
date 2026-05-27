@@ -8,8 +8,32 @@ from chat_client import get_available_apis
 # 获取 logger（配置在 streamlit_app.py 入口统一处理）
 logger = logging.getLogger(__name__)
 
+
+@st.cache_data(ttl=120)
+def _cached_available_apis():
+    """缓存 API 列表，避免每次 rerun 都查 DB"""
+    return get_available_apis() or ["Bundle API"]
+
 # 目录功能开关（数据库迁移完成前可关闭）
 ENABLE_CATEGORY_FEATURE = True
+
+# 断言组件显示名称缓存（使用 st.cache_data 避免每次 rerun 查 DB）
+@st.cache_data(ttl=60)
+def _load_assertion_label_map() -> dict:
+    """一次性加载所有断言组件的 ID→名称 映射"""
+    try:
+        from app.services.assertion_service import AssertionService
+        service = AssertionService()
+        components = service.get_all()
+        return {c.id: c.name for c in components}
+    except Exception:
+        return {}
+
+
+def _get_assertion_display_label(comp_id: str) -> str:
+    """获取断言组件的可读标签"""
+    label_map = _load_assertion_label_map()
+    return label_map.get(comp_id, comp_id)
 
 def render_category_widget_safe():
     """渲染目录 Widget（带错误处理），返回选中的目录 ID"""
@@ -318,13 +342,15 @@ def render_testcases_page():
         available_tags = get_all_tags(st.session_state.df)
 
         st.markdown("#### ⚙️ Management")
-        top_col1, top_col2, top_col3 = st.columns([4.5, 1, 1])
+        top_col1, top_col2, top_col3, top_col4 = st.columns([3, 1, 1, 1])
         with top_col1:
-            available_apis = get_available_apis() or ["Bundle API"]
+            available_apis = _cached_available_apis()
             selected_api = st.selectbox("⚙️ API Endpoint", options=available_apis, index=0, key="page_api_select", label_visibility="collapsed")
         with top_col2:
             move_to_category_clicked = st.button("📂 Move", use_container_width=True, key="btn_move_category") if ENABLE_CATEGORY_FEATURE else False
         with top_col3:
+            bind_assertions_clicked = st.button("🧩 Assert", use_container_width=True, key="btn_bind_assertions")
+        with top_col4:
             delete_selected_clicked = st.button("🗑️ Delete", use_container_width=True, key="btn_delete_selected")
 
         # 顶部右侧：Import（与参数说明手册同一行，下移避免贴顶裁剪）
@@ -571,7 +597,14 @@ def render_testcases_page():
             filter_keyword = st.text_input("关键词", value="", key="filter_keyword", label_visibility="collapsed", placeholder="🔎 搜索关键词...")
 
         # Run按钮放在标签下方
-        run_col1, run_col2, run_col3, run_col4 = st.columns([1, 1, 1, 3])
+        run_col0, run_col1, run_col2, run_col3 = st.columns([2, 1, 1, 1])
+        with run_col0:
+            execution_mode = st.selectbox(
+                "执行模式", ["full (语义+断言)", "semantic (仅语义)", "assertion (仅断言)"],
+                key="execution_mode_select", label_visibility="collapsed"
+            )
+            # 提取模式值
+            execution_mode_val = execution_mode.split(" ")[0]
         with run_col1:
             run_selected_clicked = st.button("▶ Run Selected", use_container_width=True, type="primary", key="btn_run_selected")
         with run_col2:
@@ -724,6 +757,24 @@ def render_testcases_page():
         end_idx = start_idx + items_per_page
         page_df = display_df.iloc[start_idx:end_idx].copy()
 
+        # 将 assertions 列转为可读文本显示（组件名称而非 ID）
+        if 'assertions' in page_df.columns:
+            def _format_assertions(val):
+                if not val or val == '[]':
+                    return ""
+                if isinstance(val, list):
+                    labels = []
+                    for item in val:
+                        if not isinstance(item, dict):
+                            continue
+                        comp_id = item.get('ref', '?')
+                        # 尝试从缓存获取组件名
+                        label = _get_assertion_display_label(comp_id)
+                        labels.append(label)
+                    return " | ".join(labels) if labels else ""
+                return str(val) if val else ""
+            page_df['assertions'] = page_df['assertions'].apply(_format_assertions)
+
         edited_page_df = st.data_editor(
             page_df,
             column_config={
@@ -736,6 +787,7 @@ def render_testcases_page():
                 "overall_criteria": st.column_config.Column("Overall Criteria", help="用于评估打分的特殊判定要求或全局自定义标准。"),
                 "validation": st.column_config.Column("Validation", help="验证规则 (JSON格式)。例: {\"type\": \"contains\", \"keywords\": [\"正确\"]} 或 {\"type\": \"semantic\"}。"),
                 "turn_index": st.column_config.NumberColumn("Turn", width="small", help="多轮对话的顺序编号"),
+                "assertions": st.column_config.TextColumn("Assertions", help="已绑定的断言组件", width="small", disabled=True),
                 "category_id": None,
                 "__row_key": None,
             },
@@ -905,6 +957,15 @@ def render_testcases_page():
                 move_to_category_dialog(ids_to_move)
         else:
             execution_placeholder.warning("请先选择要移动的测试用例")
+
+    elif bind_assertions_clicked:
+        selected_rows = edited_df[edited_df["Select"] == True]
+        if selected_rows.empty:
+            execution_placeholder.warning("请先选择要绑定断言的测试用例")
+        else:
+            st.session_state["show_assertion_binding"] = True
+            st.session_state["assertion_binding_ids"] = selected_rows['id'].tolist()
+            st.rerun()
     
     elif run_range_clicked:
         start_id = st.session_state.get('filter_id_from', '').strip()
@@ -942,7 +1003,7 @@ def render_testcases_page():
             mgr = get_job_manager()
             
             # Start Job
-            job_id = mgr.run_background_job(cases_to_run, api_name=selected_api)
+            job_id = mgr.run_background_job(cases_to_run, api_name=selected_api, execution_mode=execution_mode_val)
             
             with execution_placeholder.container():
                 # Progress UI
@@ -997,4 +1058,124 @@ def render_testcases_page():
         except Exception as e:
             execution_placeholder.error(f"Failed to run tests: {e}")
 
+    # ─── 断言绑定弹窗 ───
+    if st.session_state.get("show_assertion_binding", False):
+        _assertion_binding_dialog()
+
     logger.debug("=== render_testcases_page() 结束 ===")
+
+
+@st.dialog("🧩 断言组件绑定", width="small")
+def _assertion_binding_dialog():
+    """断言组件绑定弹窗 - 为选中的测试用例关联断言组件"""
+    import json as _json
+    from app.services.assertion_service import AssertionService
+
+    ids = st.session_state.get("assertion_binding_ids", [])
+    if not ids:
+        st.session_state["show_assertion_binding"] = False
+        st.rerun()
+        return
+
+    st.caption(f"选中 {len(ids)} 个用例: {', '.join(ids[:5])}{'...' if len(ids) > 5 else ''}")
+
+    service = AssertionService()
+    all_components = service.get_all()
+
+    if not all_components:
+        st.info("组件库为空，请先在 Assertions 页面创建组件。")
+        if st.button("关闭"):
+            st.session_state["show_assertion_binding"] = False
+            st.rerun()
+        return
+
+    # 组件 ID → 组件对象 映射（用于显示名称）
+    comp_map = {c.id: c for c in all_components}
+
+    # 当前已绑定的断言（取第一个选中用例的 assertions 展示）
+    df = st.session_state.df
+    first_case = df[df['id'] == ids[0]].iloc[0] if not df[df['id'] == ids[0]].empty else None
+    current_assertions = []
+    if first_case is not None:
+        raw = first_case.get('assertions')
+        if isinstance(raw, list):
+            current_assertions = raw
+        elif isinstance(raw, str) and raw.strip():
+            try:
+                current_assertions = _json.loads(raw)
+            except:
+                current_assertions = []
+
+    # 展示当前已绑定的组件
+    if current_assertions:
+        st.markdown("**当前已绑定:**")
+        for i, ref in enumerate(current_assertions):
+            comp_id = ref.get('ref', '?')
+            comp_obj = comp_map.get(comp_id)
+            if comp_obj:
+                display_name = f"{comp_obj.name}"
+            else:
+                display_name = comp_id
+
+            col_a, col_b = st.columns([5, 1])
+            with col_a:
+                st.markdown(f"**{i+1}.** {display_name}")
+            with col_b:
+                if st.button("✕", key=f"unbind_{i}_{comp_id}"):
+                    current_assertions.pop(i)
+                    _apply_assertions_to_cases(ids, current_assertions)
+                    st.rerun()
+    else:
+        st.caption("尚未绑定任何断言组件")
+
+    # 添加新组件
+    st.markdown("---")
+    comp_options = {f"{c.name} ({c.category}/{c.condition})": c for c in all_components}
+    selected_comp_key = st.selectbox("选择组件", options=[""] + list(comp_options.keys()), key="bind_comp_select", label_visibility="collapsed")
+
+    if selected_comp_key and selected_comp_key in comp_options:
+        comp = comp_options[selected_comp_key]
+        config = comp.config or {}
+        deferred = config.get("deferred_params", [])
+
+        # 如果有活参数，让用户填写
+        override_params = {}
+        if deferred:
+            st.caption("填写活参数:")
+            for param_name in deferred:
+                val = st.text_input(f"{param_name} =", key=f"bind_param_{param_name}")
+                if val:
+                    try:
+                        override_params[param_name] = _json.loads(val)
+                    except (ValueError, _json.JSONDecodeError):
+                        override_params[param_name] = val
+
+        if st.button("➕ 添加", key="btn_add_assertion", use_container_width=True):
+            new_ref = {"ref": comp.id, "params": override_params}
+            current_assertions.append(new_ref)
+            _apply_assertions_to_cases(ids, current_assertions)
+            st.rerun()
+
+
+def _apply_assertions_to_cases(case_ids: list, assertions: list):
+    """将 assertions 写入选中的测试用例"""
+    import json as _json
+    from app.services.test_case_service import TestCaseService
+
+    # 更新 session state
+    df = st.session_state.df
+    for case_id in case_ids:
+        mask = df['id'] == case_id
+        df.loc[mask, 'assertions'] = df.loc[mask, 'assertions'].apply(lambda _: assertions)
+    st.session_state.df = df
+
+    # 持久化到 DB
+    service = TestCaseService()
+    from app.models.test_case import TestCase
+    from datetime import datetime
+    for case_id in case_ids:
+        cases = service.db.query(TestCase).filter(TestCase.id == case_id).all()
+        for tc in cases:
+            tc.assertions = assertions
+            tc.updated_at = datetime.utcnow()
+    service.db.commit()

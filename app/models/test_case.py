@@ -25,3 +25,5 @@ class TestCase(Base):
     category = relationship('Category', back_populates='test_cases')
     
     tags = Column(JSONB, default=list)
+    assertions = Column(JSONB, default=list)  # [{"ref": "AC001", "params": {"expected": "dc"}}]
+    expected_result = Column(String(20), default='pass')  # 'pass' or 'fail' - for F1 score calculation

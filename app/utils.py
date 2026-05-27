@@ -50,6 +50,7 @@ def load_data() -> pd.DataFrame:
                         'retrieval_context': tc.retrieval_context,
                         'overall_criteria': tc.overall_criteria,
                         'validation': tc.validation,
+                        'assertions': tc.assertions or [],
                     }
                     data.append(record)
                 df = pd.DataFrame(data)

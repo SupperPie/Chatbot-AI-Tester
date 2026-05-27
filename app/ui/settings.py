@@ -64,20 +64,26 @@ def render_settings_page():
         for _, row in edited_df.iterrows():
              name = row.get("Name")
              if name and str(name).strip():
+                 # 清理 pandas NaN 占位符
+                 def _clean(v):
+                     if v is None:
+                         return ""
+                     s = str(v).strip()
+                     if s.lower() in ("none", "nan", "null"):
+                         return ""
+                     return s
                  entry = {
-                     "url": row.get("URL", ""),
-                     "description": row.get("Description", ""),
-                     "type": row.get("Type", "bundle"),
+                     "url": _clean(row.get("URL", "")),
+                     "description": _clean(row.get("Description", "")),
+                     "type": _clean(row.get("Type", "")) or "bundle",
                  }
-                 token = str(row.get("Token", "")).strip()
-                 if token and token != "None":
-                     entry["token"] = token
-                 else:
-                     entry["token"] = ""
+                 token = _clean(row.get("Token", ""))
+                 entry["token"] = token
                  # Parse request_params JSON
                  rp_raw = row.get("Request Params", "")
                  rp_str = "" if rp_raw is None else str(rp_raw).strip()
-                 if rp_str and rp_str.lower() != "none":
+                 # 过滤无效占位符（pandas NaN -> 'nan', 空值 -> 'none' 等）
+                 if rp_str and rp_str.lower() not in ("none", "nan", "null"):
                      try:
                          rp = json.loads(rp_str)
                          if not isinstance(rp, dict):

@@ -54,6 +54,7 @@ class TestResult(Base):
     turns = Column(JSONB)
     user_id = Column(String(100))
     session_id = Column(String(100))
+    assertion_detail = Column(JSONB)  # 断言执行结果 {"passed": bool, "score": float, "results": [...]}
     created_at = Column(DateTime, default=datetime.utcnow)
 
     history = relationship('TestHistory', back_populates='results')

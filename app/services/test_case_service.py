@@ -31,6 +31,15 @@ def _sanitize_record(r: dict) -> dict:
         except (json.JSONDecodeError, ValueError):
             out['tags'] = [tags] if tags.strip() else []
 
+    # assertions: JSONB 列，确保是 list
+    assertions = out.get('assertions')
+    if isinstance(assertions, str):
+        try:
+            parsed = json.loads(assertions)
+            out['assertions'] = parsed if isinstance(parsed, list) else []
+        except (json.JSONDecodeError, ValueError):
+            out['assertions'] = []
+
     # overall_criteria / validation: Text 列，dict → JSON 字符串
     for field in ('overall_criteria', 'validation'):
         val = out.get(field)
@@ -67,36 +76,45 @@ class TestCaseService:
         self.db.commit()
         return count
 
-    def upsert_all(self, records: List[Dict]) -> int:
-        """全量同步：以 records 为准，更新已有、新增缺少、删除 DB 中多余的行"""
-        # 构建 incoming 的 (id, turn_index) 复合键集合
-        incoming_keys = set()
-        incoming_ids = set()
-        for r in records:
-            if r.get('id'):
-                ti = int(r.get('turn_index') or 1)
-                incoming_keys.add((r['id'], ti))
-                incoming_ids.add(r['id'])
-
-        # 删除 DB 中 id 不在 incoming 里的行
-        if incoming_ids:
-            self.db.query(TestCase).filter(~TestCase.id.in_(incoming_ids)).delete(synchronize_session=False)
-        else:
-            self.db.query(TestCase).delete(synchronize_session=False)
-
-        # 对于 id 在 incoming 中但 (id, turn_index) 不在的行，也需要删除
-        if incoming_ids:
-            all_db = self.db.query(TestCase.id, TestCase.turn_index).filter(
-                TestCase.id.in_(incoming_ids)
-            ).all()
-            for db_id, db_ti in all_db:
-                if (db_id, db_ti) not in incoming_keys:
-                    self.db.query(TestCase).filter(
-                        TestCase.id == db_id, TestCase.turn_index == db_ti
-                    ).delete(synchronize_session=False)
-
-        # Upsert 每条记录
+    def insert_many(self, records: List[Dict]) -> int:
+        """只插入新记录（不做全量同步）"""
         allowed_fields = {c.name for c in TestCase.__table__.columns}
+        count = 0
+        
+        for r in records:
+            if not r.get('id'):
+                continue
+            clean = _sanitize_record(r)
+            ti = int(clean.get('turn_index') or 1)
+            clean['turn_index'] = ti
+            
+            # 检查是否已存在
+            existing = self.db.query(TestCase).filter(
+                TestCase.id == clean['id'],
+                TestCase.turn_index == ti
+            ).first()
+            
+            if not existing:
+                fields = {k: v for k, v in clean.items() if k in allowed_fields}
+                fields['turn_index'] = ti
+                fields.setdefault('created_at', datetime.utcnow())
+                fields.setdefault('updated_at', datetime.utcnow())
+                self.db.add(TestCase(**fields))
+                count += 1
+        
+        self.db.commit()
+        return count
+
+    def upsert_all(self, records: List[Dict]) -> int:
+        """批量 upsert：更新已有、新增缺少（不自动删除其他记录）"""
+        # 注意：此方法不会删除数据库中不在 records 里的记录
+        # 如需删除，请显式调用 delete_by_ids()
+        
+        # Upsert 每条记录，分批提交避免超时
+        allowed_fields = {c.name for c in TestCase.__table__.columns}
+        BATCH_SIZE = 100  # 每 100 条提交一次
+        count = 0
+        
         for r in records:
             if not r.get('id'):
                 continue
@@ -118,7 +136,13 @@ class TestCaseService:
                 fields.setdefault('created_at', datetime.utcnow())
                 fields.setdefault('updated_at', datetime.utcnow())
                 self.db.add(TestCase(**fields))
+            
+            count += 1
+            # 每 BATCH_SIZE 条提交一次
+            if count % BATCH_SIZE == 0:
+                self.db.commit()
 
+        # 提交剩余的
         self.db.commit()
         return len(records)
     

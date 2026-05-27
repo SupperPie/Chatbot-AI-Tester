@@ -14,6 +14,7 @@ load_dotenv(override=True)
 
 GEval = None
 FaithfulnessMetric = None
+ConversationalGEval = None
 try:
     from deepeval.metrics import GEval, FaithfulnessMetric
 except ImportError:
@@ -24,6 +25,15 @@ except ImportError:
         # Both import paths failed — leave GEval and FaithfulnessMetric as None
         # so the rest of the code can check for None safely.
         print("Warning: Failed to import GEval and FaithfulnessMetric. Metrics will be skipped.")
+
+# Import ConversationalGEval for multi-turn evaluation
+try:
+    from deepeval.metrics import ConversationalGEval
+except ImportError:
+    try:
+        from deepeval.metrics.conversational_g_eval import ConversationalGEval
+    except ImportError:
+        print("Warning: Failed to import ConversationalGEval. Multi-turn evaluation will use fallback.")
 try:
     from deepeval.test_case import LLMTestCase
 except ImportError:
@@ -34,6 +44,14 @@ except ImportError:
             self.actual_output = actual_output
             self.expected_output = expected_output
             self.retrieval_context = retrieval_context or []
+
+# Import ConversationalTestCase and Turn for multi-turn evaluation
+ConversationalTestCase = None
+Turn = None
+try:
+    from deepeval.test_case import ConversationalTestCase, Turn
+except ImportError:
+    print("Warning: Failed to import ConversationalTestCase/Turn. Multi-turn evaluation will use fallback.")
 try:
     from deepeval.test_case import LLMTestCaseParams
 except ImportError:
@@ -183,6 +201,20 @@ class TestEngine:
             print(f"WARNING: FaithfulnessMetric initialization failed: {e}. Faithfulness scoring will be skipped.")
             self.faithfulness_metric = None
         
+        # Initialize ConversationalGEval for multi-turn evaluation
+        self.conversational_metric = None
+        try:
+            if ConversationalGEval is not None:
+                self.conversational_metric = ConversationalGEval(
+                    name="Correctness",
+                    criteria="Determine if the assistant's responses throughout the conversation are correct, helpful, and contextually appropriate based on the user's queries and expected outcomes.",
+                    threshold=0.5,
+                    model=self.custom_model
+                )
+        except Exception as e:
+            print(f"WARNING: ConversationalGEval initialization failed: {e}. Multi-turn will use fallback scoring.")
+            self.conversational_metric = None
+        
         # Warm up metrics to prevent first-run 20-30s delay loading NLTK/Spacy models
         self._warmup_metrics()
         
@@ -206,8 +238,77 @@ class TestEngine:
         except Exception:
             pass # Ignore warmup errors
 
-    def run_case(self, case_data: Dict[str, Any], api_name: str = "Skills") -> Dict[str, Any]:
-        """Runs a single test case and returns the result."""
+    @staticmethod
+    def _extract_assertion_response(raw_data, raw_response, actual_output) -> dict:
+        """
+        从 API 响应中构建用于断言验证的合并对象。
+        - 解析 NDJSON 得到所有行 (__raw_lines__)
+        - 默认取 type=done 消息作为主体（包含完整 data）
+        - 附加 __raw_lines__ 供 scope 过滤使用
+        - 附加 result 字段（拼接的完整文本）
+        """
+        import json as _json
+
+        all_lines = []
+
+        # 1. 尝试解析 raw_data 为 NDJSON
+        if raw_data and isinstance(raw_data, str):
+            for line in raw_data.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    obj = _json.loads(line)
+                    if isinstance(obj, dict):
+                        all_lines.append(obj)
+                except _json.JSONDecodeError:
+                    continue
+
+        if all_lines:
+            # 找 done 消息作为主体
+            done_msg = next((l for l in all_lines if l.get("type") == "done"), None)
+            base = dict(done_msg) if done_msg else dict(all_lines[-1])
+            # 附加 raw_lines 供 scope 过滤
+            base['__raw_lines__'] = all_lines
+            # 附加拼接的完整文本
+            if 'result' not in base:
+                tokens = [l.get('data', '') for l in all_lines if l.get('type') == 'token' and isinstance(l.get('data'), str)]
+                if tokens:
+                    base['result'] = ''.join(tokens)
+                elif actual_output:
+                    base['result'] = actual_output
+            return base
+
+        # 2. 尝试直接解析 raw_data 为单个 JSON
+        if raw_data:
+            try:
+                parsed = _json.loads(raw_data) if isinstance(raw_data, str) else raw_data
+                if isinstance(parsed, dict):
+                    parsed['__raw_lines__'] = [parsed]
+                    return parsed
+            except Exception:
+                pass
+
+        # 3. Fallback: 解析 raw_response
+        if raw_response:
+            try:
+                parsed = _json.loads(raw_response) if isinstance(raw_response, str) else {}
+                if isinstance(parsed, dict):
+                    parsed['__raw_lines__'] = [parsed]
+                    return parsed
+            except Exception:
+                pass
+
+        # 4. 最终 fallback
+        fallback = {"result": actual_output}
+        fallback['__raw_lines__'] = [fallback]
+        return fallback
+
+    def run_case(self, case_data: Dict[str, Any], api_name: str = "Skills", execution_mode: str = "full") -> Dict[str, Any]:
+        """Runs a single test case and returns the result.
+        
+        execution_mode: "semantic" | "assertion" | "full"
+        """
         input_text = case_data.get("input")
         expected_output = case_data.get("expected_output")
         context = case_data.get("retrieval_context")
@@ -259,6 +360,7 @@ class TestEngine:
         thinking_process = None
         inform_base = None
         raw_data = None
+        raw_response = None
         ttft = 0.0
         
         # Call API
@@ -289,7 +391,20 @@ class TestEngine:
             latency = 0.0
 
         is_error = actual_output.startswith("Error") or actual_output.startswith("❌ SERVER DETAIL") or "Error calling API:" in actual_output
+
+        # ─── 准备断言和语义评分的数据 ───
+        assertion_refs = case_data.get("assertions")  # JSONB list from DB
+        # 兼容字符串格式（从 DataFrame to_dict 可能序列化为 str）
+        if isinstance(assertion_refs, str):
+            try:
+                import json as _json_parse
+                assertion_refs = _json_parse.loads(assertion_refs)
+            except Exception:
+                assertion_refs = None
         
+        run_assertions = execution_mode in ("assertion", "full") and assertion_refs and not is_error
+        run_semantic = execution_mode in ("semantic", "full") and not is_error
+
         test_case = LLMTestCase(
             input=input_text,
             actual_output=actual_output,
@@ -297,60 +412,118 @@ class TestEngine:
             retrieval_context=context if context else None
         )
 
-        score = 0.0
-        reason = "Error occurred, evaluation skipped."
-        faith_score = None
-        faith_reason = None
-        passed = False
-        
-        if not is_error:
-            try:
-                # deepeval's measure() internally uses asyncio.timeout which requires
-                # running inside an async task. We use a_measure() with asyncio.run()
-                # to create a proper async context.
-                async def run_measure():
-                    # Guard: correctness metric may be None if deepeval failed to load
-                    if self.correctness_metric is None:
-                        return (0.0, "DeepEval GEval metric not available on this server.", None, None, False)
+        # ─── 并行执行断言引擎和语义评分 ───
+        import concurrent.futures
 
-                    # Always run correctness metric
-                    await self.correctness_metric.a_measure(test_case)
-                    correctness_score = self.correctness_metric.score
-                    correctness_reason = self.correctness_metric.reason
-                    
-                    # Run faithfulness metric only if retrieval_context is not empty
-                    faith_score = None
-                    faith_reason = None
-                    if context and self.faithfulness_metric is not None:
-                        try:
-                            await self.faithfulness_metric.a_measure(test_case)
-                            faith_score = self.faithfulness_metric.score
-                            faith_reason = self.faithfulness_metric.reason
-                        except Exception as e:
-                            faith_reason = f"Faithfulness check failed: {str(e)}"
-                    
-                    # Calculate combined score
-                    if faith_score is not None:
-                        combined_score = (correctness_score + faith_score) / 2
-                    else:
-                        combined_score = correctness_score
-                        
-                    return (
-                        combined_score,
-                        correctness_reason,
-                        faith_score,
-                        faith_reason,
-                        (combined_score >= 0.5)
-                    )
-                
-                # Create a new event loop for each measurement to avoid conflicts
-                score, reason, faith_score, faith_reason, passed = asyncio.run(run_measure())
+        def _run_assertion_engine():
+            """在线程池中运行断言引擎"""
+            try:
+                from app.validators.engine import AssertionEngine
+                _response_for_assert = self._extract_assertion_response(raw_data, raw_response, actual_output)
+                engine = AssertionEngine()
+                engine_result = engine.run(_response_for_assert, assertion_refs)
+                return {
+                    "mode": execution_mode,
+                    "passed": engine_result.passed,
+                    "score": engine_result.score,
+                    "total": engine_result.total,
+                    "passed_count": engine_result.passed_count,
+                    "results": [
+                        {"id": r.component_id, "name": r.component_name,
+                         "passed": r.passed, "message": r.message}
+                        for r in engine_result.results
+                    ]
+                }
             except Exception as e:
-                score = 0
-                reason = f"Metric calculation failed: {str(e)}"
+                return {
+                    "mode": execution_mode,
+                    "passed": False,
+                    "score": 0,
+                    "total": 0,
+                    "passed_count": 0,
+                    "results": [{"id": "?", "name": "engine_error", "passed": False, "message": str(e)}]
+                }
+
+        def _run_semantic():
+            """在线程池中运行语义评分"""
+            async def _run_semantic_async(tc, has_context, correctness_m, faithfulness_m):
+                """运行语义评分（async）"""
+                if correctness_m is None:
+                    return (0.0, "DeepEval GEval metric not available on this server.", None, None, False)
+
+                await correctness_m.a_measure(tc)
+                correctness_score = correctness_m.score
+                correctness_reason = correctness_m.reason
+                
                 faith_score = None
                 faith_reason = None
-                passed = False
+                if has_context and faithfulness_m is not None:
+                    try:
+                        await faithfulness_m.a_measure(tc)
+                        faith_score = faithfulness_m.score
+                        faith_reason = faithfulness_m.reason
+                    except Exception as e:
+                        faith_reason = f"Faithfulness check failed: {str(e)}"
+                
+                if faith_score is not None:
+                    combined_score = (correctness_score + faith_score) / 2
+                else:
+                    combined_score = correctness_score
+                    
+                return (
+                    combined_score,
+                    correctness_reason,
+                    faith_score,
+                    faith_reason,
+                    (combined_score >= 0.5)
+                )
+            
+            try:
+                return asyncio.run(_run_semantic_async(
+                    test_case, bool(context), self.correctness_metric, self.faithfulness_metric
+                ))
+            except Exception as e:
+                return (0.0, f"Metric calculation failed: {str(e)}", None, None, False)
+
+        # 并行执行
+        assertion_detail = None
+        score, reason, faith_score, faith_reason, passed = 0.0, "Error occurred, evaluation skipped.", None, None, False
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            futures = {}
+            
+            if run_assertions:
+                futures['assertion'] = executor.submit(_run_assertion_engine)
+            if run_semantic:
+                futures['semantic'] = executor.submit(_run_semantic)
+
+            # 等待结果
+            for name, future in futures.items():
+                try:
+                    result = future.result(timeout=300)  # 5分钟超时
+                    if name == 'assertion':
+                        assertion_detail = result
+                    else:
+                        score, reason, faith_score, faith_reason, passed = result
+                except concurrent.futures.TimeoutError:
+                    if name == 'assertion':
+                        assertion_detail = {"passed": False, "score": 0, "total": 0, "passed_count": 0, 
+                                          "results": [{"id": "?", "name": "timeout", "passed": False, "message": "Assertion engine timeout"}]}
+                    else:
+                        score, reason, passed = 0.0, "Semantic evaluation timeout", False
+                except Exception as e:
+                    if name == 'assertion':
+                        assertion_detail = {"passed": False, "score": 0, "total": 0, "passed_count": 0,
+                                          "results": [{"id": "?", "name": "error", "passed": False, "message": str(e)}]}
+                    else:
+                        score, reason, passed = 0.0, f"Semantic evaluation error: {e}", False
+
+        # ─── 综合 passed 判定 ───
+        if execution_mode == "assertion":
+            passed = assertion_detail["passed"] if assertion_detail else True
+        elif execution_mode == "full" and assertion_detail:
+            passed = passed and assertion_detail["passed"]
+        # semantic mode: passed 已经在上面计算好了
 
         return {
             "case_id": case_data.get("id"),
@@ -367,10 +540,11 @@ class TestEngine:
             "inform_base": inform_base,
             "raw": raw_data,
             "latency": latency,
-            "ttft": ttft
+            "ttft": ttft,
+            "assertion_detail": assertion_detail,
         }
 
-    def run_batch(self, cases: List[Dict[str, Any]], api_name: str = "Skills", on_step_complete=None, should_stop=None) -> List[Dict[str, Any]]:
+    def run_batch(self, cases: List[Dict[str, Any]], api_name: str = "Skills", on_step_complete=None, should_stop=None, execution_mode: str = "full") -> List[Dict[str, Any]]:
         results = []
         
         # Group cases by ID to handle split multi-turn cases (rows with same ID)
@@ -398,7 +572,7 @@ class TestEngine:
             if should_stop and should_stop():
                 break
             
-            res = self.run_case(case, api_name=api_name)
+            res = self.run_case(case, api_name=api_name, execution_mode=execution_mode)
             results.append(res)
             
             completed_tasks += 1
@@ -449,16 +623,17 @@ class TestEngine:
         return results
     
     def run_multi_turn_case(self, case_data: Dict[str, Any], api_name: str = "Skills") -> Dict[str, Any]:
-        """Runs a multi-turn conversation test case.
+        """Runs a multi-turn conversation test case using ConversationalGEval for overall scoring.
         
         Args:
             case_data: Test case with 'conversation' array containing turns
             api_name: Which API to use
             
         Returns:
-            Dict with turn-by-turn results and overall score
+            Dict with turn-by-turn results and overall score from ConversationalGEval
         """
         import uuid
+        import json
         
         conversation = case_data.get("conversation", [])
         if not conversation:
@@ -469,38 +644,36 @@ class TestEngine:
         session_id = str(uuid.uuid4())[:8]
         
         turn_results = []
-        total_score = 0
-        passed_turns = 0
+        has_error = False
+        error_msg = ""
         
+        # Phase 1: Execute all API calls and collect responses
         for turn in conversation:
             turn_num = turn.get("turn", len(turn_results) + 1)
             user_message = turn.get("user", "")
             expected = turn.get("expected", "")
             context = turn.get("retrieval_context", case_data.get("retrieval_context", []))
             
-            # Fix: Parse validation if it's a string (JSON), handle NaN
-            validation = turn.get("validation", {"type": "semantic", "threshold": 0.5})
-            if isinstance(validation, float):
-                validation = {"type": "semantic", "threshold": 0.5}
-            elif isinstance(validation, str):
-                try:
-                    import json
-                    validation = json.loads(validation.replace("'", "\"")) # Basic fix for single quotes
-                except Exception:
-                     validation = {"type": "semantic", "threshold": 0.5}
-                     
-            if not isinstance(validation, dict):
-                validation = {"type": "semantic", "threshold": 0.5}
-            
             if not user_message:
                 turn_results.append({
                     "turn": turn_num,
+                    "user": "",
+                    "expected": expected,
+                    "actual": "",
                     "error": "Empty user message",
-                    "passed": False
+                    "retrieval_context": "",
+                    "latency": 0,
+                    "ttft": 0
                 })
                 continue
             
             # Call API with shared session
+            turn_thinking = None
+            turn_inform_base = None
+            turn_raw_data = None
+            ttft = 0.0
+            turn_latency = 0.0
+            
             try:
                 start_time = time.time()
                 actual_output = get_chat_response(
@@ -513,12 +686,7 @@ class TestEngine:
                 turn_latency = end_time - start_time
                 
                 # Parse thinking process if available
-                turn_thinking = None
-                turn_inform_base = None
-                turn_raw_data = None
-                ttft = 0.0
                 try:
-                    import json
                     resp_data = json.loads(actual_output)
                     if isinstance(resp_data, dict) and "result" in resp_data:
                         actual_output = resp_data["result"]
@@ -532,53 +700,25 @@ class TestEngine:
             except Exception as e:
                 actual_output = f"Error calling API: {str(e)}"
             
-            # Evaluate based on validation type
-            turn_passed = False
-            turn_score = 0
-            turn_reason = ""
-            
-            if validation.get("type") == "contains":
-                # Keyword matching
-                keywords = validation.get("keywords", [])
-                matched = sum(1 for kw in keywords if kw.lower() in actual_output.lower())
-                turn_score = matched / len(keywords) if keywords else 0
-                turn_passed = turn_score >= validation.get("threshold", 0.5)
-                turn_reason = f"Matched {matched}/{len(keywords)} keywords"
-                
-            elif validation.get("type") == "exact":
-                # Exact match
-                turn_passed = actual_output.strip() == expected.strip()
-                turn_score = 1.0 if turn_passed else 0.0
-                turn_reason = "Exact match" if turn_passed else "No exact match"
-                
-            else:  # semantic (default)
-                is_error = actual_output.startswith("Error") or actual_output.startswith("❌ SERVER DETAIL") or "Error calling API:" in actual_output
-                if is_error:
-                    turn_score = 0.0
-                    turn_reason = "Error occurred, evaluation skipped."
-                    turn_passed = False
-                else:
-                    # Use GEval for semantic evaluation
-                    test_case = LLMTestCase(
-                        input=user_message,
-                        actual_output=actual_output,
-                        expected_output=expected,
-                        retrieval_context=context if isinstance(context, list) else []
-                    )
-                    try:
-                        async def eval_turn():
-                            if self.correctness_metric is None:
-                                return (0.0, "DeepEval GEval metric not available on this server.")
-                            await self.correctness_metric.a_measure(test_case)
-                            return self.correctness_metric.score, self.correctness_metric.reason
-                        
-                        # Create a new event loop for each measurement to avoid conflicts
-                        turn_score, turn_reason = asyncio.run(eval_turn())
-                        turn_passed = turn_score >= validation.get("threshold", 0.5)
-                    except Exception as e:
-                        turn_score = 0
-                        turn_reason = f"Metric calculation failed: {str(e)}"
-                        turn_passed = False
+            # Check if this is an error response
+            is_error = actual_output.startswith("Error") or actual_output.startswith("❌ SERVER DETAIL") or "Error calling API:" in actual_output
+            if is_error:
+                has_error = True
+                error_msg = actual_output
+                turn_results.append({
+                    "turn": turn_num,
+                    "user": user_message,
+                    "expected": expected,
+                    "actual": actual_output,
+                    "error": actual_output,
+                    "retrieval_context": ", ".join(context) if isinstance(context, list) else str(context or ""),
+                    "thinking": turn_thinking,
+                    "inform_base": turn_inform_base,
+                    "raw": turn_raw_data,
+                    "latency": turn_latency,
+                    "ttft": ttft
+                })
+                break  # Stop on error
             
             turn_results.append({
                 "turn": turn_num,
@@ -586,61 +726,93 @@ class TestEngine:
                 "expected": expected,
                 "actual": actual_output,
                 "retrieval_context": ", ".join(context) if isinstance(context, list) else str(context or ""),
-                "score": turn_score,
-                "reason": turn_reason,
-                "passed": turn_passed,
                 "thinking": turn_thinking,
                 "inform_base": turn_inform_base,
                 "raw": turn_raw_data,
                 "latency": turn_latency,
                 "ttft": ttft
             })
-            
-            total_score += turn_score
-            if turn_passed:
-                passed_turns += 1
         
-        # Calculate overall results
         num_turns = len(conversation)
-        overall_score = total_score / num_turns if num_turns > 0 else 0
-        overall_passed = passed_turns == num_turns  # All turns must pass
+        input_text = case_data.get("input")  # First turn input as representative
         
-        # Check overall criteria
-        input_text = case_data.get("input") # First turn input as representative
+        # Phase 2: If error occurred, return error result without scoring
+        if has_error:
+            return {
+                "case_id": case_data.get("id"),
+                "input": input_text,
+                "type": "multi_turn",
+                "total_turns": num_turns,
+                "passed_turns": 0,
+                "success_rate": 0,
+                "score": 0,
+                "reason": f"API 调用失败，跳过评分: {error_msg[:100]}",
+                "overall_score": 0,
+                "passed": False,
+                "latency": sum(t.get("latency", 0) for t in turn_results),
+                "ttft": sum(t.get("ttft", 0) for t in turn_results),
+                "turns": turn_results,
+                "user_id": user_id,
+                "session_id": session_id,
+                "error": error_msg
+            }
         
-        # Check overall criteria
-        # Fix: Parse criteria if it's a string, handle NaN floats
-        criteria = case_data.get("overall_criteria", {})
-        if isinstance(criteria, float): # Handle Pandas NaN
-            criteria = {}
-        elif isinstance(criteria, str):
+        # Phase 3: Build ConversationalTestCase and evaluate with ConversationalGEval
+        overall_score = 0.0
+        overall_reason = ""
+        overall_passed = False
+        
+        # Check if ConversationalTestCase and Turn are available
+        if ConversationalTestCase is not None and Turn is not None and self.conversational_metric is not None:
             try:
-                import json
-                criteria = json.loads(criteria.replace("'", "\""))
-            except Exception:
-                criteria = {}
-        
-        if not isinstance(criteria, dict):
-            criteria = {}
+                # Build Turn list for ConversationalTestCase
+                turns_for_eval = []
+                expected_outcomes = []
+                for t in turn_results:
+                    if t.get("user"):
+                        turns_for_eval.append(Turn(role="user", content=t["user"]))
+                    if t.get("actual"):
+                        turns_for_eval.append(Turn(role="assistant", content=t["actual"]))
+                    if t.get("expected"):
+                        expected_outcomes.append(t["expected"])
                 
-        min_success_rate = criteria.get("min_success_rate", 1.0)
-        success_rate = passed_turns / num_turns if num_turns > 0 else 0
-        
-        if not criteria.get("must_complete_all_turns", True):
-            overall_passed = success_rate >= min_success_rate
+                # Create ConversationalTestCase
+                scenario = case_data.get("description", "Multi-turn conversation test")
+                expected_outcome = "; ".join(expected_outcomes) if expected_outcomes else "Assistant should provide correct responses"
+                
+                convo_test_case = ConversationalTestCase(
+                    scenario=scenario,
+                    expected_outcome=expected_outcome,
+                    turns=turns_for_eval
+                )
+                
+                # Evaluate with ConversationalGEval (single LLM call for entire conversation)
+                async def eval_conversation():
+                    await self.conversational_metric.a_measure(convo_test_case)
+                    return self.conversational_metric.score, self.conversational_metric.reason
+                
+                overall_score, overall_reason = asyncio.run(eval_conversation())
+                overall_passed = overall_score >= 0.5
+                
+            except Exception as e:
+                overall_score = 0.0
+                overall_reason = f"ConversationalGEval evaluation failed: {str(e)}"
+                overall_passed = False
+        else:
+            # Fallback: ConversationalGEval not available
+            overall_reason = "ConversationalGEval not available, scoring skipped"
+            overall_passed = False
         
         return {
             "case_id": case_data.get("id"),
             "input": input_text,
             "type": "multi_turn",
             "total_turns": num_turns,
-            "passed_turns": passed_turns,
-            "success_rate": success_rate,
+            "passed_turns": num_turns if overall_passed else 0,
+            "success_rate": 1.0 if overall_passed else 0.0,
             "score": overall_score,
-            "reason": f"Multi-turn conversation ({num_turns} turns). Passed {passed_turns}/{num_turns}.",
+            "reason": overall_reason,
             "overall_score": overall_score,
-            "overall_passed": overall_passed,
-            "overall_passed": overall_passed,
             "passed": overall_passed,
             "latency": sum(t.get("latency", 0) for t in turn_results),
             "ttft": sum(t.get("ttft", 0) for t in turn_results),

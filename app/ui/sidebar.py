@@ -54,6 +54,16 @@ def render_sidebar():
             st.session_state.current_page = "Test Report"
             st.rerun()
         
+        # Assertions button
+        if st.button(
+            "🧩 Assertions",
+            use_container_width=True,
+            type="primary" if st.session_state.current_page == "Assertions" else "secondary",
+            key="nav_assertions"
+        ):
+            st.session_state.current_page = "Assertions"
+            st.rerun()
+
         # Settings button
         if st.button(
             "⚙️ Settings", 
