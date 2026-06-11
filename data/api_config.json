@@ -1,13 +1,16 @@
 {
     "Agent Q&A": {
         "url": "http://agent-question-and-answer.platform-ai.svc.dragon/stream",
-        "description": "Agent Question and Answer API (仅服务器可访问)",
+        "description": "Test description update",
         "type": "agent_qa"
     },
     "Bundle API": {
         "url": "http://192.168.22.252:12345/bundle/stream",
         "description": "Bundle API",
-        "type": "bundle"
+        "type": "bundle",
+        "request_params": {
+            "context": "2026 瑞士巴塞尔艺术体验之旅\n商品详情"
+        }
     },
     "Flight API": {
         "url": "http://192.168.22.252:12306/flights/invoke",

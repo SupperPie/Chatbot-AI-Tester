@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import ast
 import logging
-from app.utils import load_data, save_data, run_tests_sync, save_history
+from app.utils import load_data, save_data, save_records, run_tests_sync, save_history
 from chat_client import get_available_apis
 
 # 获取 logger（配置在 streamlit_app.py 入口统一处理）
@@ -171,7 +171,7 @@ def render_testcases_page():
     # 顶部右侧：参数说明手册（下移避免贴顶裁剪）
     with manual_container:
         st.markdown('<div style="height: 34px;"></div>', unsafe_allow_html=True)
-        with st.popover("📖 参数说明手册", use_container_width=True):
+        with st.popover("📖 参数说明手册", width="stretch"):
             # 使用一个宽 div 强行撑开手册的宽度（因为前面的全局样式限制了宽度，强制覆盖）
             st.markdown('<div style="width: 500px; max-width: 90vw;">', unsafe_allow_html=True)
             render_manual_content()
@@ -226,34 +226,39 @@ def render_testcases_page():
         
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("Cancel", use_container_width=True):
+            if st.button("Cancel", width="stretch"):
                 st.rerun()
         with col2:
-            if st.button("🗑️ Yes, Delete", type="primary", use_container_width=True):
-                # 1. 先从 DB 删除
+            if st.button("🗑️ Yes, Delete", type="primary", width="stretch"):
                 try:
-                    from app.services.test_case_service import TestCaseService
-                    service = TestCaseService()
-                    service.delete_by_ids(ids_to_delete)
+                    # 1. 先从 DB 删除
+                    try:
+                        from app.services.test_case_service import TestCaseService
+                        service = TestCaseService()
+                        deleted_count = service.delete_by_ids(ids_to_delete)
+                        logger.info(f"DB deleted {deleted_count} rows for ids={ids_to_delete}")
+                    except Exception as e:
+                        logger.error(f"DB delete failed: {e}", exc_info=True)
+                        st.error(f"DB 删除失败: {e}")
+                        return
+
+                    # 2. 从 session state 移除（DB 已删除，无需 re-save 剩余记录）
+                    current_df = st.session_state.df
+                    new_df = current_df[~current_df['id'].isin(ids_to_delete)].reset_index(drop=True)
+
+                    # Update session state
+                    if "Select" not in new_df.columns:
+                         new_df.insert(0, "Select", False)
+                    new_df = rebuild_internal_ids(new_df)
+                    st.session_state.df = new_df
+                    st.session_state.df_content_sig = get_content_signature(new_df)
+                    st.session_state.df_preprocessed = False
+                    
+                    st.toast(f"🗑️ Deleted {len(ids_to_delete)} cases successfully!")
+                    st.rerun()
                 except Exception as e:
-                    logger.warning(f"DB delete failed: {e}")
-
-                # 2. 从 session state 移除并保存（JSON backup）
-                current_df = st.session_state.df
-                new_df = current_df[~current_df['id'].isin(ids_to_delete)]
-                
-                final_df = save_data(prepare_df_for_persistence(new_df))
-
-                # Update session state
-                if "Select" not in final_df.columns:
-                     final_df.insert(0, "Select", False)
-                final_df = rebuild_internal_ids(final_df)
-                st.session_state.df = final_df
-                st.session_state.df_content_sig = get_content_signature(final_df)
-                st.session_state.df_preprocessed = False
-                
-                st.toast(f"🗑️ Deleted {len(ids_to_delete)} cases successfully!")
-                st.rerun()
+                    logger.error(f"Delete dialog failed: {e}", exc_info=True)
+                    st.error(f"删除失败: {e}")
 
     @st.dialog("📂 移动到目录")
     def move_to_category_dialog(ids_to_move):
@@ -294,10 +299,10 @@ def render_testcases_page():
             
             col1, col2 = st.columns(2)
             with col1:
-                if st.button("取消", use_container_width=True):
+                if st.button("取消", width="stretch"):
                     st.rerun()
             with col2:
-                if st.button("✅ 确认移动", type="primary", use_container_width=True):
+                if st.button("✅ 确认移动", type="primary", width="stretch"):
                     # 更新数据库中的 category_id
                     try:
                         from app.models.test_case import TestCase
@@ -353,16 +358,16 @@ def render_testcases_page():
             available_apis = _cached_available_apis()
             selected_api = st.selectbox("⚙️ API Endpoint", options=available_apis, index=0, key="page_api_select", label_visibility="collapsed")
         with top_col2:
-            move_to_category_clicked = st.button("📂 Move", use_container_width=True, key="btn_move_category") if ENABLE_CATEGORY_FEATURE else False
+            move_to_category_clicked = st.button("📂 Move", width="stretch", key="btn_move_category") if ENABLE_CATEGORY_FEATURE else False
         with top_col3:
-            bind_assertions_clicked = st.button("🧩 Assert", use_container_width=True, key="btn_bind_assertions")
+            bind_assertions_clicked = st.button("🧩 Assert", width="stretch", key="btn_bind_assertions")
         with top_col4:
-            delete_selected_clicked = st.button("🗑️ Delete", use_container_width=True, key="btn_delete_selected")
+            delete_selected_clicked = st.button("🗑️ Delete", width="stretch", key="btn_delete_selected")
 
         # 顶部右侧：Import（与参数说明手册同一行，下移避免贴顶裁剪）
         with import_container:
             st.markdown('<div style="height: 34px;"></div><div class="import-popover-anchor"></div>', unsafe_allow_html=True)
-            with st.popover("📤 Import", use_container_width=True):
+            with st.popover("📤 Import", width="stretch"):
                  st.markdown('<div style="width: 400px; max-width: 90vw;">', unsafe_allow_html=True)
                  st.markdown("### Import Test Cases")
                  
@@ -612,11 +617,11 @@ def render_testcases_page():
             # 提取模式值
             execution_mode_val = execution_mode.split(" ")[0]
         with run_col1:
-            run_selected_clicked = st.button("▶ Run Selected", use_container_width=True, type="primary", key="btn_run_selected")
+            run_selected_clicked = st.button("▶ Run Selected", width="stretch", type="primary", key="btn_run_selected")
         with run_col2:
-            run_range_clicked = st.button("▶ Run Range", use_container_width=True, type="primary", key="btn_run_range", help="执行 From ID 到 To ID 范围内的用例")
+            run_range_clicked = st.button("▶ Run Range", width="stretch", type="primary", key="btn_run_range", help="执行 From ID 到 To ID 范围内的用例")
         with run_col3:
-            run_tags_clicked = st.button("▶ Run by Tags", use_container_width=True, type="primary", key="btn_run_tags") if filter_tags else False
+            run_tags_clicked = st.button("▶ Run by Tags", width="stretch", type="primary", key="btn_run_tags") if filter_tags else False
 
         # 为执行状态留一个占位符，位于运行按钮的正下方
         execution_placeholder = st.empty()
@@ -700,7 +705,7 @@ def render_testcases_page():
 
         with ctrl_col1:
             # 全表（跨页）全选：以当前表格数据（display_df）为准
-            if st.button("☑️ Select All", key="btn_select_all_global", use_container_width=True, type="primary"):
+            if st.button("☑️ Select All", key="btn_select_all_global", width="stretch", type="primary"):
                 if '__row_key' in display_df.columns:
                     target_keys = display_df['__row_key'].tolist()
                     st.session_state.df.loc[st.session_state.df['__row_key'].isin(target_keys), 'Select'] = True
@@ -710,7 +715,7 @@ def render_testcases_page():
 
         with ctrl_col2:
             # 当前页全选（与 Cancel All 交换位置）
-            if st.button("☑️ Select page", key="btn_select_current_page", use_container_width=True):
+            if st.button("☑️ Select page", key="btn_select_current_page", width="stretch"):
                 if '__row_key' in display_df.columns:
                     start_idx = (st.session_state.testcases_current_page - 1) * st.session_state.testcases_page_size
                     end_idx = start_idx + st.session_state.testcases_page_size
@@ -720,7 +725,7 @@ def render_testcases_page():
 
         with ctrl_col3:
             # Cancel All（紫色背景，与 Select Page 交换位置）
-            if st.button("Cancel All", key="btn_deselect_all", use_container_width=True):
+            if st.button("Cancel All", key="btn_deselect_all", width="stretch"):
                 st.session_state.df['Select'] = False
                 st.rerun()
 
@@ -769,7 +774,7 @@ def render_testcases_page():
 
             if current_page_idx != st.session_state.testcases_current_page:
                 st.session_state.testcases_current_page = current_page_idx
-                st.rerun()
+                st.rerun(scope="app")
 
         start_idx = (st.session_state.testcases_current_page - 1) * items_per_page
         end_idx = start_idx + items_per_page
@@ -810,7 +815,7 @@ def render_testcases_page():
                 "__row_key": None,
             },
             num_rows="dynamic",
-            use_container_width=False,
+            width="content",
             height=(len(page_df) + 1) * 35 + 40,
             key=f"main_data_editor_{filter_category}_{st.session_state.testcases_current_page}_{st.session_state.testcases_page_size}"
         )
@@ -879,46 +884,63 @@ def render_testcases_page():
                 st.rerun()
 
         # 自动保存：仅当内容列被修改时（排除 Select 列，避免勾选触发保存并丢失选中状态）
-        _content_cols = [c for c in page_df.columns if c != 'Select']
+        _content_cols = [c for c in page_df.columns if c not in ('Select', '__row_key')]
         page_edited = not edited_page_df[_content_cols].reset_index(drop=True).equals(
             page_df[_content_cols].reset_index(drop=True)
         )
         if page_edited:
-            for _, row in edited_page_df.iterrows():
-                rk = row['__row_key']
+            # 1. 通过 __row_key 逐行对比，找出真正被修改的行
+            page_indexed = page_df.set_index('__row_key')
+            edited_indexed = edited_page_df.set_index('__row_key')
+            common_keys = [k for k in edited_indexed.index if k in page_indexed.index]
+
+            def _row_changed(rk):
+                for col in _content_cols:
+                    if col not in page_indexed.columns or col not in edited_indexed.columns:
+                        continue
+                    a = page_indexed.at[rk, col]
+                    b = edited_indexed.at[rk, col]
+                    if isinstance(a, (list, dict)) or isinstance(b, (list, dict)):
+                        if a != b:
+                            return True
+                    else:
+                        try:
+                            if pd.isna(a) and pd.isna(b):
+                                continue
+                        except (TypeError, ValueError):
+                            pass
+                        if a != b:
+                            return True
+                return False
+
+            changed_keys = [rk for rk in common_keys if _row_changed(rk)]
+
+            # 2. 就地把改动写回 st.session_state.df（不替换 DF 对象，保持 __row_key 稳定）
+            for rk in changed_keys:
+                edited_row = edited_indexed.loc[rk]
                 main_idx = st.session_state.df.index[st.session_state.df['__row_key'] == rk]
-                for col in edited_page_df.columns:
-                    if col in st.session_state.df.columns and col != 'Select':
-                        val = row[col]
-                        # 对 list/dict 等可迭代值，需逐行用 at 赋值避免 pandas 展开
-                        if isinstance(val, (list, dict)):
-                            for idx in main_idx:
-                                st.session_state.df.at[idx, col] = val
-                        else:
-                            st.session_state.df.loc[main_idx, col] = val
+                for col in _content_cols:
+                    if col not in st.session_state.df.columns:
+                        continue
+                    val = edited_row[col]
+                    if isinstance(val, (list, dict)):
+                        for idx in main_idx:
+                            st.session_state.df.at[idx, col] = val
+                    else:
+                        st.session_state.df.loc[main_idx, col] = val
 
-            # 保存前记住当前选中状态
-            select_backup = st.session_state.df[['__row_key', 'Select']].copy()
-
-            # 保存时恢复原始唯一ID，并剔除内部列
-            save_df = prepare_df_for_persistence(st.session_state.df)
-            saved_df_clean = save_data(save_df)
-
-            if "Select" not in saved_df_clean.columns:
-                saved_df_clean.insert(0, "Select", False)
-
-            # 重新补回内部键并恢复规范化展示ID
-            saved_df_clean = rebuild_internal_ids(saved_df_clean)
-
-            # 恢复选中状态
-            for _, bk_row in select_backup.iterrows():
-                mask = saved_df_clean['__row_key'] == bk_row['__row_key']
-                if mask.any():
-                    saved_df_clean.loc[mask, 'Select'] = bk_row['Select']
-
-            st.session_state.df = saved_df_clean
-            st.session_state.df_content_sig = get_content_signature(st.session_state.df)
-            st.toast("✅ Changes saved automatically!", icon="💾")
+            # 3. 增量 upsert：只把改动的行写 DB（不调用 save_data，不做 ID 再生成）
+            if changed_keys:
+                try:
+                    changed_rows_df = st.session_state.df[
+                        st.session_state.df['__row_key'].isin(changed_keys)
+                    ].drop(columns=['Select', '__row_key'], errors='ignore')
+                    save_records(changed_rows_df.to_dict(orient='records'))
+                    st.session_state.df_content_sig = get_content_signature(st.session_state.df)
+                    st.toast(f"✅ 已保存 {len(changed_keys)} 条修改", icon="💾")
+                except Exception as e:
+                    logger.error(f"增量保存失败: {e}", exc_info=True)
+                    st.error(f"保存失败：{e}")
 
         logger.debug(">>> render_paginated_table() fragment 结束")
         return display_df
@@ -1030,9 +1052,13 @@ def render_testcases_page():
                 
                 import time
                 
-                # Poll for completion from DB
-                while True:
+                # Poll for completion from DB (with timeout)
+                MAX_POLL_SECONDS = 30 * 60  # 30 minutes timeout
+                elapsed = 0
+                
+                while elapsed < MAX_POLL_SECONDS:
                     time.sleep(1)
+                    elapsed += 1
                     
                     try:
                         from app.services.history_service import HistoryService
@@ -1051,12 +1077,24 @@ def render_testcases_page():
                         pct = min(started / total, 1.0)
                         progress_bar.progress(pct, text=f"Running... {started}/{total}")
                         
-                        if status in ["completed", "failed", "cancelled"]:
-                            progress_bar.progress(1.0, text=f"Finished: {status}")
+                        if status in ["completed", "failed", "cancelled", "interrupted"]:
+                            if status == "completed":
+                                progress_bar.progress(1.0, text=f"Finished: {status}")
+                            elif status == "interrupted":
+                                progress_bar.progress(pct, text=f"⚠️ Job interrupted ({started}/{total})")
+                            elif status == "cancelled":
+                                progress_bar.progress(pct, text=f"⏸ Cancelled ({started}/{total})")
+                            else:
+                                progress_bar.progress(pct, text=f"❌ Failed ({started}/{total})")
                             break
                     else:
                         status_text.warning("Job data not found...")
                         break
+                else:
+                    # Timeout reached
+                    progress_bar.progress(pct if 'pct' in dir() else 0, text="⏱ Timeout")
+                    status_text.warning("Job 仍在后台执行中（已超过 30 分钟），请到 **Test Report** 页查看进度。可在 Report 页使用 Continue 续跑功能。")
+                    job_data = None  # Prevent results display below
                 
                 # Show results if completed
                 if job_data and job_data.get("status") == "completed":
@@ -1068,10 +1106,15 @@ def render_testcases_page():
                     res_df = pd.DataFrame(results)
                     cols = ["id", "input", "passed", "score", "reason"]
                     cols = [c for c in cols if c in res_df.columns]
-                    st.dataframe(res_df[cols].style.format({"score": "{:.2f}"}), use_container_width=True)
+                    st.dataframe(res_df[cols].style.format({"score": "{:.2f}"}), width="stretch")
                     
                 elif job_data and job_data.get("status") == "failed":
-                    st.error(f"Job failed: {job_data.get('error')}")
+                    err_msg = job_data.get('error_message') or job_data.get('error') or 'Unknown error'
+                    st.error(f"Job failed: {err_msg}")
+                elif job_data and job_data.get("status") == "interrupted":
+                    st.warning("Job 已中断。已完成的结果已保存，请到 **Test Report** 页使用 Continue 按钮续跑。")
+                elif job_data and job_data.get("status") == "cancelled":
+                    st.info("Job 已被取消。已完成的结果已保存，可到 **Test Report** 页使用 Continue 续跑。")
             
         except Exception as e:
             execution_placeholder.error(f"Failed to run tests: {e}")
@@ -1168,7 +1211,7 @@ def _assertion_binding_dialog():
                     except (ValueError, _json.JSONDecodeError):
                         override_params[param_name] = val
 
-        if st.button("➕ 添加", key="btn_add_assertion", use_container_width=True):
+        if st.button("➕ 添加", key="btn_add_assertion", width="stretch"):
             new_ref = {"ref": comp.id, "params": override_params}
             current_assertions.append(new_ref)
             _apply_assertions_to_cases(ids, current_assertions)

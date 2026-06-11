@@ -744,7 +744,19 @@ def get_translation_response(message: str, url: str, user_id: str = None, sessio
 
 
 def get_ai_engineering_response(message: str, url: str, user_id: str = None, session_id: str = None, extra_params: dict = None) -> str:
-    """AI Engineering 流式接口客户端
+    """AI Engineering (Supervisor) 流式接口客户端
+    
+    Payload 格式:
+    {
+        "query": "...",
+        "user_id": "...",
+        "session_id": "...",       # 用于 agent 内部区分上下文
+        "lob": "ata",              # dc or ata
+        "extra_args": {
+            "trace_id": "default_trace",
+            "api_token": ""
+        }
+    }
     
     响应解析规则：
     - type="content": 流式输出中
@@ -755,16 +767,29 @@ def get_ai_engineering_response(message: str, url: str, user_id: str = None, ses
     if session_id is None:
         session_id = str(uuid.uuid4())[:8]
     
-    # 使用 extra_params 作为基础 payload，只替换 query
-    if extra_params:
-        payload = extra_params.copy()
-        payload["query"] = message  # 只替换 query 为测试用例的 input
-    else:
-        payload = {
-            "query": message,
-            "user_id": user_id,
-            "thread_id": session_id,
+    # 基础 payload（保证 user_id/session_id 一定有，多轮对话依赖此 session_id）
+    payload = {
+        "query": message,
+        "user_id": user_id,
+        "session_id": session_id,
+        "lob": "ata",
+        "extra_args": {
+            "trace_id": "default_trace",
+            "api_token": ""
         }
+    }
+    
+    # 合并 extra_params（如 api_config.json 中配置的 lob 等会覆盖默认值）
+    if extra_params:
+        merged_extra = {k: v for k, v in extra_params.items() if k != "query"}
+        # extra_args 做深合并
+        if "extra_args" in merged_extra and isinstance(merged_extra["extra_args"], dict):
+            payload["extra_args"] = {**payload["extra_args"], **merged_extra.pop("extra_args")}
+        # 其它字段直接覆盖（如 lob）；user_id/session_id 不允许被 extra_params 覆盖以保证多轮上下文
+        merged_extra.pop("user_id", None)
+        merged_extra.pop("session_id", None)
+        merged_extra.pop("thread_id", None)
+        payload.update(merged_extra)
     
     headers = {
         "Content-Type": "application/json",

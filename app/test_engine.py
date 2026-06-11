@@ -10,6 +10,43 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from chat_client import get_chat_response
 from dotenv import load_dotenv
+
+# ---------- API call retry helper (Task: job-resilience-and-continue) ----------
+# 对瞬时网络异常做 3 次指数退避重试；业务返回的错误字符串（"Error: ..."）不重试，
+# 因为那是被测系统的业务错误，重试无意义。
+def _call_chat_with_retry(*args, max_retries: int = 3, base_delay: float = 1.0, **kwargs):
+    """Wrap get_chat_response with retry on transient network exceptions.
+
+    Retries on requests-level exceptions (ConnectionError/Timeout) and bare
+    ConnectionError/TimeoutError. Other exceptions (e.g. value errors, business
+    logic) propagate immediately.
+    """
+    try:
+        import requests as _requests
+        retry_excs = (
+            _requests.exceptions.ConnectionError,
+            _requests.exceptions.Timeout,
+            _requests.exceptions.ChunkedEncodingError,
+            ConnectionError,
+            TimeoutError,
+        )
+    except ImportError:
+        retry_excs = (ConnectionError, TimeoutError)
+
+    last_exc = None
+    for attempt in range(max_retries):
+        try:
+            return get_chat_response(*args, **kwargs)
+        except retry_excs as e:
+            last_exc = e
+            if attempt < max_retries - 1:
+                sleep_s = base_delay * (2 ** attempt)
+                print(f"[retry] API call failed ({type(e).__name__}: {e}), retry {attempt + 1}/{max_retries - 1} after {sleep_s}s")
+                time.sleep(sleep_s)
+            continue
+    raise RuntimeError(f"API call failed after {max_retries} retries: {last_exc}")
+# -------------------------------------------------------------------------------
+
 load_dotenv(override=True)
 
 GEval = None
@@ -368,7 +405,7 @@ class TestEngine:
             start_time = time.time()
             # Note: get_chat_response is synchronous.
             start_time = time.time()
-            raw_response = get_chat_response(input_text, api_name=api_name)
+            raw_response = _call_chat_with_retry(input_text, api_name=api_name)
             end_time = time.time()
             latency = end_time - start_time
             
@@ -676,7 +713,7 @@ class TestEngine:
             
             try:
                 start_time = time.time()
-                actual_output = get_chat_response(
+                actual_output = _call_chat_with_retry(
                     user_message, 
                     api_name=api_name,
                     user_id=user_id,
@@ -763,6 +800,7 @@ class TestEngine:
         overall_passed = False
         
         # Check if ConversationalTestCase and Turn are available
+        print(f"[DEBUG] ConversationalTestCase={ConversationalTestCase}, Turn={Turn}, conversational_metric={self.conversational_metric}")
         if ConversationalTestCase is not None and Turn is not None and self.conversational_metric is not None:
             try:
                 # Build Turn list for ConversationalTestCase

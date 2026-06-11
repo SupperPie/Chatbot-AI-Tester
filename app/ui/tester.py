@@ -4,6 +4,13 @@ import json
 import os
 import re
 from app.utils import load_data, save_data
+from app.ui.prompts.intent_prompts import (
+    INTENT_OPTIONS,
+    INTENT_DEFAULT,
+    build_prompt,
+    get_requirement_template,
+    get_tags_for_intent,
+)
 
 def render_tester_page():
     st.title("🔧 Tester - AI Test Case Generator")
@@ -17,12 +24,36 @@ def render_tester_page():
         st.session_state.saved_req = ""
     if "saved_kb" not in st.session_state:
         st.session_state.saved_kb = ""
+    if "selected_intent" not in st.session_state:
+        st.session_state.selected_intent = INTENT_DEFAULT
         
     def sync_req():
         st.session_state.saved_req = st.session_state.tester_requirements
     def sync_kb():
         st.session_state.saved_kb = st.session_state.tester_knowledge
-    
+
+    def on_intent_change():
+        intent = st.session_state.tester_intent
+        st.session_state.selected_intent = intent
+        template = get_requirement_template(intent)
+        # 仅当模板非空时填充（默认意图为空字符串，不覆盖用户已有输入）
+        if template:
+            st.session_state.saved_req = template
+            # 同步 text_area widget 的值，确保下次 rerun 时 text_area 显示新内容
+            st.session_state.tester_requirements = template
+
+    # 意图选择下拉（固定宽度，不充满整行）
+    intent_col, _ = st.columns([1, 3])
+    with intent_col:
+        st.selectbox(
+            "🎯 测试用例模板",
+            options=INTENT_OPTIONS,
+            index=INTENT_OPTIONS.index(st.session_state.selected_intent),
+            key="tester_intent",
+            on_change=on_intent_change,
+            help="选择不同模板会切换 Prompt 策略并自动填充测试需求模板（默认选项不改动现有行为）",
+        )
+
     # Two-column layout for inputs
     col1, col2 = st.columns(2)
     
@@ -65,35 +96,11 @@ def render_tester_page():
         else:
             with st.spinner("🤖 AI is generating test cases..."):
                 try:
-                    prompt = f"""You are a testcase generator. Generate test cases based on the requirements and knowledge.
-CRITICAL: You MUST output ONLY a valid JSON array of test case objects. Unless requested otherwise, all "input", "expected_output", and messages MUST be generated in Chinese (中文).
-
-Requirements:
-{requirements}
-
-Knowledge Base:
-{knowledge_base if knowledge_base.strip() else "No additional knowledge provided."}
-
-The JSON format MUST strictly follow this flat schema. If generating a multi-turn conversation, DO NOT use a nested "conversation" array. Instead, output one distinct object per turn. Each turn object for the same conversation MUST have the exact same "description" and "type", but an incrementing "turn_index" starting at 1.
-
-[
-  {{
-    "type": "multi_turn", // Use "multi_turn" if testing a sequence, else "single"
-    "turn_index": 1, // Only use turn_index if multi_turn. 1 for first turn, 2 for second, etc.
-    "tags": [], // CRITICAL: This MUST ALWAYS be an empty list []. Do not generate tags.
-        "description": ""  # keep empty for generator
-    }},
-    {{
-        "type": "multi_turn",
-        "turn_index": 2, // Second turn continues the same conversation
-        "tags": [],
-        "input": "User's follow up message (in Chinese)",
-        "expected_output": "Expected follow up response (in Chinese)",
-        "description": ""
-    }}
-]
-
-ONLY return the highly-structured JSON array. Do not include markdown blocks like ```json or trailing text."""
+                    prompt = build_prompt(
+                        intent=st.session_state.selected_intent,
+                        requirements=requirements,
+                        knowledge_base=knowledge_base,
+                    )
                     try:
                         from openai import OpenAI
                         
@@ -133,6 +140,7 @@ ONLY return the highly-structured JSON array. Do not include markdown blocks lik
                             current_id_counter = 0
                             last_description = None
                             current_id = None
+                            intent_tags = get_tags_for_intent(st.session_state.selected_intent)
                             
                             for case in cases_json:
                                 case_type = case.get("type", "single")
@@ -151,7 +159,7 @@ ONLY return the highly-structured JSON array. Do not include markdown blocks lik
                                     "expected_output": "",
                                     "retrieval_context": case.get("expected_output", "N/A"),
                                     "description": "",
-                                    "tags": [],
+                                    "tags": list(intent_tags),
                                     "overall_criteria": json.dumps(case.get("overall_criteria", {"must_complete_all_turns": True, "min_success_rate": 0.8}), ensure_ascii=False)
                                 })
                             

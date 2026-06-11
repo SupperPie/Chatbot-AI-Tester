@@ -159,6 +159,8 @@ class HistoryService:
             'status': entry.status or 'completed',
             'started_count': entry.started_count or 0,
             'source': entry.source or 'local',
+            'case_ids': entry.case_ids,
+            'error_message': entry.error_message,
         }
         
         if include_results:

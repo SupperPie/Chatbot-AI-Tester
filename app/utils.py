@@ -160,9 +160,17 @@ def save_data(df: pd.DataFrame):
     # Ensure turn_index exists and default to 1
     if "turn_index" not in to_save_df.columns:
         to_save_df["turn_index"] = 1
-    to_save_df["turn_index"] = to_save_df["turn_index"].apply(
-        lambda x: int(x) if not pd.isna(x) else 1
-    )
+    def safe_turn_index(x):
+        try:
+            if pd.isna(x):
+                return 1
+        except (TypeError, ValueError):
+            pass
+        try:
+            return int(x)
+        except (TypeError, ValueError):
+            return 1
+    to_save_df["turn_index"] = to_save_df["turn_index"].apply(safe_turn_index)
 
     # Find existing max TCxxxx to avoid collisions
     current_max_id_num = 0
@@ -205,6 +213,29 @@ def save_data(df: pd.DataFrame):
     service.upsert_all(to_save)
     
     return to_save_df
+
+def save_records(records: list) -> int:
+    """只保存指定的若干条记录到 DB（增量保存）。
+    
+    不含任何 ID 自动生成/重分配逻辑。
+    仅对传入的 records 做 upsert，适用于表格编辑后的增量写入。
+    """
+    from app.services.test_case_service import TestCaseService
+    if not records:
+        return 0
+    # 清洗 turn_index
+    for r in records:
+        try:
+            ti = r.get('turn_index')
+            if ti is None or (isinstance(ti, float) and pd.isna(ti)):
+                r['turn_index'] = 1
+            else:
+                r['turn_index'] = int(ti)
+        except (TypeError, ValueError):
+            r['turn_index'] = 1
+    print(f"[save_records] 增量保存 {len(records)} 条")
+    service = TestCaseService()
+    return service.upsert_records(records)
 
 def save_history(results: List[Dict], api_name: str = "Unknown"):
     """保存测试执行结果到 DB"""

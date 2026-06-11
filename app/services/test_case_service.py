@@ -145,7 +145,42 @@ class TestCaseService:
         # 提交剩余的
         self.db.commit()
         return len(records)
-    
+
+    def upsert_records(self, records: List[Dict]) -> int:
+        """增量 upsert：只对给定的若干条记录做更新或插入。
+
+        与 upsert_all 的区别：
+        - 语义明确为"只保存这几条"，不做全量同步
+        - 一次性 commit（适合小批量）
+        - 不含任何 ID 自动生成/重分配逻辑：id 仅作为 (id, turn_index) 查询条件
+          用于定位 DB 记录；如果传入的 record 中字段值由用户修改（包括 id 本身），
+          会按用户提供的值写入，但方法内部不会主动生成新 ID
+        """
+        allowed_fields = {c.name for c in TestCase.__table__.columns}
+        for r in records:
+            if not r.get('id'):
+                continue
+            clean = _sanitize_record(r)
+            ti = int(clean.get('turn_index') or 1)
+            clean['turn_index'] = ti
+            existing = self.db.query(TestCase).filter(
+                TestCase.id == clean['id'],
+                TestCase.turn_index == ti
+            ).first()
+            if existing:
+                for k, v in clean.items():
+                    if k not in ('id', 'turn_index') and k in allowed_fields:
+                        setattr(existing, k, v)
+                existing.updated_at = datetime.utcnow()
+            else:
+                fields = {k: v for k, v in clean.items() if k in allowed_fields}
+                fields['turn_index'] = ti
+                fields.setdefault('created_at', datetime.utcnow())
+                fields.setdefault('updated_at', datetime.utcnow())
+                self.db.add(TestCase(**fields))
+        self.db.commit()
+        return len(records)
+
     def __del__(self):
         if hasattr(self, 'db'):
             self.db.close()

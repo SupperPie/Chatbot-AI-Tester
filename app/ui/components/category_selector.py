@@ -30,36 +30,16 @@ def get_category_options():
         return [('root', '全部用例')]
 
 def get_category_ids_with_children(category_id: str) -> list:
-    """获取目录及其所有子目录的 ID 列表
-    
-    对于 'root'（顶层全部用例节点），只返回 ['root']，
-    仅显示直接归属 root 的用例，不递归展开所有子目录。
+    """获取目录 ID 列表
+
+    用户选中某目录时，只显示该目录下的用例，不展开子目录。
+    （目录统计数量逻辑在 category_widget.py 中独立维护）
     """
     if category_id == 'root':
         return ['root']
 
-    try:
-        db = SessionLocal()
-        db.execute(text(f"SET search_path TO {DATABASE_SCHEMA}, public"))
-        service = CategoryService(db)
-        
-        # 获取当前目录
-        from app.models.category import Category
-        category = db.query(Category).filter(Category.id == category_id).first()
-        if not category:
-            db.close()
-            return [category_id]
-        
-        # 获取当前目录 + 所有子目录
-        children = db.query(Category.id).filter(
-            (Category.id == category_id) | (Category.path.like(f"{category.path}/%"))
-        ).all()
-        
-        result = [c[0] for c in children]
-        db.close()
-        return result
-    except Exception as e:
-        return [category_id]
+    # 只返回当前目录 ID，不展开子目录
+    return [category_id]
 
 def render_category_selector():
     """渲染目录选择下拉框，返回选中的目录 ID"""

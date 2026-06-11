@@ -192,8 +192,38 @@ def export_report_to_feishu(
             raise Exception("表格中没有工作表")
     
     # 转换报告数据为行格式（与 report 页面列一致）
+    # 飞书单元格限制 50000 bytes，超长字段做截断
+    MAX_CELL_BYTES = 45000  # 留 buffer
+
+    def _truncate_cell(val: str) -> str:
+        """截断超长单元格内容，避免飞书写入失败"""
+        if not val:
+            return val
+        val_bytes = val.encode("utf-8")
+        if len(val_bytes) <= MAX_CELL_BYTES:
+            return val
+        # 按字节截断（向前找最近的合法字符边界）
+        truncated = val_bytes[:MAX_CELL_BYTES].decode("utf-8", errors="ignore")
+        # 去掉末尾可能损坏的半个字符
+        truncated = truncated.rstrip()
+        return truncated + " [...truncated]"
+
     rows = []
     for item in report_data:
+        # 格式化 assertion_detail
+        assertion_detail = item.get("assertion_detail")
+        assertion_result_str = ""
+        if assertion_detail and isinstance(assertion_detail, dict):
+            results = assertion_detail.get("results", [])
+            if not results:
+                assertion_result_str = "✅" if assertion_detail.get("passed") else "❌"
+            else:
+                parts = []
+                for r in results:
+                    icon = "✅" if r.get("passed") else "❌"
+                    parts.append(f"{icon} {r.get('component_name', '?')}: {r.get('message', '')}")
+                assertion_result_str = " | ".join(parts)
+
         # 处理多轮对话的情况
         if item.get("type") == "multi_turn" and item.get("turns"):
             for turn in item["turns"]:
@@ -203,17 +233,18 @@ def export_report_to_feishu(
                     turn.get("turn", ""),
                     turn.get("user", ""),
                     turn.get("expected", ""),
-                    turn.get("actual", ""),
-                    turn.get("retrieval_context", ""),
+                    _truncate_cell(turn.get("actual", "")),
+                    _truncate_cell(str(turn.get("retrieval_context", ""))),
                     score_val,
                     "Pass" if item.get("passed") else "Fail",
+                    assertion_result_str,
                     turn.get("ttft", 0),
                     turn.get("latency", 0),
-                    item.get("reason", ""),
+                    _truncate_cell(item.get("reason", "")),
                     "",  # review_comment
-                    turn.get("thinking", ""),
-                    turn.get("inform_base", ""),
-                    str(turn.get("raw", ""))
+                    _truncate_cell(turn.get("thinking", "")),
+                    _truncate_cell(turn.get("inform_base", "")),
+                    _truncate_cell(str(turn.get("raw", "")))
                 ]
                 rows.append(row)
         else:
@@ -227,17 +258,18 @@ def export_report_to_feishu(
                 "",  # turn_index
                 item.get("input", ""),
                 item.get("expected_output", ""),
-                item.get("actual_output", ""),
-                retrieval_context,
+                _truncate_cell(item.get("actual_output", "")),
+                _truncate_cell(str(retrieval_context)),
                 item.get("score", 0),
                 "Pass" if item.get("passed") else "Fail",
+                assertion_result_str,
                 item.get("ttft", 0),
                 item.get("latency", 0),
-                item.get("reason", ""),
+                _truncate_cell(item.get("reason", "")),
                 "",  # review_comment
-                item.get("thinking", ""),
-                item.get("inform_base", ""),
-                str(item.get("raw", ""))
+                _truncate_cell(item.get("thinking", "")),
+                _truncate_cell(item.get("inform_base", "")),
+                _truncate_cell(str(item.get("raw", "")))
             ]
             rows.append(row)
     
@@ -247,7 +279,7 @@ def export_report_to_feishu(
     # 先写入表头（与 report 页面一致）
     headers = [[
         "Case ID", "Turn", "Input", "Expected", "Actual Output", "Retrieval Context",
-        "Score", "Passed", "TTFT", "Latency", "Reason", 
+        "Score", "Passed", "Assertion Result", "TTFT", "Latency", "Reason", 
         "Review Comment", "Thinking", "Inform Base", "Raw"
     ]]
     client.append_rows_to_sheet(spreadsheet_token, sheet_id, headers)

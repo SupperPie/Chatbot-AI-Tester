@@ -11,6 +11,14 @@ from chat_client import get_available_apis
 def render_report_page():
     st.title("📊 Test Report History")
 
+    # 僵尸 Job 检测：每次进入 Report 页时强制扫描一次
+    try:
+        from app.utils import get_job_manager
+        _mgr = get_job_manager()
+        _mgr.detect_stale_jobs()  # 显式调用，不依赖 _ensure_initialized 的一次性 flag
+    except Exception as e:
+        print(f"Warning: stale job detection failed: {e}")
+
     try:
         from app.services.history_service import HistoryService
         service = HistoryService()
@@ -123,6 +131,17 @@ def render_report_page():
             progress = min(started / total_count, 1.0)
             
             label = f"⏳ {entry.get('timestamp')} - Running... {started}/{total_count} - API: {api_name}"
+        elif status == "interrupted":
+            started = entry.get('started_count', 0)
+            remaining = total_count - started if total_count > started else 0
+            label = f"🔴 {entry.get('timestamp')} - Interrupted {started}/{total_count} (remaining {remaining}) - API: {api_name}"
+        elif status == "cancelled":
+            started = entry.get('started_count', 0)
+            remaining = total_count - started if total_count > started else 0
+            label = f"⏸ {entry.get('timestamp')} - Cancelled {started}/{total_count} (remaining {remaining}) - API: {api_name}"
+        elif status == "failed":
+            started = entry.get('started_count', 0)
+            label = f"❌ {entry.get('timestamp')} - Failed {started}/{total_count} - API: {api_name}"
         else:
             pass_rate = (passed_count / total_count * 100) if total_count > 0 else 0
             label = f"{entry.get('timestamp')} - Pass Rate: {pass_rate:.1f}% ({passed_count}/{total_count}) - API: {api_name}"
@@ -137,37 +156,96 @@ def render_report_page():
             if status == "running":
                 st.progress(progress, text=f"Processing {started}/{total_count} cases...")
                 st.info("Results are loading in real-time. Click Refresh above to update table.")
+            elif status in ("interrupted", "failed"):
+                err_msg = entry.get('error_message') or "Job was interrupted unexpectedly."
+                st.warning(f"⚠️ {err_msg}")
+                if entry.get('case_ids'):
+                    completed_n = entry.get('started_count', 0)
+                    total_n = entry.get('total', 0)
+                    remaining = total_n - completed_n if total_n > completed_n else 0
+                    if remaining > 0:
+                        st.info(f"已完成 {completed_n}/{total_n} 条，剩余 {remaining} 条可通过 Continue 续跑。")
+                else:
+                    st.caption("此 Job 创建于功能上线前，无 case_ids 快照，仅支持 Rerun。")
+            elif status == "cancelled":
+                if entry.get('case_ids'):
+                    completed_n = entry.get('started_count', 0)
+                    total_n = entry.get('total', 0)
+                    remaining = total_n - completed_n if total_n > completed_n else 0
+                    if remaining > 0:
+                        st.info(f"已取消。已完成 {completed_n}/{total_n}，剩余 {remaining} 条可通过 Continue 续跑。")
 
             # --------------------------
-            # Action Buttons Row
+            # Action Buttons Row 1: Report Management
             # --------------------------
-            ac_col1, ac_col2, ac_col3, ac_col4 = st.columns([1.5, 1.5, 1.5, 3])
+            mgmt_col1, mgmt_col2, mgmt_col3, mgmt_col4 = st.columns([3, 1, 1.5, 1])
             
-            with ac_col1:
+            with mgmt_col1:
+                # API SELECTOR
+                stored_api = entry.get("api_name", "Bundle API")
+                default_idx = 0
+                if stored_api in available_apis:
+                    default_idx = available_apis.index(stored_api)
+                st.selectbox("API", options=available_apis, index=default_idx, key=f"api_sel_{entry_id}", label_visibility="collapsed")
+
+            with mgmt_col2:
                 # DELETE BUTTON
                 confirm_key = f"confirm_del_{entry_id}"
                 if confirm_key not in st.session_state:
                     st.session_state[confirm_key] = False
                 
                 if not st.session_state[confirm_key]:
-                    if st.button("🗑️ Delete", key=f"btn_del_{entry_id}"):
+                    if st.button("🗑️ Delete", key=f"btn_del_{entry_id}", use_container_width=True):
                         st.session_state[confirm_key] = True
                         st.rerun()
                 else:
                     col_confirm, col_cancel = st.columns([1, 1])
-                    if col_confirm.button("✅ Confirm", key=f"btn_conf_{entry_id}"):
+                    if col_confirm.button("✅", key=f"btn_conf_{entry_id}"):
                         if delete_reports([entry_id]):
                             st.success("Deleted.")
                             del st.session_state[confirm_key]
                             st.rerun()
-                    if col_cancel.button("❌ Cancel", key=f"btn_canc_{entry_id}"):
+                    if col_cancel.button("❌", key=f"btn_canc_{entry_id}"):
                          st.session_state[confirm_key] = False
                          st.rerun()
 
-            with ac_col2:
-                # RERUN / STOP BUTTON
-                if status != "running":
-                    if st.button("▶ Rerun Report", key=f"btn_rerun_{entry_id}"):
+            with mgmt_col3:
+                # RERUN / CONTINUE / STOP BUTTON
+                if status == "running":
+                    # STOP BUTTON
+                    if st.button("🛑 Stop Job", key=f"btn_stop_{entry_id}", use_container_width=True):
+                        from app.utils import get_job_manager
+                        mgr = get_job_manager()
+                        mgr.cancel_job(entry_id)
+                        st.warning("Stopping job... please wait.")
+                        time.sleep(1)
+                        st.rerun()
+                else:
+                    # CONTINUE 按钮：仅当 status ∈ {cancelled, interrupted, failed} 且有 case_ids 时显示
+                    can_continue = (
+                        status in ("cancelled", "interrupted", "failed")
+                        and bool(entry.get("case_ids"))
+                        and (entry.get("total", 0) - entry.get("started_count", 0) > 0)
+                    )
+                    if can_continue:
+                        btn_col_a, btn_col_b = st.columns([1, 1])
+                        with btn_col_a:
+                            if st.button("▶ Continue", key=f"btn_cont_{entry_id}", use_container_width=True, help="从断点续跑，结果合并到当前 report"):
+                                from app.utils import get_job_manager
+                                mgr = get_job_manager()
+                                result = mgr.continue_job(entry_id)
+                                if result.get("ok"):
+                                    st.success(result.get("message", "Continue started"))
+                                else:
+                                    st.error(result.get("message", "Continue failed"))
+                                time.sleep(1)
+                                st.rerun()
+                        with btn_col_b:
+                            rerun_clicked = st.button("⟳ Rerun", key=f"btn_rerun_{entry_id}", use_container_width=True)
+                    else:
+                        rerun_clicked = st.button("▶ Rerun", key=f"btn_rerun_{entry_id}", use_container_width=True)
+                    
+                    if rerun_clicked:
                         res_df_curr = pd.DataFrame(entry.get('results', []))
                         if not res_df_curr.empty:
                             from app.utils import load_data
@@ -224,20 +302,11 @@ def render_report_page():
                                 st.rerun()
                             except Exception as e:
                                 st.error(f"Rerun failed: {e}")
-                else:
-                    # STOP BUTTON
-                    if st.button("🛑 Stop Job", key=f"btn_stop_{entry_id}"):
-                        from app.utils import get_job_manager
-                        mgr = get_job_manager()
-                        mgr.cancel_job(entry_id)
-                        st.warning("Stopping job... please wait.")
-                        time.sleep(1)
-                        st.rerun()
-            with ac_col3:
+            with mgmt_col4:
                 # EXPORT TO FEISHU BUTTON
                 if status != "running":
                     feishu_key = f"feishu_export_{entry_id}"
-                    if st.button("📤 飞书", key=f"btn_feishu_{entry_id}", help="导出到飞书表格"):
+                    if st.button("📤 飞书", key=f"btn_feishu_{entry_id}", help="导出到飞书表格", use_container_width=True):
                         st.session_state[feishu_key] = True
                         st.rerun()
                     
@@ -278,22 +347,7 @@ def render_report_page():
                             st.session_state[feishu_key] = False
                             st.rerun()
 
-            with ac_col4:
-                # API SELECTOR
-                # Try to find index of stored api_name
-                stored_api = entry.get("api_name", "Bundle API")
-                default_idx = 0
-                if stored_api in available_apis:
-                    default_idx = available_apis.index(stored_api)
-                
-                st.selectbox("API", options=available_apis, index=default_idx, key=f"api_sel_{entry_id}", label_visibility="collapsed")
-                
-                st.write("") # Spacer
-                
-                # ACTION BUTTONS CONTAINER
-                top_action_container = st.container()
 
-            
             st.divider()
 
             # --------------------------
@@ -410,6 +464,29 @@ def render_report_page():
                 # Keep Select if we need it, but we don't use Select in history table right now.
                 display_res_df = display_res_df[display_cols]
                 
+                # --------------------------
+                # Action Row 2: Select Controls
+                # --------------------------
+                tbl_key_suffix = st.session_state.get(f"tbl_ver_{entry_id}", 0)
+                op_col1, op_col2, op_spacer = st.columns([1, 1, 6])
+                with op_col1:
+                    if st.button("☑ 全选", key=f"btn_select_all_{entry_id}", use_container_width=True):
+                        st.session_state[f"select_all_{entry_id}"] = True
+                        st.session_state[f"tbl_ver_{entry_id}"] = tbl_key_suffix + 1
+                        st.rerun()
+                with op_col2:
+                    if st.button("☐ 取消", key=f"btn_deselect_all_{entry_id}", use_container_width=True):
+                        st.session_state[f"select_all_{entry_id}"] = False
+                        st.session_state[f"tbl_ver_{entry_id}"] = tbl_key_suffix + 1
+                        st.rerun()
+                
+                # 根据 session_state 中的全选状态设置 Select 列
+                select_all_state = st.session_state.get(f"select_all_{entry_id}")
+                if select_all_state is True:
+                    display_res_df["Select"] = True
+                elif select_all_state is False:
+                    display_res_df["Select"] = False
+                
                 all_cols = display_res_df.columns.tolist()
                 editable_cols = ["Select", "passed", "review_comment"]
                 disabled_cols = [c for c in all_cols if c not in editable_cols]
@@ -438,168 +515,173 @@ def render_report_page():
                     use_container_width=True,
                     disabled=disabled_cols,
                     hide_index=True,
-                    key=f"hist_tbl_{entry_id}"
+                    key=f"hist_tbl_{entry_id}_v{tbl_key_suffix}"
                 )
 
-                # INJECT ACTION BUTTONS AFTER GETTING EDITED_DF
-                with top_action_container:
-                    act_col1, act_col2 = st.columns(2)
-                    with act_col1:
-                        # BLIND REVIEW EXPORT
-                        with st.popover("🙈 Export to Blind Review", use_container_width=True):
-                            st.markdown("### Export Config")
-                            export_mode = st.radio("Mode", ["Create New Session", "Add to Existing Session"], key=f"br_mode_{entry_id}")
-                            
-                            from app.ui.blind_review import load_reviews, save_reviews
-                            all_reviews = load_reviews()
-                            
-                            target_session_name = ""
-                            if export_mode == "Create New Session":
-                                default_name = f"Review {entry.get('timestamp', 'New')}"
-                                target_session_name = st.text_input("Session Name", value=default_name, key=f"br_name_{entry_id}")
-                            else:
-                                if not all_reviews:
-                                     st.warning("No existing sessions.")
-                                else:
-                                     session_opts = [r["name"] for r in all_reviews]
-                                     target_session_name = st.selectbox("Select Session", session_opts, key=f"br_sel_{entry_id}")
-                            
-                            if st.button("Confirm Export", type="primary", key=f"btn_br_exp_{entry_id}"):
-                                if not target_session_name:
-                                    st.error("Session name required.")
-                                else:
-                                    # Logic to Prepare Data
-                                    report_results = entry.get("results", [])
-                                    if not report_results:
-                                        st.error("No results to export.")
-                                    else:
-                                        import uuid
-                                        from datetime import datetime
-                                        
-                                        session_data = None
-                                        if export_mode == "Add to Existing Session":
-                                            session_data = next((r for r in all_reviews if r["name"] == target_session_name), None)
-                                        
-                                        if not session_data:
-                                            session_data = {
-                                                "id": str(uuid.uuid4()),
-                                                "name": target_session_name,
-                                                "created_at": datetime.now().isoformat(),
-                                                "items": []
-                                            }
-                                            if export_mode == "Create New Session":
-                                                all_reviews.append(session_data)
-                                        
-                                        updated_count = 0
-                                        added_count = 0
-                                        
-                                        for row in report_results:
-                                            q_input = row.get("input", "")
-                                            actual = row.get("actual_output", "")
-                                            
-                                            if row.get("type") == "multi_turn" and isinstance(row.get("turns"), list):
-                                                lines = []
-                                                for t in row["turns"]:
-                                                    status = "✅" if t.get("passed") else "❌"
-                                                    lines.append(f"T{t.get('turn')} {status}: Q: {t.get('user')} | A: {t.get('actual')}")
-                                                actual_text = "\n".join(lines)
-                                            else:
-                                                actual_text = str(actual)
-        
-                                            match = next((item for item in session_data["items"] if item["input"] == q_input), None)
-                                            
-                                            if match:
-                                                existing_keys = sorted(match["options"].keys())
-                                                next_char = "A" if not existing_keys else chr(ord(existing_keys[-1]) + 1)
-                                                match["options"][next_char] = actual_text
-                                                updated_count += 1
-                                            else:
-                                                new_item = {
-                                                    "input": q_input,
-                                                    "options": {"A": actual_text},
-                                                    "vote": None
-                                                }
-                                                session_data["items"].append(new_item)
-                                                added_count += 1
-                                        
-                                        save_reviews(all_reviews)
-                                        st.success(f"Exported! Added {added_count} new, Updated {updated_count} existing.")
 
-                    with act_col2:
-                        if st.button("🔄 Update Expect Result", use_container_width=True, key=f"btn_upd_exp_{entry_id}"):
-                            selected_rows = edited_df[edited_df["Select"] == True]
-                            if selected_rows.empty:
-                                st.warning("Please select at least one test case to update.")
-                            else:
-                                from app.utils import load_data, save_data
-                                main_df = load_data()
-                                
-                                updated_cases = 0
-                                for _, sel_row in selected_rows.iterrows():
-                                    cid = sel_row['case_id']
-                                    tidx = sel_row.get('turn_index')
-                                    new_val = sel_row['actual_output']
-                                    
-                                    if pd.isna(tidx) or tidx is None:
-                                        mask = (main_df['id'] == cid)
-                                    else:
-                                        mask = (main_df['id'] == cid) & (main_df['turn_index'] == tidx)
-                                        
-                                    if mask.any():
-                                        main_df.loc[mask, 'expected_output'] = new_val
-                                        updated_cases += mask.sum()
-                                        
-                                if updated_cases > 0:
-                                    final_df = save_data(main_df)
-                                    if "df" in st.session_state:
-                                        if "Select" not in final_df.columns:
-                                            final_df.insert(0, "Select", False)
-                                        st.session_state.df = final_df
-                                        content_df = final_df.drop(columns=["Select"], errors='ignore')
-                                        st.session_state.df_content_sig = content_df.to_json(orient='records', force_ascii=False)
-                                    st.success(f"Successfully updated Expected Output for {updated_cases} rows.")
-                                else:
-                                    st.warning("No matching test cases found in reality to update.")
-
-                # SAVE BUTTON
-                if st.button("💾 Save Changes", key=f"btn_save_{entry_id}"):
-                    try:
-                        current_results = entry.get('results', [])
-                        # Create lookup from edited_df
-                        updates = {}
-                        if not edited_df.empty:
-                            for _, row in edited_df.iterrows():
-                                updates[row['case_id']] = {
-                                    'passed': row.get('passed'),
-                                    'review_comment': row.get('review_comment')
-                                }
+                # --------------------------
+                # Action Row 3: Data Operations (below table)
+                # --------------------------
+                act_col1, act_col2, act_col3 = st.columns([2, 2, 2])
+                with act_col1:
+                    # BLIND REVIEW EXPORT
+                    with st.popover("🙈 Export to Blind Review", use_container_width=True):
+                        st.markdown("### Export Config")
+                        export_mode = st.radio("Mode", ["Create New Session", "Add to Existing Session"], key=f"br_mode_{entry_id}")
                         
-                        # Apply updates to original results list
-                        updated_count = 0
-                        for res in current_results:
-                            cid = res.get('case_id')
-                            if cid in updates:
-                                res['passed'] = bool(updates[cid].get('passed', False))
-                                res['review_comment'] = str(updates[cid].get('review_comment', ""))
-                                res['manual_review'] = True
-                                
-                                # If it's multi-turn, also update all turns to mirror the manual pass 
-                                # logic so they render consistently
-                                if "turns" in res and isinstance(res["turns"], list):
-                                    for t in res["turns"]:
-                                        t['passed'] = res['passed']
-                                        t['manual_review'] = True
-                                        
-                                updated_count += 1
+                        from app.ui.blind_review import load_reviews, save_reviews
+                        all_reviews = load_reviews()
                         
-                        if update_history_entry(entry_id, current_results):
-                            st.success(f"Successfully saved changes for {updated_count} cases!")
-                            time.sleep(1)
-                            st.rerun()
+                        target_session_name = ""
+                        if export_mode == "Create New Session":
+                            default_name = f"Review {entry.get('timestamp', 'New')}"
+                            target_session_name = st.text_input("Session Name", value=default_name, key=f"br_name_{entry_id}")
                         else:
-                            st.error("Failed to save changes to history file.")
-                    except Exception as e:
-                        st.error(f"Error saving changes: {e}")
+                            if not all_reviews:
+                                st.warning("No existing sessions.")
+                            else:
+                                session_opts = [r["name"] for r in all_reviews]
+                                target_session_name = st.selectbox("Select Session", session_opts, key=f"br_sel_{entry_id}")
+                        
+                        if st.button("Confirm Export", type="primary", key=f"btn_br_exp_{entry_id}"):
+                            if not target_session_name:
+                                st.error("Session name required.")
+                            else:
+                                report_results = entry.get("results", [])
+                                if not report_results:
+                                    st.error("No results to export.")
+                                else:
+                                    import uuid
+                                    from datetime import datetime
+                                    
+                                    session_data = None
+                                    if export_mode == "Add to Existing Session":
+                                        session_data = next((r for r in all_reviews if r["name"] == target_session_name), None)
+                                    
+                                    if not session_data:
+                                        session_data = {
+                                            "id": str(uuid.uuid4()),
+                                            "name": target_session_name,
+                                            "created_at": datetime.now().isoformat(),
+                                            "items": []
+                                        }
+                                        if export_mode == "Create New Session":
+                                            all_reviews.append(session_data)
+                                    
+                                    updated_count = 0
+                                    added_count = 0
+                                    
+                                    for row in report_results:
+                                        q_input = row.get("input", "")
+                                        actual = row.get("actual_output", "")
+                                        
+                                        if row.get("type") == "multi_turn" and isinstance(row.get("turns"), list):
+                                            lines = []
+                                            for t in row["turns"]:
+                                                status = "✅" if t.get("passed") else "❌"
+                                                lines.append(f"T{t.get('turn')} {status}: Q: {t.get('user')} | A: {t.get('actual')}")
+                                            actual_text = "\n".join(lines)
+                                        else:
+                                            actual_text = str(actual)
+    
+                                        match = next((item for item in session_data["items"] if item["input"] == q_input), None)
+                                        
+                                        if match:
+                                            existing_keys = sorted(match["options"].keys())
+                                            next_char = "A" if not existing_keys else chr(ord(existing_keys[-1]) + 1)
+                                            match["options"][next_char] = actual_text
+                                            updated_count += 1
+                                        else:
+                                            new_item = {
+                                                "input": q_input,
+                                                "options": {"A": actual_text},
+                                                "vote": None
+                                            }
+                                            session_data["items"].append(new_item)
+                                            added_count += 1
+                                    
+                                    save_reviews(all_reviews)
+                                    st.success(f"Exported! Added {added_count} new, Updated {updated_count} existing.")
+
+                with act_col2:
+                    if st.button("🔄 Update Expect Result", use_container_width=True, key=f"btn_upd_exp_{entry_id}"):
+                        selected_rows = edited_df[edited_df["Select"] == True]
+                        if selected_rows.empty:
+                            st.warning("Please select at least one test case to update.")
+                        else:
+                            from app.utils import load_data, save_data
+                            main_df = load_data()
+                            
+                            updated_cases = 0
+                            total_rows = len(selected_rows)
+                            progress_bar = st.progress(0, text=f"Updating 0/{total_rows}...")
+                            
+                            for i, (_, sel_row) in enumerate(selected_rows.iterrows()):
+                                cid = sel_row['case_id']
+                                tidx = sel_row.get('turn_index')
+                                new_val = sel_row['actual_output']
+                                
+                                if pd.isna(tidx) or tidx is None:
+                                    mask = (main_df['id'] == cid)
+                                else:
+                                    mask = (main_df['id'] == cid) & (main_df['turn_index'] == tidx)
+                                    
+                                if mask.any():
+                                    main_df.loc[mask, 'expected_output'] = new_val
+                                    updated_cases += mask.sum()
+                                
+                                progress_bar.progress((i + 1) / total_rows, text=f"Updating {i + 1}/{total_rows}...")
+                            
+                            progress_bar.progress(1.0, text="Saving...")
+                            if updated_cases > 0:
+                                final_df = save_data(main_df)
+                                if "df" in st.session_state:
+                                    if "Select" not in final_df.columns:
+                                        final_df.insert(0, "Select", False)
+                                    st.session_state.df = final_df
+                                    content_df = final_df.drop(columns=["Select"], errors='ignore')
+                                    st.session_state.df_content_sig = content_df.to_json(orient='records', force_ascii=False)
+                                progress_bar.empty()
+                                st.success(f"Successfully updated Expected Output for {updated_cases} rows.")
+                            else:
+                                progress_bar.empty()
+                                st.warning("No matching test cases found in reality to update.")
+
+                with act_col3:
+                    if st.button("💾 Save Changes", key=f"btn_save_{entry_id}", use_container_width=True):
+                        try:
+                            current_results = entry.get('results', [])
+                            updates = {}
+                            if not edited_df.empty:
+                                for _, row in edited_df.iterrows():
+                                    updates[row['case_id']] = {
+                                        'passed': row.get('passed'),
+                                        'review_comment': row.get('review_comment')
+                                    }
+                            
+                            updated_count = 0
+                            for res in current_results:
+                                cid = res.get('case_id')
+                                if cid in updates:
+                                    res['passed'] = bool(updates[cid].get('passed', False))
+                                    res['review_comment'] = str(updates[cid].get('review_comment', ""))
+                                    res['manual_review'] = True
+                                    
+                                    if "turns" in res and isinstance(res["turns"], list):
+                                        for t in res["turns"]:
+                                            t['passed'] = res['passed']
+                                            t['manual_review'] = True
+                                            
+                                    updated_count += 1
+                            
+                            if update_history_entry(entry_id, current_results):
+                                st.success(f"Saved {updated_count} cases!")
+                                time.sleep(1)
+                                st.rerun()
+                            else:
+                                st.error("Failed to save changes.")
+                        except Exception as e:
+                            st.error(f"Error saving: {e}")
             
             else:
                 if status == "running":

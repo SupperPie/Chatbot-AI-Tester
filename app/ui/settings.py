@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import json
+import time
 from chat_client import load_api_configs, get_chat_response
 
 def render_settings_page():
@@ -10,7 +11,21 @@ def render_settings_page():
     # Load configs (DB first, JSON fallback)
     configs = load_api_configs()
     
-    st.subheader("Endpoint List")
+    # 显示上次保存的结果消息（与标题同行）
+    title_col, msg_col = st.columns([1, 3])
+    with title_col:
+        st.subheader("Endpoint List")
+    with msg_col:
+        if "settings_save_msg" in st.session_state:
+            msg_type, msg_text = st.session_state.settings_save_msg
+            if msg_type == "success":
+                st.success(msg_text)
+            elif msg_type == "warning":
+                st.warning(msg_text)
+            elif msg_type == "error":
+                st.error(msg_text)
+            # 显示后清除，避免下次刷新时还显示
+            del st.session_state.settings_save_msg
     
     # Convert dict to list for editor
     data_list = []
@@ -61,6 +76,8 @@ def render_settings_page():
         # Convert back to dict
         new_configs = {}
         has_error = False
+        error_messages = []  # 收集所有错误消息
+        
         for _, row in edited_df.iterrows():
              name = row.get("Name")
              if name and str(name).strip():
@@ -87,12 +104,12 @@ def render_settings_page():
                      try:
                          rp = json.loads(rp_str)
                          if not isinstance(rp, dict):
-                             st.error(f"'{name}' 的 Request Params 必须是 JSON 对象（dict），当前类型: {type(rp).__name__}")
+                             error_messages.append(f"❌ '{name}' 的 Request Params 必须是 JSON 对象（dict），当前类型: {type(rp).__name__}")
                              has_error = True
                              continue
                          entry["request_params"] = rp
                      except json.JSONDecodeError as e:
-                         st.error(f"'{name}' 的 Request Params JSON 解析失败: {e}")
+                         error_messages.append(f"❌ '{name}' 的 Request Params JSON 解析失败: {e}")
                          has_error = True
                          continue
                  else:
@@ -100,15 +117,21 @@ def render_settings_page():
                  new_configs[str(name).strip()] = entry
         
         if has_error:
-            return
+            error_summary = "⚠️ 保存失败，请修正以下错误：\n" + "\n".join(error_messages)
+            st.session_state.settings_save_msg = ("error", error_summary)
+            st.rerun()
 
         # 保存到 DB + JSON 双写
+        db_success = False
+        json_success = False
+        
         try:
             from app.services.api_config_service import ApiConfigService
             service = ApiConfigService()
             service.save_all(new_configs)
+            db_success = True
         except Exception as e:
-            st.warning(f"DB 写入失败（已回退 JSON 保存）: {e}")
+            pass  # 在最后统一反馈
 
         try:
             from chat_client import CONFIG_FILE
@@ -123,10 +146,21 @@ def render_settings_page():
                 json_configs[k] = entry
             with open(CONFIG_FILE, "w", encoding="utf-8") as f:
                 json.dump(json_configs, f, indent=4, ensure_ascii=False)
-            st.success("Configuration saved successfully!")
-            st.rerun()
+            json_success = True
         except Exception as e:
-            st.error(f"Failed to save configuration: {e}")
+            pass  # 在最后统一反馈
+        
+        # 根据保存结果设置消息到 session_state，rerun 后在标题旁显示
+        if db_success and json_success:
+            st.session_state.settings_save_msg = ("success", "✅ Configuration saved successfully! (DB + JSON)")
+        elif db_success:
+            st.session_state.settings_save_msg = ("success", "✅ Saved to DB (JSON failed, but configs work)")
+        elif json_success:
+            st.session_state.settings_save_msg = ("warning", "⚠️ Saved to JSON only (DB save failed)")
+        else:
+            st.session_state.settings_save_msg = ("error", "❌ Failed to save to both DB and JSON. Check logs.")
+        
+        st.rerun()
 
     st.divider()
     
