@@ -1,6 +1,6 @@
 {
     "Agent Q&A": {
-        "url": "http://agent-question-and-answer.platform-ai.svc.dragon/stream",
+        "url": "http://172.21.9.45:10087/stream",
         "description": "Test description update",
         "type": "agent_qa"
     },
@@ -9,8 +9,23 @@
         "description": "Bundle API",
         "type": "bundle",
         "request_params": {
-            "context": "2026 瑞士巴塞尔艺术体验之旅\n商品详情"
+            "context": "马术体验课"
         }
+    },
+    "DC_Q&A": {
+        "url": "http://172.21.4.215:10087/stream",
+        "description": "DC 国际知识库问答",
+        "type": "dc_qa"
+    },
+    "Filght_agent": {
+        "url": "http://192.168.22.252:12306/flights/stream",
+        "description": "Filght_agent",
+        "type": "flight_agent"
+    },
+    "Fitness API": {
+        "url": "http://172.21.12.202:12320/fitness/stream",
+        "description": "Fitness API",
+        "type": "fitness"
     },
     "Flight API": {
         "url": "http://192.168.22.252:12306/flights/invoke",
@@ -48,16 +63,35 @@
         "description": "Trip Planner",
         "type": "trip_planner"
     },
+    "eSIM_agent": {
+        "url": "http://10.85.85.0/esim/stream",
+        "description": "eSIM_agent",
+        "type": "esim_agent"
+    },
+    "【UAT】Supervisor": {
+        "url": "https://dc-portal-h5-uk-uat.dragonpass.com/stream",
+        "description": "Supervisor",
+        "type": "ai_engineering"
+    },
     "劳斯莱斯": {
         "url": "http://192.168.25.247/v1/chat-messages",
         "description": "",
         "type": "dify",
-        "token": "app-4pWDPCJ9GeR9OYjF9l26JvVT"
+        "token": "app-WS1lc3odwLvGql87qjpNFiUB"
     },
     "机场礼遇": {
         "url": "https://air-assis-dev.dragonpass.com.cn/skills",
         "description": "Skills API",
-        "type": "skills"
+        "type": "skills",
+        "request_params": {
+            "channel": "zzAirport",
+            "mobile_no": "13249735538"
+        }
+    },
+    "机场礼遇（郑州）": {
+        "url": "https://air-assis-dev.dragonpass.com.cn/agent_faq_zzairport",
+        "description": "知识库问答（郑州机场）",
+        "type": "faq_zzairport"
     },
     "权益(中信)": {
         "url": "http://192.168.22.252:13579/stream",

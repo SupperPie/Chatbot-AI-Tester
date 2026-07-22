@@ -1099,14 +1099,7 @@ def render_testcases_page():
                 # Show results if completed
                 if job_data and job_data.get("status") == "completed":
                     st.toast(f"Completed! Ran {len(cases_to_run)} tests.", icon="🏃")
-                    st.success(f"Successfully ran {len(cases_to_run)} tests. View details in **Test Report**.")
-                    
-                    # Show simplified results result
-                    results = job_data.get("results", [])
-                    res_df = pd.DataFrame(results)
-                    cols = ["id", "input", "passed", "score", "reason"]
-                    cols = [c for c in cols if c in res_df.columns]
-                    st.dataframe(res_df[cols].style.format({"score": "{:.2f}"}), width="stretch")
+                    st.success(f"✅ Successfully ran {len(cases_to_run)} tests. View details in **Test Report**.")
                     
                 elif job_data and job_data.get("status") == "failed":
                     err_msg = job_data.get('error_message') or job_data.get('error') or 'Unknown error'
@@ -1216,6 +1209,13 @@ def _assertion_binding_dialog():
             current_assertions.append(new_ref)
             _apply_assertions_to_cases(ids, current_assertions)
             st.rerun()
+
+    # 完成按钮 - 关闭弹窗
+    st.markdown("---")
+    if st.button("✔ 完成", key="btn_finish_binding", type="primary", use_container_width=True):
+        st.session_state["show_assertion_binding"] = False
+        st.session_state.pop("assertion_binding_ids", None)
+        st.rerun()
 
 
 def _apply_assertions_to_cases(case_ids: list, assertions: list):

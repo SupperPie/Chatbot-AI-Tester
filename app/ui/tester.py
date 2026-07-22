@@ -199,8 +199,10 @@ def render_tester_page():
             use_container_width=True
         )
         
-        # 目录选择
-        save_category = 'root'
+        # 目录选择（必须在 save_clicked 判断之前获取）
+        save_category = None
+        save_clicked = False
+        
         try:
             from app.ui.components.category_selector import get_category_options
             cat_opts = get_category_options()
@@ -217,12 +219,19 @@ def render_tester_page():
                     st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
                     save_clicked = st.button("💾 Save to Library", type="primary", use_container_width=True)
             else:
+                save_category = None  # 无目录时设为 None
                 save_clicked = st.button("💾 Save to Library", type="primary")
-        except Exception:
+        except Exception as e:
+            save_category = None
             save_clicked = st.button("💾 Save to Library", type="primary")
+            st.warning(f"目录加载失败: {e}")
         
         # Save to Library
         if save_clicked:
+            # 确保 save_category 有值
+            if save_category is None:
+                st.warning("⚠️ 未选择目录，将保存到根目录")
+                save_category = None  # 明确设为 None，让数据库处理
             new_cases = edited_generated.to_dict(orient="records")
             
             # Format back to real JSON from string for criteria
@@ -259,6 +268,12 @@ def render_tester_page():
                 case["category_id"] = save_category
                     
                 clean_new_cases.append(case)
+            
+            # 调试信息：显示将要保存的目录
+            if save_category:
+                st.info(f"📂 将保存到目录: {save_category} (共 {len(clean_new_cases)} 条用例)")
+            else:
+                st.info(f"📂 将保存到根目录 (共 {len(clean_new_cases)} 条用例)")
 
             # Load existing
             existing_df = load_data()
@@ -312,9 +327,15 @@ def render_tester_page():
                         combined_df.at[idx, 'id'] = case['id']
                 
             except Exception as e:
-                st.warning(f"数据库同步失败: {e}")
+                st.error(f"❌ 数据库同步失败: {e}")
+                import traceback
+                st.code(traceback.format_exc())
+                return  # 失败时不清空、不 rerun
             
             final_df = combined_df
+            
+            # 保存成功后的处理
+            saved_count = len(new_cases)
             
             # Clear generated cases
             st.session_state.generated_cases = pd.DataFrame(columns=["id", "type", "turn_index", "input", "expected_output", "retrieval_context", "description", "tags"])
@@ -329,5 +350,7 @@ def render_tester_page():
                 content_df = final_df.drop(columns=["Select"], errors='ignore')
                 st.session_state.df_content_sig = content_df.to_json(orient='records', force_ascii=False)
             
-            st.success(f"✅ Saved {len(new_cases)} test cases to library!")
-            st.rerun()
+            st.success(f"✅ 成功保存 {saved_count} 条测试用例到用例库！")
+            st.info("💡 生成区已清空。如需继续生成，请重新填写需求后点击 Generate。已保存的用例可在 **Test Cases** 页面查看和管理。")
+            # 不再立即 rerun，让用户看到成功消息
+            # st.rerun()
