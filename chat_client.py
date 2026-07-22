@@ -101,8 +101,8 @@ TYPE_DEFAULTS = {
                     "hotelTypeCode": "",
                     "sortList": []
                 },
-                "ambiguous_fields": {},
-                "missing_fields": {}
+                "ambiguous_fields": [],
+                "missing_fields": []
             }
         }
     },
@@ -131,6 +131,38 @@ TYPE_DEFAULTS = {
                 "api_token": ""
             }
         }
+    },
+    "fitness": {
+        "request_params": {
+            "lob": "dc"
+        }
+    },
+    "flight_agent": {
+        "request_params": {
+            "lob": "DC",
+            "extra_args": {
+                "additionalProp1": {}
+            }
+        }
+    },
+    "esim_agent": {
+        "request_params": {
+            "lob": "dc",
+            "extra_args": {}
+        }
+    },
+    "faq_zzairport": {
+        "request_params": {
+            "stream_mode": "MESSAGES",
+            "anchor": "",
+            "location": "",
+            "mobile_no": "",
+            "decision": "",
+            "air_ticket_image_url": ""
+        }
+    },
+    "dc_qa": {
+        "request_params": {}
     }
 }
 
@@ -240,7 +272,7 @@ def get_bundle_response(message: str, url: str, user_id: str = None, session_id:
                         raw_chunks.append(json.dumps(data, ensure_ascii=False))  # 保存原始数据
                         
                         # 提取 AI 回复内容
-                        if data.get("type") == "message" and data.get("agent") == "bundle":
+                        if data.get("type") == "message":
                             content_obj = data.get("content", {})
                             if isinstance(content_obj, dict) and content_obj.get("type") == "ai":
                                 if not got_first_token:
@@ -249,12 +281,12 @@ def get_bundle_response(message: str, url: str, user_id: str = None, session_id:
                                 ai_content = content_obj.get("content")
                         
                         # 提取 bundle_list
-                        if data.get("type") == "done" and data.get("agent") == "bundle":
+                        if data.get("type") == "done":
                             data_obj = data.get("data", {})
                             if data_obj.get("bundle_list"):
                                 bundle_list = data_obj.get("bundle_list")
                                 
-                        if data.get("type") == "token" and data.get("agent") == "main":
+                        if data.get("type") == "token":
                              if not got_first_token:
                                  ttft = time.time() - start_time
                                  got_first_token = True
@@ -518,7 +550,7 @@ def get_limo_response(message: str, url: str, user_id: str = None, session_id: s
                         data = json.loads(json_str)
                         raw_chunks.append(json.dumps(data, ensure_ascii=False))
                         
-                        if data.get("type") == "token" and data.get("agent") == "main":
+                        if data.get("type") == "token":
                             content = data.get("content", "")
                             if content:
                                 if not got_first_token:
@@ -531,7 +563,7 @@ def get_limo_response(message: str, url: str, user_id: str = None, session_id: s
                         continue
                         
         if not final_answer:
-            final_answer = "Error: No main token content found."
+            final_answer = "Error: No token content found."
             
         return json.dumps({
             "result": final_answer, 
@@ -1308,6 +1340,454 @@ def get_agent_qa_response(message: str, url: str, user_id: str = None, session_i
         return f"Error: {e}"
 
 
+def get_fitness_response(message: str, url: str, user_id: str = None, session_id: str = None, extra_params: dict = None) -> str:
+    """Fitness API client
+
+    Request body uses 'query' field instead of 'message'.
+    Response: SSE stream with type=token and type=done events.
+    """
+    if user_id is None:
+        user_id = str(uuid.uuid4())
+    if session_id is None:
+        session_id = str(uuid.uuid4())[:8]
+
+    payload = {
+        "query": message,
+        "user_id": user_id,
+        "session_id": session_id,
+    }
+    if extra_params:
+        payload.update(extra_params)
+
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "*/*"
+    }
+
+    print(f"[Fitness] Sending request to {url} with query: {message}")
+
+    try:
+        start_time = time.time()
+        response = requests.post(url, json=payload, headers=headers, stream=True, timeout=600)
+
+        if not response.ok:
+            print(f"[Fitness] API Error {response.status_code}: {response.text}")
+            return f"❌ SERVER DETAIL ({response.status_code}): {response.text}"
+
+        final_answer = ""
+        inform_base = ""
+        raw_chunks = []
+        ttft = 0.0
+        got_first_token = False
+
+        for line in response.iter_lines():
+            if line:
+                decoded_line = line.decode('utf-8')
+                if decoded_line.startswith("data: "):
+                    json_str = decoded_line[6:]
+                    if json_str.strip() == "[DONE]":
+                        break
+
+                    try:
+                        data = json.loads(json_str)
+                        raw_chunks.append(json.dumps(data, ensure_ascii=False))
+
+                        msg_type = data.get("type")
+                        content = data.get("content", "")
+
+                        if msg_type == "token":
+                            if content:
+                                if not got_first_token:
+                                    ttft = time.time() - start_time
+                                    got_first_token = True
+                                final_answer += content
+                        elif msg_type == "done":
+                            if not got_first_token:
+                                ttft = time.time() - start_time
+                                got_first_token = True
+                            if content:
+                                final_answer = content
+                            # Extract fitness_list to inform_base
+                            response_data = data.get("data", {})
+                            fitness_list = response_data.get("fitness_list", {})
+                            if fitness_list:
+                                inform_base = json.dumps(fitness_list, ensure_ascii=False)
+
+                    except json.JSONDecodeError:
+                        raw_chunks.append(f"Decode Error: {json_str}")
+                        continue
+
+        if not final_answer:
+            final_answer = "Error: No response content found from Fitness API."
+
+        return json.dumps({
+            "result": final_answer,
+            "thinking": "",
+            "inform_base": inform_base,
+            "raw": "\n".join(raw_chunks),
+            "ttft": ttft
+        }, ensure_ascii=False)
+
+    except requests.exceptions.Timeout:
+        return "Error: Fitness API Request Timed Out (600s)"
+    except Exception as e:
+        print(f"[Fitness] Error: {e}")
+        return f"Error: {str(e)}"
+
+
+def get_flight_agent_response(message: str, url: str, user_id: str = None, session_id: str = None, extra_params: dict = None) -> str:
+    """Flight Agent API client
+
+    Request body uses 'query' field.
+    Response: SSE stream with type=token and type=done events.
+    """
+    if user_id is None:
+        user_id = str(uuid.uuid4())
+    if session_id is None:
+        session_id = str(uuid.uuid4())[:8]
+
+    payload = {
+        "query": message,
+        "user_id": user_id,
+        "session_id": session_id,
+    }
+    if extra_params:
+        payload.update(extra_params)
+
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+    }
+
+    print(f"[Flight Agent] Sending request to {url} with query: {message}")
+
+    try:
+        start_time = time.time()
+        response = requests.post(url, json=payload, headers=headers, stream=True, timeout=600)
+
+        if not response.ok:
+            print(f"[Flight Agent] API Error {response.status_code}: {response.text}")
+            return f"❌ SERVER DETAIL ({response.status_code}): {response.text}"
+
+        final_answer = ""
+        inform_base = ""
+        raw_chunks = []
+        ttft = 0.0
+        got_first_token = False
+
+        for line in response.iter_lines():
+            if line:
+                decoded_line = line.decode('utf-8')
+                if decoded_line.startswith("data: "):
+                    json_str = decoded_line[6:]
+                    if json_str.strip() == "[DONE]":
+                        break
+
+                    try:
+                        data = json.loads(json_str)
+                        raw_chunks.append(json.dumps(data, ensure_ascii=False))
+
+                        msg_type = data.get("type")
+                        content = data.get("content", "")
+
+                        if msg_type == "token":
+                            if content:
+                                if not got_first_token:
+                                    ttft = time.time() - start_time
+                                    got_first_token = True
+                                final_answer += content
+                        elif msg_type == "done":
+                            if not got_first_token:
+                                ttft = time.time() - start_time
+                                got_first_token = True
+                            if content:
+                                final_answer = content
+                            # Extract flight_list to inform_base
+                            response_data = data.get("data", {})
+                            flight_list = response_data.get("flight_list")
+                            if flight_list:
+                                inform_base = json.dumps(flight_list, ensure_ascii=False)
+                            else:
+                                # If no flight_list, include semantic_info
+                                meta_info = data.get("meta", {})
+                                semantic_info = meta_info.get("semantic_info", {})
+                                if semantic_info:
+                                    inform_base = json.dumps(semantic_info, ensure_ascii=False)
+
+                    except json.JSONDecodeError:
+                        raw_chunks.append(f"Decode Error: {json_str}")
+                        continue
+
+        if not final_answer:
+            final_answer = "Error: No response content found from Flight Agent."
+
+        return json.dumps({
+            "result": final_answer,
+            "thinking": "",
+            "inform_base": inform_base,
+            "raw": "\n".join(raw_chunks),
+            "ttft": ttft
+        }, ensure_ascii=False)
+
+    except requests.exceptions.Timeout:
+        return "Error: Flight Agent API Request Timed Out (600s)"
+    except Exception as e:
+        print(f"[Flight Agent] Error: {e}")
+        return f"Error: {str(e)}"
+
+
+def get_esim_agent_response(message: str, url: str, user_id: str = None, session_id: str = None, extra_params: dict = None) -> str:
+    """eSIM Agent API client
+
+    Request body uses 'query' field.
+    Response: SSE stream with type=token and type=done events.
+    """
+    if user_id is None:
+        user_id = str(uuid.uuid4())
+    if session_id is None:
+        session_id = str(uuid.uuid4())[:8]
+
+    payload = {
+        "query": message,
+        "user_id": user_id,
+        "session_id": session_id,
+    }
+    if extra_params:
+        payload.update(extra_params)
+
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "*/*"
+    }
+
+    print(f"[eSIM Agent] Sending request to {url} with query: {message}")
+
+    try:
+        start_time = time.time()
+        response = requests.post(url, json=payload, headers=headers, stream=True, timeout=600)
+
+        if not response.ok:
+            print(f"[eSIM Agent] API Error {response.status_code}: {response.text}")
+            return f"❌ SERVER DETAIL ({response.status_code}): {response.text}"
+
+        final_answer = ""
+        inform_base = ""
+        raw_chunks = []
+        ttft = 0.0
+        got_first_token = False
+
+        for line in response.iter_lines():
+            if line:
+                decoded_line = line.decode('utf-8')
+                if decoded_line.startswith("data: "):
+                    json_str = decoded_line[6:]
+                    if json_str.strip() == "[DONE]":
+                        break
+
+                    try:
+                        data = json.loads(json_str)
+                        raw_chunks.append(json.dumps(data, ensure_ascii=False))
+
+                        msg_type = data.get("type")
+                        content = data.get("content", "")
+
+                        if msg_type == "token":
+                            if content:
+                                if not got_first_token:
+                                    ttft = time.time() - start_time
+                                    got_first_token = True
+                                final_answer += content
+                        elif msg_type == "done":
+                            if not got_first_token:
+                                ttft = time.time() - start_time
+                                got_first_token = True
+                            if content:
+                                final_answer = content
+                            # Extract esim_list to inform_base
+                            response_data = data.get("data", {})
+                            esim_list = response_data.get("esim_list")
+                            if esim_list:
+                                inform_base = json.dumps(esim_list, ensure_ascii=False)
+                            else:
+                                # If no esim_list, include semantic_info
+                                meta_info = data.get("meta", {})
+                                semantic_info = meta_info.get("semantic_info", {})
+                                if semantic_info:
+                                    inform_base = json.dumps(semantic_info, ensure_ascii=False)
+
+                    except json.JSONDecodeError:
+                        raw_chunks.append(f"Decode Error: {json_str}")
+                        continue
+
+        if not final_answer:
+            final_answer = "Error: No response content found from eSIM Agent."
+
+        return json.dumps({
+            "result": final_answer,
+            "thinking": "",
+            "inform_base": inform_base,
+            "raw": "\n".join(raw_chunks),
+            "ttft": ttft
+        }, ensure_ascii=False)
+
+    except requests.exceptions.Timeout:
+        return "Error: eSIM Agent API Request Timed Out (600s)"
+    except Exception as e:
+        print(f"[eSIM Agent] Error: {e}")
+        return f"Error: {str(e)}"
+
+
+def get_faq_zzairport_response(message: str, url: str, user_id: str = None, session_id: str = None, extra_params: dict = None) -> str:
+    """FAQ 郑州机场 API client
+
+    Request body uses 'message' field.
+    Response: Standard JSON with 'answer' and 'tool_content' fields.
+    """
+    if user_id is None:
+        user_id = str(uuid.uuid4())
+
+    payload = {
+        "session_id": session_id or str(uuid.uuid4()),
+        "message": message,
+    }
+    if extra_params:
+        payload.update(extra_params)
+
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+    }
+
+    print(f"[FAQ_郑州机场] Sending request to {url} with message: {message}")
+
+    try:
+        start_time = time.time()
+        response = requests.post(url, json=payload, headers=headers, timeout=600)
+
+        if not response.ok:
+            print(f"[FAQ_郑州机场] API Error {response.status_code}: {response.text}")
+            return f"❌ SERVER DETAIL ({response.status_code}): {response.text}"
+
+        data = response.json()
+        ttft = time.time() - start_time
+
+        # Extract answer and tool_content
+        answer = data.get("answer", "")
+        tool_content = data.get("tool_content", [])
+
+        if not answer:
+            answer = "Error: No answer found in response."
+
+        return json.dumps({
+            "result": answer,
+            "thinking": "",
+            "inform_base": json.dumps(tool_content, ensure_ascii=False) if tool_content else "",
+            "raw": json.dumps(data, ensure_ascii=False),
+            "ttft": ttft
+        }, ensure_ascii=False)
+
+    except requests.exceptions.Timeout:
+        return "Error: FAQ_郑州机场 API Request Timed Out (600s)"
+    except Exception as e:
+        print(f"[FAQ_郑州机场] Error: {e}")
+        return f"Error: {str(e)}"
+
+
+def get_dc_qa_response(message: str, url: str, user_id: str = None, session_id: str = None, extra_params: dict = None) -> str:
+    """DC_QA API client
+
+    Request body uses 'query' field.
+    Response: SSE stream with type=token and type=done events.
+    """
+    if user_id is None:
+        user_id = str(uuid.uuid4())
+    if session_id is None:
+        session_id = str(uuid.uuid4())[:8]
+
+    payload = {
+        "user_id": user_id,
+        "session_id": session_id,
+        "query": message,
+    }
+    if extra_params:
+        payload.update(extra_params)
+
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+    }
+
+    print(f"[DC_QA] Sending request to {url} with query: {message}")
+
+    try:
+        start_time = time.time()
+        response = requests.post(url, json=payload, headers=headers, stream=True, timeout=600)
+
+        if not response.ok:
+            print(f"[DC_QA] API Error {response.status_code}: {response.text}")
+            return f"❌ SERVER DETAIL ({response.status_code}): {response.text}"
+
+        final_answer = ""
+        inform_base = ""
+        raw_chunks = []
+        ttft = 0.0
+        got_first_token = False
+
+        for line in response.iter_lines():
+            if line:
+                decoded_line = line.decode('utf-8')
+                if decoded_line.startswith("data: "):
+                    json_str = decoded_line[6:]
+                    if json_str.strip() == "[DONE]":
+                        break
+
+                    try:
+                        data = json.loads(json_str)
+                        raw_chunks.append(json.dumps(data, ensure_ascii=False))
+
+                        msg_type = data.get("type")
+                        content = data.get("content", "")
+
+                        if msg_type == "token":
+                            if content:
+                                if not got_first_token:
+                                    ttft = time.time() - start_time
+                                    got_first_token = True
+                                final_answer += content
+                        elif msg_type == "done":
+                            if not got_first_token:
+                                ttft = time.time() - start_time
+                                got_first_token = True
+                            # done 事件的 content 可能是嵌套对象
+                            if isinstance(content, dict):
+                                # 提取嵌套的响应内容
+                                if "intent" in content:
+                                    inform_base = json.dumps(content, ensure_ascii=False)
+                            elif isinstance(content, str) and content:
+                                final_answer = content
+
+                    except json.JSONDecodeError:
+                        raw_chunks.append(f"Decode Error: {json_str}")
+                        continue
+
+        if not final_answer:
+            final_answer = "Error: No response content found from DC_QA."
+
+        return json.dumps({
+            "result": final_answer,
+            "thinking": "",
+            "inform_base": inform_base,
+            "raw": "\n".join(raw_chunks),
+            "ttft": ttft
+        }, ensure_ascii=False)
+
+    except requests.exceptions.Timeout:
+        return "Error: DC_QA API Request Timed Out (600s)"
+    except Exception as e:
+        print(f"[DC_QA] Error: {e}")
+        return f"Error: {str(e)}"
+
+
 def get_hotel_response(message: str, url: str, user_id: str = None, session_id: str = None, extra_params: dict = None) -> str:
     """Hotel streaming API client
     
@@ -1375,7 +1855,7 @@ def get_hotel_response(message: str, url: str, user_id: str = None, session_id: 
                         content = data.get("content", "")
                         
                         # Handle token streaming (type=token, agent=main)
-                        if msg_type == "token" and agent == "main":
+                        if msg_type == "token":
                             if content:
                                 if not got_first_token:
                                     ttft = time.time() - start_time
@@ -1383,7 +1863,7 @@ def get_hotel_response(message: str, url: str, user_id: str = None, session_id: 
                                 final_answer += content
                         
                         # Handle done event (type=done, agent=hotel)
-                        elif msg_type == "done" and agent == "hotel":
+                        elif msg_type == "done":
                             if not got_first_token:
                                 ttft = time.time() - start_time
                                 got_first_token = True
@@ -1566,6 +2046,16 @@ def get_chat_response(message: str, api_name: str = "Bundle API", user_id: str =
         return get_translation_response(message, url=url, user_id=user_id, session_id=session_id, extra_params=extra_params)
     elif api_type == "hotel":
         return get_hotel_response(message, url=url, user_id=user_id, session_id=session_id, extra_params=extra_params)
+    elif api_type == "fitness":
+        return get_fitness_response(message, url=url, user_id=user_id, session_id=session_id, extra_params=extra_params)
+    elif api_type == "flight_agent":
+        return get_flight_agent_response(message, url=url, user_id=user_id, session_id=session_id, extra_params=extra_params)
+    elif api_type == "esim_agent":
+        return get_esim_agent_response(message, url=url, user_id=user_id, session_id=session_id, extra_params=extra_params)
+    elif api_type == "faq_zzairport":
+        return get_faq_zzairport_response(message, url=url, user_id=user_id, session_id=session_id, extra_params=extra_params)
+    elif api_type == "dc_qa":
+        return get_dc_qa_response(message, url=url, user_id=user_id, session_id=session_id, extra_params=extra_params)
     elif api_type == "dify_workflow":
         return get_dify_workflow_response(message, url=url, token=token, user_id=user_id, session_id=session_id, extra_params=extra_params)
     else:

@@ -23,7 +23,11 @@
         "type": "flight_agent"
     },
     "Fitness API": {
+<<<<<<< Updated upstream
         "url": "http://172.21.12.202:12320/fitness/stream",
+=======
+        "url": "http://192.168.22.252:12320/fitness/stream",
+>>>>>>> Stashed changes
         "description": "Fitness API",
         "type": "fitness"
     },
@@ -69,7 +73,11 @@
         "type": "esim_agent"
     },
     "【UAT】Supervisor": {
+<<<<<<< Updated upstream
         "url": "https://dc-portal-h5-uk-uat.dragonpass.com/stream",
+=======
+        "url": "https://ai-engineering-uat.dragonpass.com/dc/supervisor_init/stream",
+>>>>>>> Stashed changes
         "description": "Supervisor",
         "type": "ai_engineering"
     },
