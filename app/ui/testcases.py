@@ -353,10 +353,39 @@ def render_testcases_page():
         available_tags = get_all_tags(st.session_state.df)
 
         st.markdown("#### ⚙️ Management")
-        top_col1, top_col2, top_col3, top_col4 = st.columns([3, 1, 1, 1])
+        top_col1, top_col2, top_col3, top_col4 = st.columns([4, 0.7, 0.7, 0.7])
         with top_col1:
             available_apis = _cached_available_apis()
-            selected_api = st.selectbox("⚙️ API Endpoint", options=available_apis, index=0, key="page_api_select", label_visibility="collapsed")
+            sub_api, sub_thread_label, sub_thread_input = st.columns([3, 0.5, 0.6])
+            with sub_api:
+                selected_api = st.selectbox("⚙️ API Endpoint", options=available_apis, index=0, key="page_api_select", label_visibility="collapsed")
+            with sub_thread_label:
+                st.markdown(
+                    "<div style='padding-top: 8px; text-align: right; font-weight: 500; white-space: nowrap;'>Thread</div>",
+                    unsafe_allow_html=True,
+                )
+            with sub_thread_input:
+                if "page_max_workers_input" not in st.session_state:
+                    st.session_state["page_max_workers_input"] = "3"
+                st.text_input(
+                    "Thread",
+                    key="page_max_workers_input",
+                    placeholder="1-10, default 3",
+                    help="并发线程数（1-10，默认 3）。多轮对话仍串行执行。",
+                    label_visibility="collapsed",
+                )
+
+        def _get_max_workers() -> int:
+            raw = st.session_state.get("page_max_workers_input", "3")
+            try:
+                v = int(str(raw).strip())
+            except Exception:
+                return 3
+            if v < 1:
+                return 1
+            if v > 10:
+                return 10
+            return v
         with top_col2:
             move_to_category_clicked = st.button("📂 Move", width="stretch", key="btn_move_category") if ENABLE_CATEGORY_FEATURE else False
         with top_col3:
@@ -769,12 +798,16 @@ def render_testcases_page():
                 align='start',
                 show_total=True,
                 jump=True,
-                key=f"sac_testcases_pagination_{filter_category}"
+                key="sac_testcases_pagination"
             )
 
-            if current_page_idx != st.session_state.testcases_current_page:
-                st.session_state.testcases_current_page = current_page_idx
-                st.rerun(scope="app")
+            # 去抖：仅当组件返回值相对上次真正改变时才更新，避免和 index 参数
+            # 之间的不一致造成每次 rerender 都触发 st.rerun 的死循环。
+            _last_page = st.session_state.get('_sac_pagination_last_raw')
+            if current_page_idx != _last_page:
+                st.session_state['_sac_pagination_last_raw'] = current_page_idx
+                if current_page_idx != st.session_state.testcases_current_page:
+                    st.session_state.testcases_current_page = current_page_idx
 
         start_idx = (st.session_state.testcases_current_page - 1) * items_per_page
         end_idx = start_idx + items_per_page
@@ -1043,7 +1076,12 @@ def render_testcases_page():
             mgr = get_job_manager()
             
             # Start Job
-            job_id = mgr.run_background_job(cases_to_run, api_name=selected_api, execution_mode=execution_mode_val)
+            job_id = mgr.run_background_job(
+                cases_to_run,
+                api_name=selected_api,
+                execution_mode=execution_mode_val,
+                max_workers=_get_max_workers(),
+            )
             
             with execution_placeholder.container():
                 # Progress UI

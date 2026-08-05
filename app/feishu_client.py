@@ -1,10 +1,22 @@
+
 """
 飞书 API 客户端 - 用于导出测试报告到飞书表格
 """
 import os
+import json
 import requests
 from typing import List, Dict, Any, Optional
 from datetime import datetime
+
+
+def _json_escaped_bytes(val: str) -> int:
+    """计算字符串按 JSON 转义（ensure_ascii=False）后的 UTF-8 字节数。
+    飞书对单元格的 50000 bytes 限制是按 JSON payload 中该字段的实际字节计算的，
+    因此需要按 json.dumps 后的字节数判断，而不是原文 UTF-8 字节数。
+    """
+    if val is None:
+        return 2  # "" 两个引号
+    return len(json.dumps(val, ensure_ascii=False).encode("utf-8"))
 
 class FeishuClient:
     """飞书开放平台 API 客户端"""
@@ -192,21 +204,36 @@ def export_report_to_feishu(
             raise Exception("表格中没有工作表")
     
     # 转换报告数据为行格式（与 report 页面列一致）
-    # 飞书单元格限制 50000 bytes，超长字段做截断
-    MAX_CELL_BYTES = 45000  # 留 buffer
+    # 飞书单元格限制 50000 bytes（按 JSON 转义后的字节数计），超长字段做截断
+    MAX_CELL_BYTES = 49500  # 留 buffer
 
     def _truncate_cell(val: str) -> str:
-        """截断超长单元格内容，避免飞书写入失败"""
+        """截断超长单元格内容（按 JSON 转义后的字节数判断），避免飞书写入失败。
+
+        飞书对 cell 的字节限制是按 JSON payload 中该字段的字节计算的，
+        普通英文单字符在 JSON 中可能占 1 字节，但引号/反斜杠/控制字符
+        经过 JSON 转义后会膨胀为 \\" \\\\ \\n \\uXXXX 等，导致同一原文的
+        JSON 字节数远大于原文 UTF-8 字节数。这里使用二分收缩，
+        保证 json.dumps(result, ensure_ascii=False) 的字节数 <= MAX_CELL_BYTES。
+        """
         if not val:
             return val
-        val_bytes = val.encode("utf-8")
-        if len(val_bytes) <= MAX_CELL_BYTES:
+        suffix = " [...truncated]"
+        if _json_escaped_bytes(val) <= MAX_CELL_BYTES:
             return val
-        # 按字节截断（向前找最近的合法字符边界）
-        truncated = val_bytes[:MAX_CELL_BYTES].decode("utf-8", errors="ignore")
-        # 去掉末尾可能损坏的半个字符
-        truncated = truncated.rstrip()
-        return truncated + " [...truncated]"
+
+        # 二分查找最大可保留的原文字符数（按字符数，避免 UTF-8 半字符）
+        lo, hi = 0, len(val)
+        best = ""
+        while lo <= hi:
+            mid = (lo + hi) // 2
+            candidate = val[:mid] + suffix
+            if _json_escaped_bytes(candidate) <= MAX_CELL_BYTES:
+                best = candidate
+                lo = mid + 1
+            else:
+                hi = mid - 1
+        return best if best else (val[:1] + suffix)
 
     rows = []
     for item in report_data:
@@ -233,17 +260,17 @@ def export_report_to_feishu(
                     turn.get("turn", ""),
                     turn.get("user", ""),
                     turn.get("expected", ""),
-                    _truncate_cell(turn.get("actual", "")),
-                    _truncate_cell(str(turn.get("retrieval_context", ""))),
+                    turn.get("actual", ""),
+                    str(turn.get("retrieval_context", "")),
                     score_val,
                     "Pass" if item.get("passed") else "Fail",
                     assertion_result_str,
                     turn.get("ttft", 0),
                     turn.get("latency", 0),
-                    _truncate_cell(item.get("reason", "")),
+                    item.get("reason", ""),
                     "",  # review_comment
-                    _truncate_cell(turn.get("thinking", "")),
-                    _truncate_cell(turn.get("inform_base", "")),
+                    turn.get("thinking", ""),
+                    turn.get("inform_base", ""),
                     _truncate_cell(str(turn.get("raw", "")))
                 ]
                 rows.append(row)
@@ -258,17 +285,17 @@ def export_report_to_feishu(
                 "",  # turn_index
                 item.get("input", ""),
                 item.get("expected_output", ""),
-                _truncate_cell(item.get("actual_output", "")),
-                _truncate_cell(str(retrieval_context)),
+                item.get("actual_output", ""),
+                str(retrieval_context),
                 item.get("score", 0),
                 "Pass" if item.get("passed") else "Fail",
                 assertion_result_str,
                 item.get("ttft", 0),
                 item.get("latency", 0),
-                _truncate_cell(item.get("reason", "")),
+                item.get("reason", ""),
                 "",  # review_comment
-                _truncate_cell(item.get("thinking", "")),
-                _truncate_cell(item.get("inform_base", "")),
+                item.get("thinking", ""),
+                item.get("inform_base", ""),
                 _truncate_cell(str(item.get("raw", "")))
             ]
             rows.append(row)
@@ -282,6 +309,51 @@ def export_report_to_feishu(
         "Score", "Passed", "Assertion Result", "TTFT", "Latency", "Reason", 
         "Review Comment", "Thinking", "Inform Base", "Raw"
     ]]
+
+    # 导出前预检：定位超出飞书单元格 50000 bytes（按 JSON 转义后计算）的具体列
+    MAX_CELL_BYTES = 50000
+    oversized_cells = []
+    for row_idx, row in enumerate(rows):
+        case_id = str(row[0]) if len(row) > 0 else ""
+        turn = str(row[1]) if len(row) > 1 else ""
+        for col_idx, cell in enumerate(row):
+            txt = "" if cell is None else str(cell)
+            b = _json_escaped_bytes(txt)
+            if b > MAX_CELL_BYTES:
+                col_name = headers[0][col_idx] if col_idx < len(headers[0]) else f"col_{col_idx}"
+                oversized_cells.append({
+                    "row_index": row_idx,
+                    "case_id": case_id,
+                    "turn": turn,
+                    "column": col_name,
+                    "bytes": b
+                })
+
+    if oversized_cells:
+        top = sorted(oversized_cells, key=lambda x: x["bytes"], reverse=True)[:10]
+        detail = "\n".join(
+            [f"case_id={x['case_id']}, turn={x['turn']}, column={x['column']}, bytes={x['bytes']}" for x in top]
+        )
+
+        # 终端日志
+        print("[feishu-export-precheck] oversized cells detected:\n" + detail)
+
+        # 文件日志
+        try:
+            from pathlib import Path
+            log_path = Path(__file__).resolve().parents[1] / "data" / "export_debug.log"
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write(f"\n=== {datetime.now().isoformat()} ===\n")
+                f.write("[feishu-export-precheck] oversized cells detected:\n")
+                f.write(detail + "\n")
+        except Exception as log_err:
+            print(f"[feishu-export-precheck] write log failed: {log_err}")
+
+        raise Exception(
+            "导出前预检发现超长单元格（>50000 bytes），请先处理对应字段：\n" + detail
+        )
+
     client.append_rows_to_sheet(spreadsheet_token, sheet_id, headers)
     
     # 追加数据行

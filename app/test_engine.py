@@ -581,7 +581,10 @@ class TestEngine:
             "assertion_detail": assertion_detail,
         }
 
-    def run_batch(self, cases: List[Dict[str, Any]], api_name: str = "Skills", on_step_complete=None, should_stop=None, execution_mode: str = "full") -> List[Dict[str, Any]]:
+    def run_batch(self, cases: List[Dict[str, Any]], api_name: str = "Skills", on_step_complete=None, should_stop=None, execution_mode: str = "full", max_workers: int = 1) -> List[Dict[str, Any]]:
+        import concurrent.futures
+        import threading
+
         results = []
         
         # Group cases by ID to handle split multi-turn cases (rows with same ID)
@@ -603,20 +606,76 @@ class TestEngine:
         # Calculate total tasks for progress bar
         total_tasks = len(single_cases) + len(grouped_cases)
         completed_tasks = 0
+        completed_lock = threading.Lock()
 
-        # Run single turn cases
-        for case in single_cases:
+        def _run_single_case_safe(case):
+            """Wrapper: check stop before start, catch exceptions to avoid poisoning the pool."""
             if should_stop and should_stop():
-                break
+                return None
+            try:
+                return self.run_case(case, api_name=api_name, execution_mode=execution_mode)
+            except Exception as e:
+                # 兜底：单个 case 失败不能拖垮整个池
+                return {
+                    "case_id": case.get("id"),
+                    "turn_index": case.get("turn_index"),
+                    "input": case.get("input", ""),
+                    "expected_output": case.get("expected_output", ""),
+                    "actual_output": "",
+                    "retrieval_context": "",
+                    "score": 0,
+                    "reason": f"Exception in run_case: {e}",
+                    "passed": False,
+                    "thinking": "",
+                    "inform_base": "",
+                    "raw": "",
+                    "latency": 0,
+                    "ttft": 0,
+                    "assertion_detail": None,
+                }
+
+        # Run single turn cases (并发或串行)
+        if max_workers and max_workers > 1 and len(single_cases) > 1:
+            with concurrent.futures.ThreadPoolExecutor(
+                max_workers=max_workers,
+                thread_name_prefix="run_case",
+            ) as pool:
+                futures = {pool.submit(_run_single_case_safe, c): c for c in single_cases}
+                try:
+                    for fut in concurrent.futures.as_completed(futures):
+                        if should_stop and should_stop():
+                            # 取消尚未开始的任务；正在执行的会自然结束
+                            for f in futures:
+                                f.cancel()
+                            break
+                        res = fut.result()
+                        if res is None:
+                            continue
+                        results.append(res)
+                        with completed_lock:
+                            completed_tasks += 1
+                            idx = completed_tasks
+                        if on_step_complete:
+                            try:
+                                on_step_complete(res, idx, total_tasks)
+                            except Exception:
+                                pass
+                except Exception:
+                    # 主循环异常，取消未启动任务后重抛
+                    for f in futures:
+                        f.cancel()
+                    raise
+        else:
+            for case in single_cases:
+                if should_stop and should_stop():
+                    break
+                res = self.run_case(case, api_name=api_name, execution_mode=execution_mode)
+                results.append(res)
+                completed_tasks += 1
+                if on_step_complete:
+                    on_step_complete(res, completed_tasks, total_tasks)
             
-            res = self.run_case(case, api_name=api_name, execution_mode=execution_mode)
-            results.append(res)
-            
-            completed_tasks += 1
-            if on_step_complete:
-                on_step_complete(res, completed_tasks, total_tasks)
-            
-        # Run grouped multi-turn cases
+        # Run grouped multi-turn cases —— 保持串行（多轮上下文依赖顺序）
         for case_id, group in grouped_cases.items():
             if should_stop and should_stop():
                 break

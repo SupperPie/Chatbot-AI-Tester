@@ -182,10 +182,14 @@ def _render_tree(tree: list, service: CategoryService):
         key="sac_category_tree"
     )
 
+    # 使用"上次返回值"作为去抖基准，避免 sac.tree 每次 rerender 返回相同路径
+    # 却因为解析出的 flat index 与 current_selected_id 不一致而反复 rerun。
+    last_raw = st.session_state.get('_sac_category_tree_last_raw')
+    raw_signature = repr(selected_index_list)
+
     new_selected_id = current_selected_id
     if isinstance(selected_index_list, list) and len(selected_index_list) > 0:
         try:
-            # sac.tree 在层级节点上可能返回路径索引列表，最后一个才是当前叶子/目标节点
             sel_idx = int(selected_index_list[-1])
             new_selected_id = index_map.get(sel_idx, current_selected_id)
         except (ValueError, TypeError):
@@ -193,9 +197,12 @@ def _render_tree(tree: list, service: CategoryService):
     elif isinstance(selected_index_list, int):
         new_selected_id = index_map.get(selected_index_list, current_selected_id)
 
-    if new_selected_id != current_selected_id:
-        st.session_state.selected_category = new_selected_id
-        st.rerun()
+    # 仅当组件返回值相对上次真正发生变化时，才更新 session_state 并触发 rerun；
+    # Streamlit 遇到 widget 交互会自然 rerun，无需我们再手动调用 st.rerun()。
+    if raw_signature != last_raw:
+        st.session_state['_sac_category_tree_last_raw'] = raw_signature
+        if new_selected_id != current_selected_id:
+            st.session_state.selected_category = new_selected_id
 
     return st.session_state.get('selected_category', current_selected_id)
 

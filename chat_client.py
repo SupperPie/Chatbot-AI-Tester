@@ -842,7 +842,8 @@ def get_ai_engineering_response(message: str, url: str, user_id: str = None, ses
             print(f"[AI Engineering] API Error {response.status_code}: {response.text}")
             return f"❌ SERVER DETAIL ({response.status_code}): {response.text}"
             
-        final_answer = ""
+        answer_parts = []
+        thinking_parts = []
         raw_chunks = []
         
         ttft = 0.0
@@ -862,22 +863,28 @@ def get_ai_engineering_response(message: str, url: str, user_id: str = None, ses
 
                         msg_type = data.get("type")
                         content = data.get("content", "")
+                        is_thinking = bool(data.get("is_thinking", False))
                         
                         if msg_type == "content":
-                            # 流式输出中
+                            # 流式输出中：按 is_thinking 拆分到 thinking / answer
                             if content:
                                 if not got_first_token:
                                     ttft = time.time() - start_time
                                     got_first_token = True
-                                final_answer += content
+                                if is_thinking:
+                                    thinking_parts.append(content)
+                                else:
+                                    answer_parts.append(content)
                                     
                         elif msg_type == "done":
-                            # 流式结束，提取最终内容
+                            # 流式结束：done 帧的 content 通常是整段最终答复（可能包含 thinking），
+                            # 若已经通过 content 帧累积到 answer，则不覆盖，避免污染 thinking 拆分结果；
+                            # 仅在完全没累到 answer 时用 done 的 content 兜底。
                             if not got_first_token:
                                 ttft = time.time() - start_time
                                 got_first_token = True
-                            if content:
-                                final_answer = content
+                            if content and not answer_parts:
+                                answer_parts = [content]
                             break
 
                     except json.JSONDecodeError:
@@ -885,6 +892,8 @@ def get_ai_engineering_response(message: str, url: str, user_id: str = None, ses
                         continue
         
         raw_full_str = "\n".join(raw_chunks)
+        final_answer = "".join(answer_parts)
+        thinking_text = "".join(thinking_parts)
         
         if not final_answer:
             if raw_chunks:
@@ -894,7 +903,7 @@ def get_ai_engineering_response(message: str, url: str, user_id: str = None, ses
 
         return json.dumps({
             "result": final_answer, 
-            "thinking": "",
+            "thinking": thinking_text,
             "inform_base": "",
             "raw": raw_full_str,
             "ttft": ttft

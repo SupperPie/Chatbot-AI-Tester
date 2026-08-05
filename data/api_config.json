@@ -9,11 +9,11 @@
         "description": "Bundle API",
         "type": "bundle",
         "request_params": {
-            "context": "马术体验课"
+            "context": "Frieze Seoul × 光州双年展之旅"
         }
     },
     "DC_Q&A": {
-        "url": "http://172.21.4.215:10087/stream",
+        "url": "http://172.21.11.101:10087/stream",
         "description": "DC 国际知识库问答",
         "type": "dc_qa"
     },
@@ -23,11 +23,7 @@
         "type": "flight_agent"
     },
     "Fitness API": {
-<<<<<<< Updated upstream
-        "url": "http://172.21.12.202:12320/fitness/stream",
-=======
         "url": "http://192.168.22.252:12320/fitness/stream",
->>>>>>> Stashed changes
         "description": "Fitness API",
         "type": "fitness"
     },
@@ -35,11 +31,6 @@
         "url": "http://192.168.22.252:12306/flights/invoke",
         "description": "Filght",
         "type": "flight"
-    },
-    "Hotel API": {
-        "url": "http://192.168.22.252:10010/stream",
-        "description": "Agent Hotel",
-        "type": "hotel"
     },
     "Limo API": {
         "url": "http://192.168.22.252:10089/limo/stream",
@@ -55,7 +46,10 @@
     "Supervisor Agent": {
         "url": "https://ai-engineering-test.dragonpass.com.cn/stream",
         "description": "Supervisor",
-        "type": "ai_engineering"
+        "type": "ai_engineering",
+        "request_params": {
+            "lob": "dc"
+        }
     },
     "Translation": {
         "url": "http://192.168.22.252:12315/translation/stream",
@@ -67,19 +61,23 @@
         "description": "Trip Planner",
         "type": "trip_planner"
     },
+    "[UAT]Hotel API": {
+        "url": "https://ai-engineering-uat.dragonpass.com/dc/hotel_agent/stream",
+        "description": "Agent Hotel",
+        "type": "hotel"
+    },
     "eSIM_agent": {
         "url": "http://10.85.85.0/esim/stream",
         "description": "eSIM_agent",
         "type": "esim_agent"
     },
     "【UAT】Supervisor": {
-<<<<<<< Updated upstream
-        "url": "https://dc-portal-h5-uk-uat.dragonpass.com/stream",
-=======
         "url": "https://ai-engineering-uat.dragonpass.com/dc/supervisor_init/stream",
->>>>>>> Stashed changes
         "description": "Supervisor",
-        "type": "ai_engineering"
+        "type": "ai_engineering",
+        "request_params": {
+            "lob": "dc"
+        }
     },
     "劳斯莱斯": {
         "url": "http://192.168.25.247/v1/chat-messages",
@@ -88,13 +86,14 @@
         "token": "app-WS1lc3odwLvGql87qjpNFiUB"
     },
     "机场礼遇": {
-        "url": "https://air-assis-dev.dragonpass.com.cn/skills",
+        "url": "https://air-assis-test.dragonpass.com.cn/skills",
         "description": "Skills API",
-        "type": "skills",
-        "request_params": {
-            "channel": "zzAirport",
-            "mobile_no": "13249735538"
-        }
+        "type": "skills"
+    },
+    "机场礼遇（广州）": {
+        "url": "https://air-assis-test.dragonpass.com.cn/agent_faq_can_airport",
+        "description": "知识库问答（广州机场）",
+        "type": "faq_can_airport"
     },
     "机场礼遇（郑州）": {
         "url": "https://air-assis-dev.dragonpass.com.cn/agent_faq_zzairport",

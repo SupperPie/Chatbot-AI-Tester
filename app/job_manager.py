@@ -57,7 +57,7 @@ class JobManager:
             except Exception as e:
                 print(f"Error detecting stale jobs: {e}")
 
-    def run_background_job(self, cases: List[Dict], api_name: str, execution_mode: str = "full") -> str:
+    def run_background_job(self, cases: List[Dict], api_name: str, execution_mode: str = "full", max_workers: int = 5) -> str:
         """
         Starts a background job.
         Returns the report_id (job_id).
@@ -74,11 +74,12 @@ class JobManager:
         self._create_history_entry(report_id, api_name, len(cases), case_ids=case_ids_snapshot)
         
         # 2. Start Thread
-        thread = threading.Thread(target=self._worker, args=(report_id, cases, api_name, execution_mode))
+        thread = threading.Thread(target=self._worker, args=(report_id, cases, api_name, execution_mode, max_workers))
         thread.daemon = True
         self.active_jobs[report_id] = {
             "thread": thread,
-            "cancelled": False
+            "cancelled": False,
+            "max_workers": max_workers,
         }
         thread.start()
         
@@ -94,7 +95,7 @@ class JobManager:
             self._finalize_job(report_id, status="cancelled", error="Cancelled by user (job was stale)")
             print(f"Job {report_id} cancelled (stale job, no active thread).")
 
-    def continue_job(self, report_id: str) -> Dict[str, Any]:
+    def continue_job(self, report_id: str, max_workers: int = 5) -> Dict[str, Any]:
         """续跑一个 cancelled / interrupted / failed 的 Job。
         
         返回: {"ok": bool, "message": str, "remaining": int}
@@ -172,12 +173,13 @@ class JobManager:
         
         thread = threading.Thread(
             target=self._worker,
-            args=(report_id, remaining_cases, api_name, "full")
+            args=(report_id, remaining_cases, api_name, "full", max_workers)
         )
         thread.daemon = True
         self.active_jobs[report_id] = {
             "thread": thread,
-            "cancelled": False
+            "cancelled": False,
+            "max_workers": max_workers,
         }
         thread.start()
         
@@ -202,7 +204,7 @@ class JobManager:
             print(f"Error reloading cases: {e}")
             return []
 
-    def _worker(self, report_id: str, cases: List[Dict], api_name: str, execution_mode: str = "full"):
+    def _worker(self, report_id: str, cases: List[Dict], api_name: str, execution_mode: str = "full", max_workers: int = 1):
         # Callback for incremental updates
         def on_step_complete(case_result: Dict, current_count: int, total_count: int):
             self._update_job_progress(report_id, case_result, current_count, total_count)
@@ -215,7 +217,7 @@ class JobManager:
 
         try:
             engine = TestEngine()
-            engine.run_batch(cases, api_name=api_name, on_step_complete=on_step_complete, should_stop=should_stop, execution_mode=execution_mode)
+            engine.run_batch(cases, api_name=api_name, on_step_complete=on_step_complete, should_stop=should_stop, execution_mode=execution_mode, max_workers=max_workers)
             
             if should_stop():
                  self._finalize_job(report_id, status="cancelled")

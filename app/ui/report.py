@@ -8,6 +8,20 @@ from app.utils import export_pdf, delete_reports, run_tests_sync, save_history, 
 from chat_client import get_available_apis
 
 
+def _read_max_workers() -> int:
+    """从 testcases 页面的 Thread text_input 读取并 clamp 到 1-10。"""
+    raw = st.session_state.get("page_max_workers_input", "3")
+    try:
+        v = int(str(raw).strip())
+    except Exception:
+        return 3
+    if v < 1:
+        return 1
+    if v > 10:
+        return 10
+    return v
+
+
 def render_report_page():
     st.title("📊 Test Report History")
 
@@ -43,14 +57,54 @@ def render_report_page():
     ))
     api_filter_options = ["All"] + all_apis_in_history
 
-    f_col1, f_col2, f_col3 = st.columns([2, 2, 1])
+    f_col1, f_col2, f_col3, f_col4 = st.columns([2.2, 2.6, 1.1, 0.5])
     with f_col1:
-        filter_date = st.date_input("Date", value=None, key="rpt_filter_date", label_visibility="collapsed",
-                                    help="Filter by date")
+        filter_date = st.date_input(
+            "📅 Date",
+            value=None,
+            key="rpt_filter_date",
+            help="按日期筛选（YYYY/MM/DD）",
+        )
     with f_col2:
-        filter_api = st.selectbox("API", api_filter_options, key="rpt_filter_api", label_visibility="collapsed")
+        filter_api = st.selectbox(
+            "🔌 API",
+            api_filter_options,
+            key="rpt_filter_api",
+            help="按接口筛选",
+        )
     with f_col3:
-        if st.button("Clear Filters", use_container_width=True):
+        # 每页数量放到 filter 同一行，视觉上属于「查询设置」
+        _page_size_default = st.session_state.get("report_page_size", 10)
+        _opts = [10, 20, 50]
+        if _page_size_default not in _opts:
+            _opts.append(_page_size_default)
+            _opts.sort()
+        new_page_size = st.selectbox(
+            "每页",
+            _opts,
+            index=_opts.index(_page_size_default),
+            key="rpt_page_size_sel",
+            help="每页显示的报告数量",
+        )
+        if new_page_size != _page_size_default:
+            st.session_state.report_page_size = new_page_size
+            st.session_state.report_page = 1
+            st.rerun()
+    with f_col4:
+        # Clear 按钮做成小图标按钮，仅在有生效筛选时高亮
+        _has_filter = (
+            st.session_state.get("rpt_filter_date") is not None
+            or st.session_state.get("rpt_filter_api", "All") != "All"
+        )
+        st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
+        if st.button(
+            "🗑",
+            key="rpt_clear_filters_btn",
+            help="清除所有筛选条件",
+            type="primary" if _has_filter else "secondary",
+            use_container_width=True,
+            disabled=not _has_filter,
+        ):
             for _k in ['rpt_filter_date', 'rpt_filter_api']:
                 if _k in st.session_state:
                     del st.session_state[_k]
@@ -95,17 +149,16 @@ def render_report_page():
     end_idx = min(start_idx + page_size, total)
     page_history = filtered_history[start_idx:end_idx]
 
-    # Stats + page size row
-    s_col1, s_col2 = st.columns([3, 1])
-    with s_col1:
-        st.caption(f"Showing {start_idx + 1}–{end_idx} of {total} reports · Expand a report to view details.")
-    with s_col2:
-        new_page_size = st.selectbox("Per page", [10, 20], index=[10, 20].index(page_size),
-                                     key="rpt_page_size_sel", label_visibility="collapsed")
-        if new_page_size != page_size:
-            st.session_state.report_page_size = new_page_size
-            st.session_state.report_page = 1
-            st.rerun()
+    # Stats row（Per page 已合并到 filter 栏）
+    _active_bits = []
+    if filter_date is not None:
+        _active_bits.append(f"📅 {filter_date.strftime('%Y-%m-%d')}")
+    if filter_api != "All":
+        _active_bits.append(f"🔌 {filter_api}")
+    _active_str = f" · 筛选：{' | '.join(_active_bits)}" if _active_bits else ""
+    st.caption(
+        f"Showing {start_idx + 1}–{end_idx} of {total} reports{_active_str} · Expand a report to view details."
+    )
 
     # Check if any job is running to decide on auto-refresh
     any_running = any(e.get("status") == "running" for e in page_history)
@@ -165,6 +218,7 @@ def render_report_page():
                     remaining = total_n - completed_n if total_n > completed_n else 0
                     if remaining > 0:
                         st.info(f"已完成 {completed_n}/{total_n} 条，剩余 {remaining} 条可通过 Continue 续跑。")
+                        st.caption("提示：并发执行时已完成的用例不一定按 ID 顺序排列，remaining 按集合差集计算。")
                 else:
                     st.caption("此 Job 创建于功能上线前，无 case_ids 快照，仅支持 Rerun。")
             elif status == "cancelled":
@@ -174,6 +228,7 @@ def render_report_page():
                     remaining = total_n - completed_n if total_n > completed_n else 0
                     if remaining > 0:
                         st.info(f"已取消。已完成 {completed_n}/{total_n}，剩余 {remaining} 条可通过 Continue 续跑。")
+                        st.caption("提示：并发执行时已完成的用例不一定按 ID 顺序排列，remaining 按集合差集计算。")
 
             # --------------------------
             # Action Buttons Row 1: Report Management
@@ -233,7 +288,7 @@ def render_report_page():
                             if st.button("▶ Continue", key=f"btn_cont_{entry_id}", use_container_width=True, help="从断点续跑，结果合并到当前 report"):
                                 from app.utils import get_job_manager
                                 mgr = get_job_manager()
-                                result = mgr.continue_job(entry_id)
+                                result = mgr.continue_job(entry_id, max_workers=_read_max_workers())
                                 if result.get("ok"):
                                     st.success(result.get("message", "Continue started"))
                                 else:
@@ -295,7 +350,12 @@ def render_report_page():
                                 from app.utils import get_job_manager
                                 mgr = get_job_manager()
                                 target_api = st.session_state.get(f"api_sel_{entry_id}", "Bundle API")
-                                job_id = mgr.run_background_job(unique_cases_to_rerun, api_name=target_api, execution_mode="full")
+                                job_id = mgr.run_background_job(
+                                    unique_cases_to_rerun,
+                                    api_name=target_api,
+                                    execution_mode="full",
+                                    max_workers=_read_max_workers(),
+                                )
                                 
                                 st.success(f"Rerun started! Job ID: {job_id}")
                                 time.sleep(1)
