@@ -62,7 +62,7 @@
         "type": "trip_planner"
     },
     "[UAT]Hotel API": {
-        "url": "https://ai-engineering-uat.dragonpass.com/dc/hotel_agent/stream",
+        "url": "http://agent-hotel.platform-ai.svc.dragon/stream",
         "description": "Agent Hotel",
         "type": "hotel"
     },

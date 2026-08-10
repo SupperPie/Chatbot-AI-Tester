@@ -301,67 +301,8 @@ def render_report_page():
                         rerun_clicked = st.button("▶ Rerun", key=f"btn_rerun_{entry_id}", use_container_width=True)
                     
                     if rerun_clicked:
-                        res_df_curr = pd.DataFrame(entry.get('results', []))
-                        if not res_df_curr.empty:
-                            from app.utils import load_data
-                            main_df = load_data()
-                            
-                            cases_to_rerun = []
-                            for _, row in res_df_curr.iterrows():
-                                cid = row.get("case_id")
-                                # Find master definitions to get the freshest expected_output and criteria
-                                mask = (main_df['id'] == cid)
-                                
-                                if mask.any():
-                                    live_rows = main_df[mask]
-                                    
-                                    # Handle Multi-turn grouping natively like test_engine run_batch expects
-                                    if len(live_rows) > 1:
-                                        # It's a reconstructed multi-turn array from live database
-                                        for _, m_row in live_rows.iterrows():
-                                            cases_to_rerun.append(m_row.to_dict())
-                                            # We only want to process the multi-turn group once per CID
-                                        # To prevent duplicating if report had multiple turns listed as rows, 
-                                        # break out if we've already added this CID (we must deduplicate CIDs in report loop first)
-                                    else:
-                                        cases_to_rerun.append(live_rows.iloc[0].to_dict())
-                                else:
-                                    # Fallback to historical snapshot if deleted from master testcases
-                                    cases_to_rerun.append({
-                                        "id": cid,
-                                        "input": row.get("input", ""),
-                                        "expected_output": row.get("expected_output", ""),
-                                        "type": row.get("type", "single_turn"),
-                                        "turns": row.get("turns", []) 
-                                    })
-                                    
-                            # Remove duplicate dictionaries if CID had multiple lines in the old report parsing logic
-                            # (Python dicts aren't hashable, so we filter by unique ID + turn_index)
-                            seen = set()
-                            unique_cases_to_rerun = []
-                            for c in cases_to_rerun:
-                                t_idx = str(c.get("turn_index", "0"))
-                                unique_key = f"{c.get('id')}_{t_idx}"
-                                if unique_key not in seen:
-                                    seen.add(unique_key)
-                                    unique_cases_to_rerun.append(c)
-                            
-                            try:
-                                from app.utils import get_job_manager
-                                mgr = get_job_manager()
-                                target_api = st.session_state.get(f"api_sel_{entry_id}", "Bundle API")
-                                job_id = mgr.run_background_job(
-                                    unique_cases_to_rerun,
-                                    api_name=target_api,
-                                    execution_mode="full",
-                                    max_workers=_read_max_workers(),
-                                )
-                                
-                                st.success(f"Rerun started! Job ID: {job_id}")
-                                time.sleep(1)
-                                st.rerun()
-                            except Exception as e:
-                                st.error(f"Rerun failed: {e}")
+                        # 延迟到 data_editor 渲染后再消费，读取用户勾选
+                        st.session_state[f"pending_rerun_{entry_id}"] = True
             with mgmt_col4:
                 # EXPORT TO FEISHU BUTTON
                 if status != "running":
@@ -540,8 +481,8 @@ def render_report_page():
                         st.session_state[f"tbl_ver_{entry_id}"] = tbl_key_suffix + 1
                         st.rerun()
                 
-                # 根据 session_state 中的全选状态设置 Select 列
-                select_all_state = st.session_state.get(f"select_all_{entry_id}")
+                # 根据 session_state 中的全选状态设置 Select 列（消费一次即清，避免每次 rerun 都覆盖用户勾选）
+                select_all_state = st.session_state.pop(f"select_all_{entry_id}", None)
                 if select_all_state is True:
                     display_res_df["Select"] = True
                 elif select_all_state is False:
@@ -577,6 +518,66 @@ def render_report_page():
                     hide_index=True,
                     key=f"hist_tbl_{entry_id}_v{tbl_key_suffix}"
                 )
+
+
+                # --------------------------
+                # Consume pending Rerun (must run AFTER data_editor so we can read Select column)
+                # --------------------------
+                if st.session_state.pop(f"pending_rerun_{entry_id}", False):
+                    if edited_df is None or edited_df.empty:
+                        st.warning("No results to rerun.")
+                    else:
+                        selected_rerun = edited_df[edited_df["Select"] == True]
+                        if selected_rerun.empty:
+                            st.warning("Please select at least one case to rerun (check the Select column).")
+                        else:
+                            from app.utils import load_data
+                            main_df = load_data()
+
+                            cases_to_rerun = []
+                            for _, row in selected_rerun.iterrows():
+                                cid = row.get("case_id")
+                                mask = (main_df['id'] == cid)
+                                if mask.any():
+                                    live_rows = main_df[mask]
+                                    if len(live_rows) > 1:
+                                        for _, m_row in live_rows.iterrows():
+                                            cases_to_rerun.append(m_row.to_dict())
+                                    else:
+                                        cases_to_rerun.append(live_rows.iloc[0].to_dict())
+                                else:
+                                    cases_to_rerun.append({
+                                        "id": cid,
+                                        "input": row.get("input", ""),
+                                        "expected_output": row.get("expected_output", ""),
+                                        "type": row.get("type", "single_turn"),
+                                        "turns": row.get("turns", []),
+                                    })
+
+                            seen = set()
+                            unique_cases_to_rerun = []
+                            for c in cases_to_rerun:
+                                t_idx = str(c.get("turn_index", "0"))
+                                unique_key = f"{c.get('id')}_{t_idx}"
+                                if unique_key not in seen:
+                                    seen.add(unique_key)
+                                    unique_cases_to_rerun.append(c)
+
+                            try:
+                                from app.utils import get_job_manager
+                                mgr = get_job_manager()
+                                target_api = st.session_state.get(f"api_sel_{entry_id}", "Bundle API")
+                                job_id = mgr.run_background_job(
+                                    unique_cases_to_rerun,
+                                    api_name=target_api,
+                                    execution_mode="full",
+                                    max_workers=_read_max_workers(),
+                                )
+                                st.success(f"Rerun started for {len(unique_cases_to_rerun)} case(s)! Job ID: {job_id}")
+                                time.sleep(1)
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Rerun failed: {e}")
 
 
                 # --------------------------

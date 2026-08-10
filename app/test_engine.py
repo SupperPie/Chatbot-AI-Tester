@@ -341,7 +341,7 @@ class TestEngine:
         fallback['__raw_lines__'] = [fallback]
         return fallback
 
-    def run_case(self, case_data: Dict[str, Any], api_name: str = "Skills", execution_mode: str = "full") -> Dict[str, Any]:
+    def run_case(self, case_data: Dict[str, Any], api_name: str = "Skills", execution_mode: str = "full", should_stop=None) -> Dict[str, Any]:
         """Runs a single test case and returns the result.
         
         execution_mode: "semantic" | "assertion" | "full"
@@ -491,7 +491,11 @@ class TestEngine:
                 await correctness_m.a_measure(tc)
                 correctness_score = correctness_m.score
                 correctness_reason = correctness_m.reason
-                
+
+                # 在两个 metric 之间检查 stop：若已请求停止，跳过 faithfulness
+                if should_stop and should_stop():
+                    return (correctness_score, correctness_reason, None, "Cancelled before faithfulness", (correctness_score >= 0.5))
+
                 faith_score = None
                 faith_reason = None
                 if has_context and faithfulness_m is not None:
@@ -542,6 +546,9 @@ class TestEngine:
                         assertion_detail = result
                     else:
                         score, reason, faith_score, faith_reason, passed = result
+                    # 收到取消信号立即短路后续 futures，避免继续等待
+                    if should_stop and should_stop():
+                        break
                 except concurrent.futures.TimeoutError:
                     if name == 'assertion':
                         assertion_detail = {"passed": False, "score": 0, "total": 0, "passed_count": 0, 
@@ -613,7 +620,7 @@ class TestEngine:
             if should_stop and should_stop():
                 return None
             try:
-                return self.run_case(case, api_name=api_name, execution_mode=execution_mode)
+                return self.run_case(case, api_name=api_name, execution_mode=execution_mode, should_stop=should_stop)
             except Exception as e:
                 # 兜底：单个 case 失败不能拖垮整个池
                 return {
@@ -669,7 +676,7 @@ class TestEngine:
             for case in single_cases:
                 if should_stop and should_stop():
                     break
-                res = self.run_case(case, api_name=api_name, execution_mode=execution_mode)
+                res = self.run_case(case, api_name=api_name, execution_mode=execution_mode, should_stop=should_stop)
                 results.append(res)
                 completed_tasks += 1
                 if on_step_complete:
@@ -709,7 +716,7 @@ class TestEngine:
             base_case["input"] = group[0].get("input", "") # For ID title purpose
             
             # Result depends on group execution
-            res = self.run_multi_turn_case(base_case, api_name=api_name)
+            res = self.run_multi_turn_case(base_case, api_name=api_name, should_stop=should_stop)
             results.append(res)
             
             completed_tasks += 1
@@ -718,7 +725,7 @@ class TestEngine:
             
         return results
     
-    def run_multi_turn_case(self, case_data: Dict[str, Any], api_name: str = "Skills") -> Dict[str, Any]:
+    def run_multi_turn_case(self, case_data: Dict[str, Any], api_name: str = "Skills", should_stop=None) -> Dict[str, Any]:
         """Runs a multi-turn conversation test case using ConversationalGEval for overall scoring.
         
         Args:
@@ -745,6 +752,8 @@ class TestEngine:
         
         # Phase 1: Execute all API calls and collect responses
         for turn in conversation:
+            if should_stop and should_stop():
+                break
             turn_num = turn.get("turn", len(turn_results) + 1)
             user_message = turn.get("user", "")
             expected = turn.get("expected", "")
