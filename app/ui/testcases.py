@@ -502,7 +502,7 @@ def render_testcases_page():
                  except Exception as e:
                      st.error(f"Template not found: {e}")
              
-                 st.info("Upload CSV/JSON with `input`, `expected_output`, `description`(optional).")
+                 st.info("Upload CSV/JSON with `input`, `expected_output`, `description`(optional), `priority`(optional).")
                  uploaded_file = st.file_uploader("Upload File", type=["csv", "json"], key="popover_uploader")
              
                  if uploaded_file is not None:
