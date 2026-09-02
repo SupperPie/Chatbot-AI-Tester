@@ -558,6 +558,24 @@ def render_testcases_page():
                                 # 设置 category_id（导入到指定目录）
                                 import_df["category_id"] = import_category
 
+                                # 规范化 turn_index：NaN → 1
+                                if "turn_index" in import_df.columns:
+                                    def _safe_ti(v):
+                                        try:
+                                            if pd.isna(v): return 1
+                                        except (TypeError, ValueError):
+                                            return 1
+                                        try: return int(v)
+                                        except: return 1
+                                    import_df["turn_index"] = import_df["turn_index"].apply(_safe_ti)
+                                else:
+                                    import_df["turn_index"] = 1
+                                # 规范化 type：空值 → single
+                                if "type" not in import_df.columns:
+                                    import_df["type"] = "single"
+                                else:
+                                    import_df["type"] = import_df["type"].fillna("single").replace("", "single")
+
                                 # 确保 import_df 有必要的列（对齐 current_df，避免 concat 后缺列）
                                 current_df = st.session_state.df.drop(columns=["Select", "__row_key"], errors='ignore')
                                 for col in current_df.columns:
@@ -580,7 +598,12 @@ def render_testcases_page():
                                     # Create a dict mapping ID to index in current_df for fast lookup
                                     # Multi-turn: key by (id, turn_index)
                                     def _row_key(r):
-                                        return (str(r.get("id","")), int(r.get("turn_index") or 1))
+                                        ti = r.get("turn_index", 1)
+                                        try:
+                                            ti = 1 if ti is None or (isinstance(ti, float) and pd.isna(ti)) else int(ti)
+                                        except (TypeError, ValueError):
+                                            ti = 1
+                                        return (str(r.get("id","")), ti)
                                     key_to_index = {}
                                     for idx, row in current_df.iterrows():
                                         key_to_index[_row_key(row)] = idx
@@ -622,8 +645,12 @@ def render_testcases_page():
                                         last_id = None
                                         for d in new_records:
                                             d.pop("id", None)
-                                            ti = int(d.get("turn_index") or 1)
-                                            rtype = d.get("type", "single")
+                                            ti = d.get("turn_index", 1)
+                                            try:
+                                                ti = 1 if ti is None or (isinstance(ti, float) and pd.isna(ti)) else int(ti)
+                                            except (TypeError, ValueError):
+                                                ti = 1
+                                            rtype = d.get("type", "single") or "single"
                                             if rtype == "multi_turn" and ti > 1 and last_id is not None:
                                                 d["id"] = last_id
                                             else:
@@ -672,8 +699,12 @@ def render_testcases_page():
                                     new_rows = []
                                     for _, row in import_df.iterrows():
                                         d = row.to_dict()
-                                        ti = int(d.get("turn_index") or 1)
-                                        rtype = d.get("type", "single")
+                                        ti = d.get("turn_index", 1)
+                                        try:
+                                            ti = 1 if ti is None or (isinstance(ti, float) and pd.isna(ti)) else int(ti)
+                                        except (TypeError, ValueError):
+                                            ti = 1
+                                        rtype = d.get("type", "single") or "single"
                                         if rtype == "multi_turn" and ti > 1 and last_id is not None:
                                             d["id"] = last_id
                                         else:
