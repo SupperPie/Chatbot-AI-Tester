@@ -502,7 +502,7 @@ def render_testcases_page():
                  except Exception as e:
                      st.error(f"Template not found: {e}")
              
-                 st.info("Upload CSV/JSON with `input`, `expected_output`.")
+                 st.info("Upload CSV/JSON with `input`, `expected_output`, `description`(optional).")
                  uploaded_file = st.file_uploader("Upload File", type=["csv", "json"], key="popover_uploader")
              
                  if uploaded_file is not None:
@@ -947,6 +947,7 @@ def render_testcases_page():
                 "id": st.column_config.TextColumn("ID", width="small", disabled=False),
                 "input": st.column_config.TextColumn("Input Question", width="medium"),
                 "expected_output": st.column_config.TextColumn("Expected Output", width="medium"),
+                "description": st.column_config.TextColumn("Description", width="medium", help="描述测试用例的目的，对应产品需求中的验收标准(AC)"),
                 "priority": st.column_config.SelectboxColumn("Priority", options=["", "P0", "P1", "P2"], width="small"),
                 "tags": st.column_config.ListColumn("Tags"),
                 "retrieval_context": st.column_config.Column("Retrieval Context", help="为大模型提供的参考上下文文件。用于验证模型的回答是否基于给定的知识库 (Faithfulness)。"),

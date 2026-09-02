@@ -48,7 +48,7 @@ TAG_MAPPING = {
 # 插入一个 {intent_fragment} 插槽，用于注入子 prompt。
 # ============================================================
 BASE_PROMPT_TEMPLATE = """You are a testcase generator. Generate test cases based on the requirements and knowledge.
-CRITICAL: You MUST output ONLY a valid JSON array of test case objects. Unless requested otherwise, all "input", "expected_output", and messages MUST be generated in Chinese (中文).
+CRITICAL: You MUST output ONLY a valid JSON array of test case objects. Unless requested otherwise, all "input", "expected_output", "description", and messages MUST be generated in Chinese (中文).
 
 Requirements:
 {requirements}
@@ -58,21 +58,25 @@ Knowledge Base:
 {intent_fragment}
 The JSON format MUST strictly follow this flat schema. If generating a multi-turn conversation, DO NOT use a nested "conversation" array. Instead, output one distinct object per turn. Each turn object for the same conversation MUST have the exact same "description" and "type", but an incrementing "turn_index" starting at 1.
 
+IMPORTANT - "description" field: This field describes the purpose of the test case, corresponding to the Acceptance Criteria (AC) from the product requirements. For each test case, write a concise sentence in Chinese describing which AC this test case is designed to verify. Example: "验证用户在未登录状态下访问个人中心时跳转到登录页" or "验证模型能基于知识库正确回答退改签政策".
+
 [
   {{
     "type": "multi_turn", // Use "multi_turn" if testing a sequence, else "single"
     "turn_index": 1, // Only use turn_index if multi_turn. 1 for first turn, 2 for second, etc.
     "tags": [], // CRITICAL: This MUST ALWAYS be an empty list []. Do not generate tags.
-        "description": ""  # keep empty for generator
-    }},
-    {{
-        "type": "multi_turn",
-        "turn_index": 2, // Second turn continues the same conversation
-        "tags": [],
-        "input": "User's follow up message (in Chinese)",
-        "expected_output": "Expected follow up response (in Chinese)",
-        "description": ""
-    }}
+    "input": "User's first message (in Chinese)",
+    "expected_output": "Expected assistant response (in Chinese)",
+    "description": "用中文描述本条用例要验证的验收标准(AC)，例如：验证模型能正确回答退款政策"
+  }},
+  {{
+    "type": "multi_turn",
+    "turn_index": 2, // Second turn continues the same conversation
+    "tags": [],
+    "input": "User's follow up message (in Chinese)",
+    "expected_output": "Expected follow up response (in Chinese)",
+    "description": "同上，描述本条用例要验证的验收标准(AC)"
+  }}
 ]
 
 ONLY return the highly-structured JSON array. Do not include markdown blocks like ```json or trailing text."""

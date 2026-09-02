@@ -158,7 +158,7 @@ def render_tester_page():
                                     "input": case.get("input", "N/A"),
                                     "expected_output": "",
                                     "retrieval_context": case.get("expected_output", "N/A"),
-                                    "description": "",
+                                    "description": case.get("description", ""),
                                     "tags": list(intent_tags),
                                     "overall_criteria": json.dumps(case.get("overall_criteria", {"must_complete_all_turns": True, "min_success_rate": 0.8}), ensure_ascii=False),
                                     "priority": "P2",

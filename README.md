@@ -11,6 +11,22 @@ A Streamlit-based application for managing and running automated tests against A
 *   **Latency Monitoring**: Track response times for each API call.
 *   **PDF Export**: Generate PDF reports for test runs.
 
+## Changelog
+
+### v3.7
+
+*   **Description 列**: 测试用例表新增 Description 列，用于描述用例目的（对应产品需求中的验收标准 AC）。支持在表格中直接编辑、CSV/JSON 导入、AI 自动生成。
+*   **目录树子节点用例为空修复**: 修复 `sac.tree(return_index=True)` 扁平索引解析逻辑错误，点击展开/折叠箭头后选中节点不再跳错。
+*   **DB priority 列缺失修复**: 修复 `test_cases` 表缺失 `priority` 列导致 ORM 查询失败、回退到 JSON 文件（category_id 全为 root）的严重 bug。
+*   **关键词搜索修复**: `str.contains` 加 `regex=False` 避免特殊字符（`?`、`(` 等）报错；搜索范围增加 `id` 列；筛选条件变化时自动重置到第一页。
+*   **Management 布局优化**: Move / Priority / Assert / Delete 按钮移到 API Endpoint 下方独立一行。
+
+### v3.6
+
+*   **Report 复选框/重跑修复**: 报告页选择与重跑逻辑修正。
+*   **Stop Job 评分中断**: 停止任务时正确中断评分流程。
+*   **Thinking/Result 拆分**: 将 `is_thinking` 拆分为 `thinking` 和 `result` 两列独立展示。
+
 ## 1. Preparation for Git Upload
 
 Before uploading your code to Git, ensure you have configured the `.gitignore` file to exclude sensitive information and unnecessary files.
