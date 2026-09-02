@@ -26,3 +26,4 @@ class TestCase(Base):
     
     tags = Column(JSONB, default=list)
     assertions = Column(JSONB, default=list)  # [{"ref": "AC001", "params": {"expected": "dc"}}]
+    priority = Column(String(2), nullable=True)  # P0/P1/P2，历史数据可为空

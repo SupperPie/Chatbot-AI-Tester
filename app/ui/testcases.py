@@ -47,7 +47,7 @@ def render_category_widget_safe():
         st.warning(f"目录功能暂不可用: {e}")
         return '__all__'
 
-def filter_test_cases(df, category_id=None, tags=None, id_from=None, id_to=None, keyword=None):
+def filter_test_cases(df, category_id=None, tags=None, id_from=None, id_to=None, keyword=None, priorities=None):
     """多维度筛选测试用例
     
     Args:
@@ -57,6 +57,7 @@ def filter_test_cases(df, category_id=None, tags=None, id_from=None, id_to=None,
         id_from: ID 起始范围
         id_to: ID 结束范围
         keyword: 关键词搜索（匹配 input 字段）
+        priorities: Priority 过滤条件（支持 P0/P1/P2/(空)）
     
     Returns:
         筛选后的 DataFrame
@@ -123,10 +124,28 @@ def filter_test_cases(df, category_id=None, tags=None, id_from=None, id_to=None,
     # 关键词搜索（匹配 input / expected_output / retrieval_context 字段）
     if keyword and str(keyword).strip():
         keyword_lower = str(keyword).strip().lower()
-        search_cols = [c for c in ['input', 'expected_output', 'retrieval_context'] if c in filtered.columns]
+        search_cols = [c for c in ['id', 'input', 'expected_output', 'retrieval_context'] if c in filtered.columns]
         mask = pd.Series(False, index=filtered.index)
         for col in search_cols:
-            mask |= filtered[col].astype(str).str.lower().str.contains(keyword_lower, na=False)
+            mask |= filtered[col].astype(str).str.lower().str.contains(keyword_lower, na=False, regex=False)
+        filtered = filtered[mask]
+
+    # Priority 筛选（支持 P0/P1/P2/(空)）
+    if priorities and len(priorities) > 0:
+        normalized = {str(p).strip().upper() for p in priorities if p is not None}
+
+        def _norm_priority(v):
+            if v is None:
+                return ''
+            s = str(v).strip().upper()
+            return s if s in ('P0', 'P1', 'P2') else ''
+
+        has_empty = '(空)' in priorities
+        filtered_priority = filtered['priority'].apply(_norm_priority) if 'priority' in filtered.columns else pd.Series([''] * len(filtered), index=filtered.index)
+
+        mask = filtered_priority.isin({'P0', 'P1', 'P2'} & normalized)
+        if has_empty:
+            mask = mask | (filtered_priority == '')
         filtered = filtered[mask]
     
     return filtered
@@ -189,6 +208,10 @@ def render_testcases_page():
     if not all(col in st.session_state.df.columns for col in required_cols):
         st.session_state.df = load_data()
 
+    # priority 列允许为空；历史数据保持为空，不做自动回填
+    if 'priority' not in st.session_state.df.columns:
+        st.session_state.df['priority'] = None
+
     # Internal row key (frontend only), do NOT persist to backend
     if '__row_key' not in st.session_state.df.columns:
         st.session_state.df['__row_key'] = [f"rk_{i}" for i in range(len(st.session_state.df))]
@@ -216,6 +239,14 @@ def render_testcases_page():
             out['id'] = ""
         out['__row_key'] = [f"rk_{i}" for i in range(len(out))]
         return out
+
+    def invalidate_case_views(reset_page: bool = False):
+        """统一失效目录计数与用例数据缓存，确保左右视图口径一致。"""
+        st.session_state.pop('category_counts_cache', None)
+        st.session_state['_force_reload'] = True
+        st.session_state['df_preprocessed'] = False
+        if reset_page:
+            st.session_state['testcases_current_page'] = 1
     
     if "df_content_sig" not in st.session_state:
         st.session_state.df_content_sig = get_content_signature(st.session_state.df)
@@ -253,7 +284,8 @@ def render_testcases_page():
                     st.session_state.df = new_df
                     st.session_state.df_content_sig = get_content_signature(new_df)
                     st.session_state.df_preprocessed = False
-                    
+                    invalidate_case_views(reset_page=True)
+
                     st.toast(f"🗑️ Deleted {len(ids_to_delete)} cases successfully!")
                     st.rerun()
                 except Exception as e:
@@ -319,13 +351,47 @@ def render_testcases_page():
                             st.session_state.df['category_id'] = 'root'
                         st.session_state.df.loc[st.session_state.df['id'].isin(ids_to_move), 'category_id'] = selected
                         st.session_state.df['Select'] = False
-                        
+                        invalidate_case_views(reset_page=True)
+
                         st.toast(f"✅ 已将 {len(ids_to_move)} 个用例移动到目录")
                         st.rerun()
                     except Exception as e:
                         st.error(f"移动失败: {e}")
         except Exception as e:
             st.error(f"加载目录失败: {e}")
+
+    @st.dialog("🚩 批量设置 Priority")
+    def batch_priority_dialog(ids_to_update):
+        st.info(f"将 **{len(ids_to_update)}** 个测试用例的 Priority 批量更新为：")
+
+        target_priority = st.selectbox(
+            "选择目标 Priority",
+            options=["P0", "P1", "P2", "(清空)"],
+            key="batch_priority_target"
+        )
+
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("取消", width="stretch"):
+                st.rerun()
+        with col2:
+            if st.button("✅ 确认设置", type="primary", width="stretch"):
+                try:
+                    from app.services.test_case_service import TestCaseService
+
+                    target = None if target_priority == "(清空)" else target_priority
+                    updated_count = TestCaseService().update_priority_by_ids(ids_to_update, target)
+
+                    if 'priority' not in st.session_state.df.columns:
+                        st.session_state.df['priority'] = None
+                    st.session_state.df.loc[st.session_state.df['id'].isin(ids_to_update), 'priority'] = target
+                    st.session_state.df['Select'] = False
+                    invalidate_case_views(reset_page=False)
+
+                    st.toast(f"✅ 已更新 {updated_count} 条记录 Priority")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"批量设置 Priority 失败: {e}")
 
     with top_right_col:
         # ------------------
@@ -352,28 +418,35 @@ def render_testcases_page():
         
         available_tags = get_all_tags(st.session_state.df)
 
+        priority_values = ["P0", "P1", "P2"]
+        if 'priority' in st.session_state.df.columns:
+            has_empty_priority = st.session_state.df['priority'].apply(
+                lambda x: x is None or str(x).strip() == ''
+            ).any()
+            if has_empty_priority:
+                priority_values.append("(空)")
+
         st.markdown("#### ⚙️ Management")
-        top_col1, top_col2, top_col3, top_col4 = st.columns([4, 0.7, 0.7, 0.7])
-        with top_col1:
+        # 第一行：API Endpoint + Thread 并发数
+        api_col, thread_label_col, thread_input_col = st.columns([5, 0.8, 1])
+        with api_col:
             available_apis = _cached_available_apis()
-            sub_api, sub_thread_label, sub_thread_input = st.columns([3, 0.5, 0.6])
-            with sub_api:
-                selected_api = st.selectbox("⚙️ API Endpoint", options=available_apis, index=0, key="page_api_select", label_visibility="collapsed")
-            with sub_thread_label:
-                st.markdown(
-                    "<div style='padding-top: 8px; text-align: right; font-weight: 500; white-space: nowrap;'>Thread</div>",
-                    unsafe_allow_html=True,
-                )
-            with sub_thread_input:
-                if "page_max_workers_input" not in st.session_state:
-                    st.session_state["page_max_workers_input"] = "3"
-                st.text_input(
-                    "Thread",
-                    key="page_max_workers_input",
-                    placeholder="1-10, default 3",
-                    help="并发线程数（1-10，默认 3）。多轮对话仍串行执行。",
-                    label_visibility="collapsed",
-                )
+            selected_api = st.selectbox("⚙️ API Endpoint", options=available_apis, index=0, key="page_api_select", label_visibility="collapsed")
+        with thread_label_col:
+            st.markdown(
+                "<div style='padding-top: 8px; text-align: right; font-weight: 500; white-space: nowrap;'>Thread</div>",
+                unsafe_allow_html=True,
+            )
+        with thread_input_col:
+            if "page_max_workers_input" not in st.session_state:
+                st.session_state["page_max_workers_input"] = "3"
+            st.text_input(
+                "Thread",
+                key="page_max_workers_input",
+                placeholder="1-10, default 3",
+                help="并发线程数（1-10，默认 3）。多轮对话仍串行执行。",
+                label_visibility="collapsed",
+            )
 
         def _get_max_workers() -> int:
             raw = st.session_state.get("page_max_workers_input", "3")
@@ -386,11 +459,16 @@ def render_testcases_page():
             if v > 10:
                 return 10
             return v
-        with top_col2:
+
+        # 第二行：批量操作按钮（Move / Priority / Assert / Delete）
+        btn_col1, btn_col2, btn_col3, btn_col4 = st.columns(4)
+        with btn_col1:
             move_to_category_clicked = st.button("📂 Move", width="stretch", key="btn_move_category") if ENABLE_CATEGORY_FEATURE else False
-        with top_col3:
+        with btn_col2:
+            batch_priority_clicked = st.button("🚩 Priority", width="stretch", key="btn_batch_priority")
+        with btn_col3:
             bind_assertions_clicked = st.button("🧩 Assert", width="stretch", key="btn_bind_assertions")
-        with top_col4:
+        with btn_col4:
             delete_selected_clicked = st.button("🗑️ Delete", width="stretch", key="btn_delete_selected")
 
         # 顶部右侧：Import（与参数说明手册同一行，下移避免贴顶裁剪）
@@ -602,7 +680,8 @@ def render_testcases_page():
                                 st.session_state.df = final_df
                                 st.session_state.df_content_sig = get_content_signature(final_df)
                                 st.session_state.df_preprocessed = False
-                            
+                                invalidate_case_views(reset_page=True)
+
                                 st.rerun()
                             
                     except Exception as e:
@@ -615,7 +694,7 @@ def render_testcases_page():
         # Filter & Run Section
         # ------------------
         st.markdown("#### 🔍 Filter")
-        filter_col1, filter_col2, filter_col3, filter_col4 = st.columns([2.8, 1.2, 1.2, 2.3])
+        filter_col1, filter_col2, filter_col3, filter_col4, filter_col5 = st.columns([2.4, 1.0, 1.0, 1.6, 1.8])
 
         with filter_col1:
             filter_tags = st.multiselect(
@@ -634,6 +713,16 @@ def render_testcases_page():
             filter_id_to = st.text_input("To ID", value="", key="filter_id_to", label_visibility="collapsed", placeholder="To ID")
 
         with filter_col4:
+            filter_priority = st.multiselect(
+                "Priority",
+                options=priority_values,
+                default=[],
+                key="filter_priority",
+                label_visibility="collapsed",
+                placeholder="🚩 Priority"
+            )
+
+        with filter_col5:
             filter_keyword = st.text_input("关键词", value="", key="filter_keyword", label_visibility="collapsed", placeholder="🔎 搜索关键词...")
 
         # Run按钮放在标签下方
@@ -660,10 +749,17 @@ def render_testcases_page():
 
     # 节点切换时重置到第一页，避免页码越界导致空表/残留
     if st.session_state.get('last_selected_category') != filter_category:
+        logger.debug(f"Category changed: {st.session_state.get('last_selected_category')} -> {filter_category}")
         st.session_state.testcases_current_page = 1
         st.session_state.last_selected_category = filter_category
         # 清除目录统计缓存，强制重新加载
         st.session_state.pop('category_counts_cache', None)
+
+    # 任意筛选条件（标签/ID范围/Priority/关键词）变化时重置到第一页
+    _filter_sig = repr((filter_tags, filter_id_from, filter_id_to, tuple(filter_priority or ()), filter_keyword))
+    if st.session_state.get('_last_filter_sig') != _filter_sig:
+        st.session_state.testcases_current_page = 1
+        st.session_state['_last_filter_sig'] = _filter_sig
 
     # ------------------
     # Data Editor
@@ -703,12 +799,14 @@ def render_testcases_page():
         tags=filter_tags,
         id_from=filter_id_from,
         id_to=filter_id_to,
-        keyword=filter_keyword
+        keyword=filter_keyword,
+        priorities=filter_priority
     )
     
     # Debug: 输出筛选结果
     if filter_category and filter_category not in ('__all__', ''):
         logger.debug(f"Category filter: {filter_category}")
+        logger.debug(f"Filter chain => tags={filter_tags}, id_from={filter_id_from}, id_to={filter_id_to}, priority={filter_priority}, keyword={filter_keyword}")
         logger.debug(f"Total rows in df: {len(st.session_state.df)}")
         logger.debug(f"Filtered rows: {len(filtered_df)}")
         if len(filtered_df) == 0 and len(st.session_state.df) > 0:
@@ -816,8 +914,16 @@ def render_testcases_page():
         # 将 assertions 列转为可读文本显示（组件名称而非 ID）
         if 'assertions' in page_df.columns:
             def _format_assertions(val):
-                if not val or val == '[]':
+                if val is None:
                     return ""
+                if isinstance(val, str):
+                    if not val.strip():
+                        return ""
+                    try:
+                        import json as _json
+                        val = _json.loads(val)
+                    except Exception:
+                        return val
                 if isinstance(val, list):
                     labels = []
                     for item in val:
@@ -831,6 +937,9 @@ def render_testcases_page():
                 return str(val) if val else ""
             page_df['assertions'] = page_df['assertions'].apply(_format_assertions)
 
+        if 'priority' not in page_df.columns:
+            page_df['priority'] = None
+
         edited_page_df = st.data_editor(
             page_df,
             column_config={
@@ -838,6 +947,7 @@ def render_testcases_page():
                 "id": st.column_config.TextColumn("ID", width="small", disabled=False),
                 "input": st.column_config.TextColumn("Input Question", width="medium"),
                 "expected_output": st.column_config.TextColumn("Expected Output", width="medium"),
+                "priority": st.column_config.SelectboxColumn("Priority", options=["", "P0", "P1", "P2"], width="small"),
                 "tags": st.column_config.ListColumn("Tags"),
                 "retrieval_context": st.column_config.Column("Retrieval Context", help="为大模型提供的参考上下文文件。用于验证模型的回答是否基于给定的知识库 (Faithfulness)。"),
                 "overall_criteria": st.column_config.Column("Overall Criteria", help="用于评估打分的特殊判定要求或全局自定义标准。"),
@@ -879,6 +989,7 @@ def render_testcases_page():
                     ~st.session_state.df['__row_key'].isin(deleted_keys)
                 ].reset_index(drop=True)
                 st.session_state.df_content_sig = get_content_signature(st.session_state.df)
+                invalidate_case_views(reset_page=False)
                 st.toast(f"🗑️ Deleted {len(deleted_keys)} row(s)", icon="🗑️")
                 st.rerun()
 
@@ -902,6 +1013,7 @@ def render_testcases_page():
                     new_row_dict['__row_key'] = f'rk_{max_rk}'
                     new_row_dict.setdefault('category_id', filter_category if filter_category not in ('__all__', '') else 'root')
                     new_row_dict.setdefault('type', 'single')
+                    new_row_dict.setdefault('priority', None)
                     new_row_dict['Select'] = False
                     st.session_state.df = pd.concat(
                         [st.session_state.df, pd.DataFrame([new_row_dict])], ignore_index=True
@@ -913,6 +1025,7 @@ def render_testcases_page():
                 saved_df_clean = rebuild_internal_ids(saved_df_clean)
                 st.session_state.df = saved_df_clean
                 st.session_state.df_content_sig = get_content_signature(st.session_state.df)
+                invalidate_case_views(reset_page=False)
                 st.toast(f"New row(s) added and saved!", icon="➕")
                 st.rerun()
 
@@ -990,7 +1103,8 @@ def render_testcases_page():
         tags=filter_tags,
         id_from=filter_id_from,
         id_to=filter_id_to,
-        keyword=filter_keyword
+        keyword=filter_keyword,
+        priorities=filter_priority
     )
 
 
@@ -1016,20 +1130,20 @@ def render_testcases_page():
     
     elif move_to_category_clicked:
         selected_rows = edited_df[edited_df["Select"] == True]
-        start_id = st.session_state.get('filter_id_from', '').strip()
-        end_id = st.session_state.get('filter_id_to', '').strip()
-        
+
         if not selected_rows.empty:
             ids_to_move = selected_rows['id'].tolist()
             move_to_category_dialog(ids_to_move)
-        elif start_id or end_id:
-            if edited_df.empty:
-                execution_placeholder.warning(f"No cases found in range {start_id or '*'} to {end_id or '*'}")
-            else:
-                ids_to_move = edited_df['id'].tolist()
-                move_to_category_dialog(ids_to_move)
         else:
             execution_placeholder.warning("请先选择要移动的测试用例")
+
+    elif batch_priority_clicked:
+        selected_rows = edited_df[edited_df["Select"] == True]
+        if selected_rows.empty:
+            execution_placeholder.warning("请先选择要设置 Priority 的测试用例")
+        else:
+            ids_to_update = selected_rows['id'].tolist()
+            batch_priority_dialog(ids_to_update)
 
     elif bind_assertions_clicked:
         selected_rows = edited_df[edited_df["Select"] == True]

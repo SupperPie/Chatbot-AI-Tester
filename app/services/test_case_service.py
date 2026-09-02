@@ -46,6 +46,16 @@ def _sanitize_record(r: dict) -> dict:
         if isinstance(val, (dict, list)):
             out[field] = json.dumps(val, ensure_ascii=False)
 
+    # priority: 仅允许 P0/P1/P2，其他值保持为空
+    pr = out.get('priority')
+    if isinstance(pr, str):
+        pr = pr.strip().upper()
+        out['priority'] = pr if pr in ('P0', 'P1', 'P2') else None
+    elif pr is None:
+        out['priority'] = None
+    else:
+        out['priority'] = str(pr).strip().upper() if str(pr).strip().upper() in ('P0', 'P1', 'P2') else None
+
     return out
 
 
@@ -67,6 +77,39 @@ class TestCaseService:
             {TestCase.category_id: category_id},
             synchronize_session=False
         )
+        self.db.commit()
+        return count
+
+    def update_priority_by_ids(self, test_case_ids: List[str], priority: Optional[str]) -> int:
+        """按用例 ID 列表批量更新 priority（同 id 的所有 turn 一并更新）。"""
+        if priority is not None:
+            p = str(priority).strip().upper()
+            if p not in ('P0', 'P1', 'P2'):
+                raise ValueError("priority must be one of P0/P1/P2 or None")
+            priority = p
+
+        count = self.db.query(TestCase).filter(TestCase.id.in_(test_case_ids)).update(
+            {TestCase.priority: priority},
+            synchronize_session=False
+        )
+        self.db.commit()
+        return count
+
+    def update_priority_by_filters(self, priority: Optional[str], category_id: Optional[str] = None, ids: Optional[List[str]] = None) -> int:
+        """按过滤条件批量更新 priority。"""
+        if priority is not None:
+            p = str(priority).strip().upper()
+            if p not in ('P0', 'P1', 'P2'):
+                raise ValueError("priority must be one of P0/P1/P2 or None")
+            priority = p
+
+        q = self.db.query(TestCase)
+        if category_id:
+            q = q.filter(TestCase.category_id == category_id)
+        if ids:
+            q = q.filter(TestCase.id.in_(ids))
+
+        count = q.update({TestCase.priority: priority}, synchronize_session=False)
         self.db.commit()
         return count
 

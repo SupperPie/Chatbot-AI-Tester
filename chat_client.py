@@ -1146,9 +1146,10 @@ def get_trip_planner_response(message: str, url: str, user_id: str = None, sessi
         data_obj = data.get("data") or {}
         summary = data_obj.get("summary_state") or {}
         details = summary.get("details", "") if isinstance(summary, dict) else ""
-        if details:
+        if details and isinstance(details, str):
             return details
-        return data.get("content", "") or ""
+        content = data.get("content", "") or ""
+        return content if isinstance(content, str) else str(content)
 
     try:
         start_time = time.time()
@@ -1178,7 +1179,9 @@ def get_trip_planner_response(message: str, url: str, user_id: str = None, sessi
             for line in response.iter_lines():
                 if not line:
                     continue
-                decoded_line = line.decode("utf-8")
+                decoded_line = line.decode("utf-8") if isinstance(line, bytes) else str(line)
+                if not isinstance(decoded_line, str):
+                    continue
 
                 json_str = decoded_line[6:] if decoded_line.startswith("data: ") else decoded_line
                 if json_str.strip() == "[DONE]":

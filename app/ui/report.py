@@ -492,6 +492,28 @@ def render_report_page():
                 editable_cols = ["Select", "passed", "review_comment"]
                 disabled_cols = [c for c in all_cols if c not in editable_cols]
 
+                # 保存当前用户手动勾选的 Select 状态（跨 rerun 持久化）
+                tbl_key = f"hist_tbl_{entry_id}_v{tbl_key_suffix}"
+                editor_state = st.session_state.get(tbl_key, {})
+                edited_rows = editor_state.get("edited_rows", {})
+                if edited_rows:
+                    # 合并用户手动勾选的状态到持久化 key
+                    if f"rerun_select_{entry_id}" not in st.session_state:
+                        st.session_state[f"rerun_select_{entry_id}"] = set()
+                    rerun_select = st.session_state[f"rerun_select_{entry_id}"]
+                    for ridx_str, patch in edited_rows.items():
+                        if patch.get("Select"):
+                            rerun_select.add(int(ridx_str))
+                        elif int(ridx_str) in rerun_select:
+                            rerun_select.discard(int(ridx_str))
+
+                # 恢复持久化的 Select 状态
+                if f"rerun_select_{entry_id}" in st.session_state:
+                    saved = st.session_state[f"rerun_select_{entry_id}"]
+                    for ridx in saved:
+                        if ridx < len(display_res_df):
+                            display_res_df.at[ridx, "Select"] = True
+
                 edited_df = st.data_editor(
                     display_res_df,
                     column_config={

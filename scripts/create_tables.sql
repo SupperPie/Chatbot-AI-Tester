@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS test_cases (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     category_id VARCHAR(50) REFERENCES categories(id) ON DELETE SET NULL DEFAULT 'root',
     tags JSONB DEFAULT '[]',
+    priority VARCHAR(2),
     PRIMARY KEY (id, turn_index)
 );
 

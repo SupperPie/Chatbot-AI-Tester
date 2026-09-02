@@ -21,12 +21,13 @@ def get_category_options():
                 options.append((node['id'], display_name))
                 if node.get('children'):
                     flatten_tree(node['children'], prefix + "  ")
-        
+
         flatten_tree(tree)
         db.close()
         return options
     except Exception as e:
         st.error(f"获取目录列表失败: {e}")
+        print(f"[get_category_options] ERROR: {e}")
         return [('root', '全部用例')]
 
 def get_category_ids_with_children(category_id: str) -> list:

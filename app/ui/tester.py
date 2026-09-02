@@ -18,7 +18,7 @@ def render_tester_page():
     
     # Initialize session state for generated cases
     if "generated_cases" not in st.session_state:
-        st.session_state.generated_cases = pd.DataFrame(columns=["id", "input", "expected_output", "retrieval_context", "description", "tags", "conversation"])
+        st.session_state.generated_cases = pd.DataFrame(columns=["id", "input", "expected_output", "retrieval_context", "description", "tags", "conversation", "priority"])
         
     if "saved_req" not in st.session_state:
         st.session_state.saved_req = ""
@@ -145,12 +145,12 @@ def render_tester_page():
                             for case in cases_json:
                                 case_type = case.get("type", "single")
                                 turn_idx = case.get("turn_index", 1)
-                                
+
                                 # Assign new ID if it's a single turn OR the first turn of a multi-turn
                                 if case_type != "multi_turn" or turn_idx == 1:
                                     current_id_counter += 1
                                     current_id = f"GEN_{str(current_id_counter).zfill(3)}"
-                                    
+
                                 flat_cases.append({
                                     "id": current_id,
                                     "type": case.get("type", "single"),
@@ -160,13 +160,23 @@ def render_tester_page():
                                     "retrieval_context": case.get("expected_output", "N/A"),
                                     "description": "",
                                     "tags": list(intent_tags),
-                                    "overall_criteria": json.dumps(case.get("overall_criteria", {"must_complete_all_turns": True, "min_success_rate": 0.8}), ensure_ascii=False)
+                                    "overall_criteria": json.dumps(case.get("overall_criteria", {"must_complete_all_turns": True, "min_success_rate": 0.8}), ensure_ascii=False),
+                                    "priority": "P2",
                                 })
-                            
+
                             generated_df = pd.DataFrame(flat_cases)
-                            
+
+                            # Priority 分配：同次 PRD 生成结果按 P1:P2 = 1:3（跨 AC 汇总）
+                            n = len(generated_df)
+                            if n > 0:
+                                p1_count = max(1, round(n * 0.25))
+                                generated_df.loc[:, "priority"] = "P2"
+                                generated_df.iloc[:p1_count, generated_df.columns.get_loc("priority")] = "P1"
+
                             st.session_state.generated_cases = generated_df
-                            st.success(f"✅ Generated {len(generated_df)} multi-turn test cases!")
+                            p1_total = int((generated_df["priority"] == "P1").sum()) if not generated_df.empty else 0
+                            p2_total = int((generated_df["priority"] == "P2").sum()) if not generated_df.empty else 0
+                            st.success(f"✅ Generated {len(generated_df)} test cases! Priority 分配：P1={p1_total}, P2={p2_total}")
                     else:
                         st.error("Failed to parse AI response. Please try again.")
                         st.text("AI Response:")
@@ -192,7 +202,8 @@ def render_tester_page():
                 "retrieval_context": st.column_config.TextColumn("Retrieval Context", width="large"),
                 "description": st.column_config.TextColumn("Description", width="medium"),
                 "tags": st.column_config.ListColumn("Tags"),
-                "overall_criteria": st.column_config.TextColumn("Criteria", disabled=True)
+                "overall_criteria": st.column_config.TextColumn("Criteria", disabled=True),
+                "priority": st.column_config.SelectboxColumn("Priority", options=["P0", "P1", "P2"], width="small")
             },
             num_rows="dynamic",
             key="editor_generated",
@@ -275,29 +286,37 @@ def render_tester_page():
             else:
                 st.info(f"📂 将保存到根目录 (共 {len(clean_new_cases)} 条用例)")
 
-            # Load existing
-            existing_df = load_data()
-            if "Select" in existing_df.columns:
-                 existing_df = existing_df.drop(columns=["Select"])
-                 
-            new_df = pd.DataFrame(clean_new_cases)
-                
-            combined_df = pd.concat([existing_df, new_df], ignore_index=True)
-            
             # 只插入新记录到数据库（不做全量同步）
             try:
+                existing_df = load_data()
+                print(f"[save] load_data 完成，共 {len(existing_df)} 条现有记录")
+            except Exception as e:
+                import traceback
+                st.error(f"❌ 加载现有用例失败: {e}")
+                st.code(traceback.format_exc())
+                return
+
+            try:
+                if "Select" in existing_df.columns:
+                     existing_df = existing_df.drop(columns=["Select"])
+
+                new_df = pd.DataFrame(clean_new_cases)
+                combined_df = pd.concat([existing_df, new_df], ignore_index=True)
+
                 from app.services.test_case_service import TestCaseService
                 from app.utils import generate_tc_id
-                
+
                 service = TestCaseService()
-                
+                print("[save] TestCaseService 初始化 OK")
+
                 # 获取当前最大 ID 用于生成新 ID
                 all_ids = existing_df['id'].dropna().tolist() if 'id' in existing_df.columns else []
                 max_num = 0
                 for tid in all_ids:
                     if tid.startswith('TC') and tid[2:].isdigit():
                         max_num = max(max_num, int(tid[2:]))
-                
+                print(f"[save] 当前最大 TC 编号: {max_num}")
+
                 # 为新记录分配 ID 并插入（同一多轮会话共享同一个ID）
                 gen_id_to_tc_id = {}  # GEN_xxx -> TCxxxx 映射
                 for case in clean_new_cases:
@@ -317,28 +336,41 @@ def render_tester_page():
                         # 清理可能遗留的临时字段
                         case.pop('_original_gen_id', None)
                     case['category_id'] = save_category
-                
+
+                print(f"[save] ID 分配完成，准备写入 {len(clean_new_cases)} 条")
+
+                # 写入前确认目录存在，否则降级到 root（避免外键约束静默拒绝写入）
+                if save_category and save_category != 'root':
+                    from app.services.category_service import CategoryService
+                    cat_svc = CategoryService()
+                    if not cat_svc.get_by_id(save_category):
+                        print(f"[save] 目录 {save_category} 不存在，降级到 root")
+                        save_category = 'root'
+                        for case in clean_new_cases:
+                            case['category_id'] = 'root'
+
                 inserted = service.insert_many(clean_new_cases)
-                
+                print(f"[save] insert_many 返回 {inserted} 条")
+
                 # 更新 combined_df 中的新记录 ID
                 for i, case in enumerate(clean_new_cases):
                     idx = len(existing_df) + i
                     if idx < len(combined_df):
                         combined_df.at[idx, 'id'] = case['id']
-                
+
             except Exception as e:
-                st.error(f"❌ 数据库同步失败: {e}")
                 import traceback
+                st.error(f"❌ 保存失败: {e}")
                 st.code(traceback.format_exc())
                 return  # 失败时不清空、不 rerun
             
             final_df = combined_df
             
             # 保存成功后的处理
-            saved_count = len(new_cases)
+            saved_count = inserted
             
             # Clear generated cases
-            st.session_state.generated_cases = pd.DataFrame(columns=["id", "type", "turn_index", "input", "expected_output", "retrieval_context", "description", "tags"])
+            st.session_state.generated_cases = pd.DataFrame(columns=["id", "type", "turn_index", "input", "expected_output", "retrieval_context", "description", "tags", "priority"])
             
             # Update main df in session state
             if "df" in st.session_state:

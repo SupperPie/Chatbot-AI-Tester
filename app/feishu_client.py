@@ -258,9 +258,9 @@ def export_report_to_feishu(
                 row = [
                     item.get("case_id", ""),
                     turn.get("turn", ""),
-                    turn.get("user", ""),
-                    turn.get("expected", ""),
-                    turn.get("actual", ""),
+                    _truncate_cell(str(turn.get("user", ""))),
+                    _truncate_cell(str(turn.get("expected", ""))),
+                    _truncate_cell(str(turn.get("actual", ""))),
                     str(turn.get("retrieval_context", "")),
                     score_val,
                     "Pass" if item.get("passed") else "Fail",
@@ -269,8 +269,8 @@ def export_report_to_feishu(
                     turn.get("latency", 0),
                     item.get("reason", ""),
                     "",  # review_comment
-                    turn.get("thinking", ""),
-                    turn.get("inform_base", ""),
+                    _truncate_cell(str(turn.get("thinking", ""))),
+                    _truncate_cell(str(turn.get("inform_base", ""))),
                     _truncate_cell(str(turn.get("raw", "")))
                 ]
                 rows.append(row)
@@ -283,9 +283,9 @@ def export_report_to_feishu(
             row = [
                 item.get("case_id", ""),
                 "",  # turn_index
-                item.get("input", ""),
-                item.get("expected_output", ""),
-                item.get("actual_output", ""),
+                _truncate_cell(str(item.get("input", ""))),
+                _truncate_cell(str(item.get("expected_output", ""))),
+                _truncate_cell(str(item.get("actual_output", ""))),
                 str(retrieval_context),
                 item.get("score", 0),
                 "Pass" if item.get("passed") else "Fail",
@@ -294,8 +294,8 @@ def export_report_to_feishu(
                 item.get("latency", 0),
                 item.get("reason", ""),
                 "",  # review_comment
-                item.get("thinking", ""),
-                item.get("inform_base", ""),
+                _truncate_cell(str(item.get("thinking", ""))),
+                _truncate_cell(str(item.get("inform_base", ""))),
                 _truncate_cell(str(item.get("raw", "")))
             ]
             rows.append(row)

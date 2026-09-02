@@ -57,6 +57,7 @@ def load_data() -> pd.DataFrame:
                         'overall_criteria': tc.overall_criteria,
                         'validation': tc.validation,
                         'assertions': tc.assertions or [],
+                        'priority': tc.priority,
                     }
                     data.append(record)
                 df = pd.DataFrame(data)
@@ -76,12 +77,14 @@ def load_data() -> pd.DataFrame:
                 
         if not data:
             # Return empty structure with Select column
-            return pd.DataFrame(columns=["Select", "id", "turn_index", "input", "expected_output", "tags", "category_id"])
+            return pd.DataFrame(columns=["Select", "id", "turn_index", "input", "expected_output", "tags", "category_id", "priority"])
 
         df = pd.DataFrame(data)
         # Add default category_id for JSON data
         if 'category_id' not in df.columns:
             df['category_id'] = 'root'
+        if 'priority' not in df.columns:
+            df['priority'] = None
     
     # ID Generation logic: Only generate for explicitly missing IDs.
     # If a row is missing an ID, but it's part of a multi-turn sequence (turn_index > 1), assign it the same ID as the row before it.
@@ -129,6 +132,16 @@ def load_data() -> pd.DataFrame:
     for col in ["input", "expected_output", "retrieval_context", "overall_criteria", "validation"]:
         if col not in df.columns:
             df[col] = ""
+
+    if "priority" not in df.columns:
+        df["priority"] = None
+    else:
+        def normalize_priority(v):
+            if v is None:
+                return None
+            s = str(v).strip().upper()
+            return s if s in ("P0", "P1", "P2") else None
+        df["priority"] = df["priority"].apply(normalize_priority)
     if "tags" not in df.columns:
         df["tags"] = [[] for _ in range(len(df))]
     else:

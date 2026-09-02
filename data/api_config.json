@@ -9,7 +9,7 @@
         "description": "Bundle API",
         "type": "bundle",
         "request_params": {
-            "context": "Frieze Seoul × 光州双年展之旅"
+            "context": "2026上海劳力士大师赛尊享权益"
         }
     },
     "DC_Q&A": {
@@ -61,15 +61,38 @@
         "description": "Trip Planner",
         "type": "trip_planner"
     },
-    "[UAT]Hotel API": {
-        "url": "http://agent-hotel.platform-ai.svc.dragon/stream",
-        "description": "Agent Hotel",
-        "type": "hotel"
-    },
     "eSIM_agent": {
         "url": "http://10.85.85.0/esim/stream",
         "description": "eSIM_agent",
         "type": "esim_agent"
+    },
+    "【UAT】Fitness": {
+        "url": "http://agent-fitness--platform-ai--80--aws-uk-uat.gz-debug.dp-svc.com/stream",
+        "description": "",
+        "type": "fitness"
+    },
+    "【UAT】Flight": {
+        "url": "http://agent-flight--platform-ai--80--aws-uk-uat.gz-debug.dp-svc.com/stream",
+        "description": "",
+        "type": "flight_agent"
+    },
+    "【UAT】Hotel API": {
+        "url": "http://agent-hotel--platform-ai--80--aws-uk-uat.gz-debug.dp-svc.com/stream",
+        "description": "Agent Hotel",
+        "type": "hotel"
+    },
+    "【UAT】Q&A": {
+        "url": "http://agent-question-and-answer--platform-ai--80--aws-uk-uat.gz-debug.dp-svc.com/stream",
+        "description": "",
+        "type": "agent_qa",
+        "request_params": {
+            "query": "How do I search for a flight from London to Tokyo for 2 adults?",
+            "user_id": "4b5006af-2503-4ef5-b9af-f091ce2d7c61",
+            "extra_args": {
+                "app_name": "Eleva Beyond"
+            },
+            "session_id": "0891dc9d-5a28-4ae7-b3f7-3013b76c9e32"
+        }
     },
     "【UAT】Supervisor": {
         "url": "https://ai-engineering-uat.dragonpass.com/dc/supervisor_init/stream",
@@ -78,6 +101,16 @@
         "request_params": {
             "lob": "dc"
         }
+    },
+    "【UAT】TripIdea": {
+        "url": "http://agent-trip-planner--platform-ai--80--aws-uk-uat.gz-debug.dp-svc.com/stream",
+        "description": "",
+        "type": "trip_planner"
+    },
+    "【UAT】eSIM": {
+        "url": "http://agent-esim--platform-ai--80--aws-uk-uat.gz-debug.dp-svc.com/stream",
+        "description": "",
+        "type": "esim_agent"
     },
     "劳斯莱斯": {
         "url": "http://192.168.25.247/v1/chat-messages",
@@ -141,5 +174,10 @@
             },
             "session_id": ""
         }
+    },
+    "【UAT】Limo": {
+        "url": "http://agent-limo--platform-ai--80--aws-uk-uat.gz-debug.dp-svc.com/stream",
+        "description": "",
+        "type": "limo"
     }
 }
