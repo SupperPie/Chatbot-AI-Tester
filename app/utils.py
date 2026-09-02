@@ -49,6 +49,7 @@ def load_data() -> pd.DataFrame:
                         'id': tc.id,
                         'input': tc.input,
                         'expected_output': tc.expected_output,
+                        'description': tc.description,
                         'tags': tc.tags or [],
                         'type': tc.type,
                         'turn_index': tc.turn_index,
@@ -85,6 +86,8 @@ def load_data() -> pd.DataFrame:
             df['category_id'] = 'root'
         if 'priority' not in df.columns:
             df['priority'] = None
+        if 'description' not in df.columns:
+            df['description'] = None
     
     # ID Generation logic: Only generate for explicitly missing IDs.
     # If a row is missing an ID, but it's part of a multi-turn sequence (turn_index > 1), assign it the same ID as the row before it.

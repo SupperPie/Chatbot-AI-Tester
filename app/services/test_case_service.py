@@ -2,10 +2,13 @@ from typing import List, Optional, Dict
 from datetime import datetime
 import json
 import math
+import logging
 from app.database import SessionLocal
 # 必须先导入 Category，因为 TestCase 有外键引用
 from app.models.category import Category
 from app.models.test_case import TestCase
+
+logger = logging.getLogger(__name__)
 
 
 def _sanitize_record(r: dict) -> dict:
@@ -153,41 +156,56 @@ class TestCaseService:
         # 注意：此方法不会删除数据库中不在 records 里的记录
         # 如需删除，请显式调用 delete_by_ids()
         
-        # Upsert 每条记录，分批提交避免超时
+        # Upsert 每条记录，分批提交避免超时；单条失败不影响整批
         allowed_fields = {c.name for c in TestCase.__table__.columns}
         BATCH_SIZE = 100  # 每 100 条提交一次
         count = 0
+        errors = 0
         
         for r in records:
             if not r.get('id'):
                 continue
-            clean = _sanitize_record(r)
-            ti = int(clean.get('turn_index') or 1)
-            clean['turn_index'] = ti
-            existing = self.db.query(TestCase).filter(
-                TestCase.id == clean['id'],
-                TestCase.turn_index == ti
-            ).first()
-            if existing:
-                for k, v in clean.items():
-                    if k not in ('id', 'turn_index') and k in allowed_fields:
-                        setattr(existing, k, v)
-                existing.updated_at = datetime.utcnow()
-            else:
-                fields = {k: v for k, v in clean.items() if k in allowed_fields}
-                fields['turn_index'] = ti
-                fields.setdefault('created_at', datetime.utcnow())
-                fields.setdefault('updated_at', datetime.utcnow())
-                self.db.add(TestCase(**fields))
-            
-            count += 1
-            # 每 BATCH_SIZE 条提交一次
-            if count % BATCH_SIZE == 0:
-                self.db.commit()
+            try:
+                clean = _sanitize_record(r)
+                ti = int(clean.get('turn_index') or 1)
+                clean['turn_index'] = ti
+                existing = self.db.query(TestCase).filter(
+                    TestCase.id == clean['id'],
+                    TestCase.turn_index == ti
+                ).first()
+                if existing:
+                    for k, v in clean.items():
+                        if k not in ('id', 'turn_index') and k in allowed_fields:
+                            setattr(existing, k, v)
+                    existing.updated_at = datetime.utcnow()
+                else:
+                    fields = {k: v for k, v in clean.items() if k in allowed_fields}
+                    fields['turn_index'] = ti
+                    fields.setdefault('created_at', datetime.utcnow())
+                    fields.setdefault('updated_at', datetime.utcnow())
+                    self.db.add(TestCase(**fields))
+                
+                count += 1
+                # 每 BATCH_SIZE 条提交一次
+                if count % BATCH_SIZE == 0:
+                    self.db.commit()
+            except Exception as e:
+                errors += 1
+                logger.warning(f"[upsert_all] skip record id={r.get('id')} turn={r.get('turn_index')}: {e}")
+                try:
+                    self.db.rollback()
+                except Exception:
+                    pass
 
         # 提交剩余的
-        self.db.commit()
-        return len(records)
+        try:
+            self.db.commit()
+        except Exception as e:
+            logger.error(f"[upsert_all] final commit failed: {e}")
+            self.db.rollback()
+        if errors:
+            logger.warning(f"[upsert_all] completed with {count} ok, {errors} errors")
+        return count
 
     def upsert_records(self, records: List[Dict]) -> int:
         """增量 upsert：只对给定的若干条记录做更新或插入。

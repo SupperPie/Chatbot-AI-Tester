@@ -632,46 +632,8 @@ def render_testcases_page():
                                     combined_df = pd.concat([current_df, import_df], ignore_index=True)
                                     st.toast(f"Imported {len(import_df)} new cases.")
                             
-                                # Save to JSON using raw unique IDs
+                                # Save to DB (upsert_all handles both new and existing cases)
                                 final_df = save_data(prepare_df_for_persistence(combined_df))
-                                
-                                # 同步写入数据库（新增的用例）
-                                if ENABLE_CATEGORY_FEATURE and not update_existing:
-                                    try:
-                                        from app.database import SessionLocal
-                                        from app.models.test_case import TestCase
-                                        from datetime import datetime
-                                        
-                                        db = SessionLocal()
-                                        for _, row in import_df.iterrows():
-                                            # 查找最终分配的 ID
-                                            final_row = final_df[final_df['input'] == row['input']]
-                                            if not final_row.empty:
-                                                case_id = final_row.iloc[0]['id']
-                                                # 检查是否已存在
-                                                ti = int(row.get('turn_index') or 1)
-                                                existing = db.query(TestCase).filter(
-                                                    TestCase.id == case_id,
-                                                    TestCase.turn_index == ti
-                                                ).first()
-                                                if not existing:
-                                                    test_case = TestCase(
-                                                        id=case_id,
-                                                        type=row.get('type', 'single'),
-                                                        input=row.get('input', ''),
-                                                        expected_output=row.get('expected_output', ''),
-                                                        retrieval_context=row.get('retrieval_context'),
-                                                        description=row.get('description'),
-                                                        turn_index=ti,
-                                                        tags=row.get('tags', []),
-                                                        category_id=import_category,
-                                                        created_at=datetime.utcnow()
-                                                    )
-                                                    db.add(test_case)
-                                        db.commit()
-                                        db.close()
-                                    except Exception as e:
-                                        logger.warning(f"数据库同步失败: {e}")
                             
                                 # Update State
                                 if "Select" not in final_df.columns:
