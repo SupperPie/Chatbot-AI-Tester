@@ -558,7 +558,15 @@ def render_testcases_page():
                                 # 设置 category_id（导入到指定目录）
                                 import_df["category_id"] = import_category
 
-                                current_df = st.session_state.df.drop(columns=["Select"], errors='ignore')
+                                # 确保 import_df 有必要的列（对齐 current_df，避免 concat 后缺列）
+                                current_df = st.session_state.df.drop(columns=["Select", "__row_key"], errors='ignore')
+                                for col in current_df.columns:
+                                    if col not in import_df.columns and col != "id":
+                                        import_df[col] = None
+                                # import_df 中不在 current_df 的新列也要补上
+                                for col in import_df.columns:
+                                    if col not in current_df.columns and col != "id":
+                                        current_df[col] = None
                             
                                 if update_existing:
                                     if "id" not in import_df.columns:
@@ -570,70 +578,125 @@ def render_testcases_page():
                                     import_df["id"] = import_df["id"].astype(str)
                                 
                                     # Create a dict mapping ID to index in current_df for fast lookup
-                                    id_to_index = {row_id: idx for idx, row_id in current_df["id"].items()}
+                                    # Multi-turn: key by (id, turn_index)
+                                    def _row_key(r):
+                                        return (str(r.get("id","")), int(r.get("turn_index") or 1))
+                                    key_to_index = {}
+                                    for idx, row in current_df.iterrows():
+                                        key_to_index[_row_key(row)] = idx
                                 
                                     updated_count = 0
-                                    new_count = 0
+                                    new_records = []
                                 
                                     for _, row in import_df.iterrows():
-                                        row_id = row.get("id")
-                                        if row_id in id_to_index:
-                                            # Update existing
-                                            idx = id_to_index[row_id]
+                                        key = _row_key(row)
+                                        if key in key_to_index:
+                                            idx = key_to_index[key]
                                             for col in row.index:
                                                 val = row[col]
-                                                # Only update if value is not empty/NaN
-                                                # Skip ID update itself
                                                 if col == "id": continue
-                                            
-                                                # Check empty/NaN
-                                                # Using pd.isna(list) returns array of bools which fails if check
                                                 is_empty = False
-                                            
                                                 if isinstance(val, list):
                                                     if not val: is_empty = True
                                                 elif pd.isna(val):
                                                     is_empty = True
                                                 elif isinstance(val, str) and not val.strip():
                                                     is_empty = True
-                                            
                                                 if not is_empty:
-                                                    # Special handling for tags: merge or overwrite?
-                                                    # Request said "update", usually implies overwrite or list-merge
-                                                    # Let's overwrite for simplicity unless user asks otherwise, 
-                                                    # or maybe merge unique?
-                                                    # "Update non-empty fields" -> Overwrite existing field with new non-empty value
-                                                    if col == "tags":
-                                                        # Fix: Ensure logic handles list properly
-                                                        current_df.at[idx, col] = val
-                                                    else:
-                                                        current_df.at[idx, col] = val
+                                                    current_df.at[idx, col] = val
                                             updated_count += 1
                                         else:
-                                            # It's a new ID or ID not present -> Append
-                                            # We can just append to a list and concat later or append to DF
-                                            # Appending to DF row by row is slow, but consistent here.
-                                            # Better: Collect new rows
-                                            pass 
+                                            new_records.append(row.to_dict())
                                 
-                                    # Filter import_df for ONLY new rows to concat
-                                    existing_ids = set(current_df["id"])
-                                    new_rows_df = import_df[~import_df["id"].isin(existing_ids)]
-                                    new_count = len(new_rows_df)
+                                    new_count = len(new_records)
+                                    # 给新记录分配 ID 并增量写入 DB
+                                    if new_records:
+                                        # 计算当前最大 ID
+                                        existing_max = 0
+                                        for eid in current_df["id"].dropna():
+                                            if str(eid).startswith("TC"):
+                                                try:
+                                                    existing_max = max(existing_max, int(str(eid)[2:]))
+                                                except:
+                                                    pass
+                                        last_id = None
+                                        for d in new_records:
+                                            d.pop("id", None)
+                                            ti = int(d.get("turn_index") or 1)
+                                            rtype = d.get("type", "single")
+                                            if rtype == "multi_turn" and ti > 1 and last_id is not None:
+                                                d["id"] = last_id
+                                            else:
+                                                existing_max += 1
+                                                new_id = f"TC{existing_max:04d}"
+                                                d["id"] = new_id
+                                                last_id = new_id
+                                            d["turn_index"] = ti
+                                        save_records(new_records)
+                                        new_rows_df = pd.DataFrame(new_records)
+                                        for col in current_df.columns:
+                                            if col not in new_rows_df.columns:
+                                                new_rows_df[col] = None
+                                        new_rows_df = new_rows_df[current_df.columns]
+                                        final_df = pd.concat([current_df, new_rows_df], ignore_index=True)
+                                    else:
+                                        final_df = current_df
+                                    
+                                    # 增量保存更新过的记录
+                                    updated_records = []
+                                    for _, row in import_df.iterrows():
+                                        key = _row_key(row)
+                                        if key in key_to_index:
+                                            idx = key_to_index[key]
+                                            updated_records.append(current_df.loc[idx].to_dict())
+                                    if updated_records:
+                                        save_records(updated_records)
                                 
-                                    combined_df = pd.concat([current_df, new_rows_df], ignore_index=True)
                                     st.toast(f"Updated {updated_count} cases, Added {new_count} new cases.")
                                 
                                 else:
-                                    # Standard Append Mode (Drop ID to regenerate)
+                                    # Standard Append Mode: 增量写入，不做全量 upsert
                                     if "id" in import_df.columns:
                                         del import_df["id"]
-                                
-                                    combined_df = pd.concat([current_df, import_df], ignore_index=True)
-                                    st.toast(f"Imported {len(import_df)} new cases.")
-                            
-                                # Save to DB (upsert_all handles both new and existing cases)
-                                final_df = save_data(prepare_df_for_persistence(combined_df))
+                                    # 为新记录分配 ID（通过 save_data，但要避免全量写 9000+ 条）
+                                    # 方法：先给 import_df 分配新 ID（基于 current_df 的最大 ID），然后增量写 DB
+                                    existing_max = 0
+                                    for eid in current_df["id"].dropna():
+                                        if str(eid).startswith("TC"):
+                                            try:
+                                                existing_max = max(existing_max, int(str(eid)[2:]))
+                                            except:
+                                                pass
+                                    
+                                    last_id = None
+                                    new_rows = []
+                                    for _, row in import_df.iterrows():
+                                        d = row.to_dict()
+                                        ti = int(d.get("turn_index") or 1)
+                                        rtype = d.get("type", "single")
+                                        if rtype == "multi_turn" and ti > 1 and last_id is not None:
+                                            d["id"] = last_id
+                                        else:
+                                            existing_max += 1
+                                            new_id = f"TC{existing_max:04d}"
+                                            d["id"] = new_id
+                                            last_id = new_id
+                                        d["turn_index"] = ti
+                                        new_rows.append(d)
+                                    
+                                    # 增量写入 DB（只写新记录）
+                                    from app.utils import save_records
+                                    save_records(new_rows)
+                                    
+                                    # 拼接到 current_df
+                                    new_rows_df = pd.DataFrame(new_rows)
+                                    # 确保列对齐
+                                    for col in current_df.columns:
+                                        if col not in new_rows_df.columns:
+                                            new_rows_df[col] = None
+                                    new_rows_df = new_rows_df[current_df.columns]
+                                    final_df = pd.concat([current_df, new_rows_df], ignore_index=True)
+                                    st.toast(f"Imported {len(new_rows)} new cases.")
                             
                                 # Update State
                                 if "Select" not in final_df.columns:
