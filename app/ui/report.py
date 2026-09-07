@@ -483,10 +483,19 @@ def render_report_page():
                 
                 # 根据 session_state 中的全选状态设置 Select 列（消费一次即清，避免每次 rerun 都覆盖用户勾选）
                 select_all_state = st.session_state.pop(f"select_all_{entry_id}", None)
+                # 确保持久化集合存在
+                if f"rerun_select_{entry_id}" not in st.session_state:
+                    st.session_state[f"rerun_select_{entry_id}"] = set()
+                rerun_select = st.session_state[f"rerun_select_{entry_id}"]
                 if select_all_state is True:
                     display_res_df["Select"] = True
+                    # 全选：把所有行加入持久化集合
+                    rerun_select.clear()
+                    rerun_select.update(range(len(display_res_df)))
                 elif select_all_state is False:
                     display_res_df["Select"] = False
+                    # 取消全选：清空持久化集合
+                    rerun_select.clear()
                 
                 all_cols = display_res_df.columns.tolist()
                 editable_cols = ["Select", "passed", "review_comment"]

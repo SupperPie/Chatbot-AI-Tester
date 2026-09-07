@@ -634,14 +634,19 @@ def render_testcases_page():
                                     new_count = len(new_records)
                                     # 给新记录分配 ID 并增量写入 DB
                                     if new_records:
-                                        # 计算当前最大 ID
-                                        existing_max = 0
+                                        # 计算当前最大 ID：取 DB 与内存中较大值，避免并发/不同步导致冲突
+                                        from app.services.test_case_service import TestCaseService
+                                        _id_svc = TestCaseService()
+                                        db_max = _id_svc.get_max_tc_id_num()
+                                        mem_max = 0
                                         for eid in current_df["id"].dropna():
                                             if str(eid).startswith("TC"):
                                                 try:
-                                                    existing_max = max(existing_max, int(str(eid)[2:]))
+                                                    mem_max = max(mem_max, int(str(eid)[2:]))
                                                 except:
                                                     pass
+                                        existing_max = max(db_max, mem_max)
+                                        _id_svc.db.close()
                                         last_id = None
                                         for d in new_records:
                                             d.pop("id", None)
@@ -685,15 +690,19 @@ def render_testcases_page():
                                     # Standard Append Mode: 增量写入，不做全量 upsert
                                     if "id" in import_df.columns:
                                         del import_df["id"]
-                                    # 为新记录分配 ID（通过 save_data，但要避免全量写 9000+ 条）
-                                    # 方法：先给 import_df 分配新 ID（基于 current_df 的最大 ID），然后增量写 DB
-                                    existing_max = 0
+                                    # 为新记录分配 ID：取 DB 与内存中较大值，避免并发/不同步导致冲突
+                                    from app.services.test_case_service import TestCaseService
+                                    _id_svc = TestCaseService()
+                                    db_max = _id_svc.get_max_tc_id_num()
+                                    mem_max = 0
                                     for eid in current_df["id"].dropna():
                                         if str(eid).startswith("TC"):
                                             try:
-                                                existing_max = max(existing_max, int(str(eid)[2:]))
+                                                mem_max = max(mem_max, int(str(eid)[2:]))
                                             except:
                                                 pass
+                                    existing_max = max(db_max, mem_max)
+                                    _id_svc.db.close()
                                     
                                     last_id = None
                                     new_rows = []
@@ -1164,6 +1173,9 @@ def render_testcases_page():
         priorities=filter_priority
     )
 
+    # 全量选中行（跨所有目录/筛选条件），用于 Run/Delete/Move/Priority/Assert 操作
+    all_selected = st.session_state.df[st.session_state.df.get("Select", False) == True]
+
 
     # ------------------
     # Execution Logic
@@ -1171,14 +1183,14 @@ def render_testcases_page():
     cases_to_run = []
     
     if run_selected_clicked:
-        selected_rows = edited_df[edited_df["Select"] == True]
+        selected_rows = all_selected
         if selected_rows.empty:
             execution_placeholder.warning("Please select cases to run.")
         else:
              cases_to_run = selected_rows.drop(columns=["Select", "__row_key"], errors='ignore').to_dict(orient="records")
              
     elif delete_selected_clicked:
-        selected_rows = edited_df[edited_df["Select"] == True]
+        selected_rows = all_selected
         if selected_rows.empty:
             execution_placeholder.warning("Please select cases to delete.")
         else:
@@ -1186,7 +1198,7 @@ def render_testcases_page():
             confirm_delete_dialog(ids_to_delete)
     
     elif move_to_category_clicked:
-        selected_rows = edited_df[edited_df["Select"] == True]
+        selected_rows = all_selected
 
         if not selected_rows.empty:
             ids_to_move = selected_rows['id'].tolist()
@@ -1195,7 +1207,7 @@ def render_testcases_page():
             execution_placeholder.warning("请先选择要移动的测试用例")
 
     elif batch_priority_clicked:
-        selected_rows = edited_df[edited_df["Select"] == True]
+        selected_rows = all_selected
         if selected_rows.empty:
             execution_placeholder.warning("请先选择要设置 Priority 的测试用例")
         else:
@@ -1203,13 +1215,11 @@ def render_testcases_page():
             batch_priority_dialog(ids_to_update)
 
     elif bind_assertions_clicked:
-        selected_rows = edited_df[edited_df["Select"] == True]
+        selected_rows = all_selected
         if selected_rows.empty:
             execution_placeholder.warning("请先选择要绑定断言的测试用例")
         else:
-            st.session_state["show_assertion_binding"] = True
-            st.session_state["assertion_binding_ids"] = selected_rows['id'].tolist()
-            st.rerun()
+            _assertion_binding_dialog(selected_rows['id'].tolist())
     
     elif run_range_clicked:
         start_id = st.session_state.get('filter_id_from', '').strip()
@@ -1321,23 +1331,17 @@ def render_testcases_page():
         except Exception as e:
             execution_placeholder.error(f"Failed to run tests: {e}")
 
-    # ─── 断言绑定弹窗 ───
-    if st.session_state.get("show_assertion_binding", False):
-        _assertion_binding_dialog()
-
+    # ─── 断言绑定弹窗通过按钮点击直接调用，无需 session_state flag ───
     logger.debug("=== render_testcases_page() 结束 ===")
 
 
 @st.dialog("🧩 断言组件绑定", width="small")
-def _assertion_binding_dialog():
+def _assertion_binding_dialog(ids):
     """断言组件绑定弹窗 - 为选中的测试用例关联断言组件"""
     import json as _json
     from app.services.assertion_service import AssertionService
 
-    ids = st.session_state.get("assertion_binding_ids", [])
     if not ids:
-        st.session_state["show_assertion_binding"] = False
-        st.rerun()
         return
 
     st.caption(f"选中 {len(ids)} 个用例: {', '.join(ids[:5])}{'...' if len(ids) > 5 else ''}")
@@ -1347,9 +1351,6 @@ def _assertion_binding_dialog():
 
     if not all_components:
         st.info("组件库为空，请先在 Assertions 页面创建组件。")
-        if st.button("关闭"):
-            st.session_state["show_assertion_binding"] = False
-            st.rerun()
         return
 
     # 组件 ID → 组件对象 映射（用于显示名称）
@@ -1422,8 +1423,6 @@ def _assertion_binding_dialog():
     # 完成按钮 - 关闭弹窗
     st.markdown("---")
     if st.button("✔ 完成", key="btn_finish_binding", type="primary", use_container_width=True):
-        st.session_state["show_assertion_binding"] = False
-        st.session_state.pop("assertion_binding_ids", None)
         st.rerun()
 
 

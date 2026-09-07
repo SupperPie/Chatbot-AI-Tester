@@ -35,18 +35,35 @@ class FeishuClient:
         # 检查缓存的 token 是否有效
         if self._tenant_access_token and time.time() < self._token_expires_at - 60:
             return self._tenant_access_token
+
+        # 校验并清理 app_id / app_secret
+        app_id = (self.app_id or "").strip().strip('"').strip("'")
+        app_secret = (self.app_secret or "").strip().strip('"').strip("'")
+        if not app_id or not app_secret:
+            raise Exception(
+                "获取飞书 token 失败: FEISHU_APP_ID 或 FEISHU_APP_SECRET 未配置。"
+                "请在 Settings 页面或 .env 文件中设置飞书应用凭证。"
+            )
         
         url = f"{self.base_url}/auth/v3/tenant_access_token/internal"
         payload = {
-            "app_id": self.app_id,
-            "app_secret": self.app_secret
+            "app_id": app_id,
+            "app_secret": app_secret
         }
         
-        resp = requests.post(url, json=payload)
+        try:
+            resp = requests.post(url, json=payload, timeout=10)
+            resp.raise_for_status()
+        except requests.RequestException as e:
+            raise Exception(f"获取飞书 token 失败: 网络请求错误 - {e}")
+
         data = resp.json()
         
         if data.get("code") != 0:
-            raise Exception(f"获取飞书 token 失败: {data.get('msg')}")
+            raise Exception(
+                f"获取飞书 token 失败: {data.get('msg')} "
+                f"(code={data.get('code')}, 请检查 FEISHU_APP_ID/FEISHU_APP_SECRET 是否正确)"
+            )
         
         self._tenant_access_token = data["tenant_access_token"]
         self._token_expires_at = time.time() + data.get("expire", 7200)

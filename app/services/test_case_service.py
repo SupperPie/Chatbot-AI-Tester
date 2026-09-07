@@ -1,5 +1,6 @@
 from typing import List, Optional, Dict
 from datetime import datetime
+from sqlalchemy import func
 import json
 import math
 import logging
@@ -212,35 +213,64 @@ class TestCaseService:
 
         与 upsert_all 的区别：
         - 语义明确为"只保存这几条"，不做全量同步
-        - 一次性 commit（适合小批量）
+        - 单条失败不影响整批（与 upsert_all 一致）
         - 不含任何 ID 自动生成/重分配逻辑：id 仅作为 (id, turn_index) 查询条件
           用于定位 DB 记录；如果传入的 record 中字段值由用户修改（包括 id 本身），
           会按用户提供的值写入，但方法内部不会主动生成新 ID
         """
         allowed_fields = {c.name for c in TestCase.__table__.columns}
+        count = 0
+        errors = 0
         for r in records:
             if not r.get('id'):
                 continue
-            clean = _sanitize_record(r)
-            ti = int(clean.get('turn_index') or 1)
-            clean['turn_index'] = ti
-            existing = self.db.query(TestCase).filter(
-                TestCase.id == clean['id'],
-                TestCase.turn_index == ti
-            ).first()
-            if existing:
-                for k, v in clean.items():
-                    if k not in ('id', 'turn_index') and k in allowed_fields:
-                        setattr(existing, k, v)
-                existing.updated_at = datetime.utcnow()
-            else:
-                fields = {k: v for k, v in clean.items() if k in allowed_fields}
-                fields['turn_index'] = ti
-                fields.setdefault('created_at', datetime.utcnow())
-                fields.setdefault('updated_at', datetime.utcnow())
-                self.db.add(TestCase(**fields))
-        self.db.commit()
-        return len(records)
+            try:
+                clean = _sanitize_record(r)
+                ti = int(clean.get('turn_index') or 1)
+                clean['turn_index'] = ti
+                existing = self.db.query(TestCase).filter(
+                    TestCase.id == clean['id'],
+                    TestCase.turn_index == ti
+                ).first()
+                if existing:
+                    for k, v in clean.items():
+                        if k not in ('id', 'turn_index') and k in allowed_fields:
+                            setattr(existing, k, v)
+                    existing.updated_at = datetime.utcnow()
+                else:
+                    fields = {k: v for k, v in clean.items() if k in allowed_fields}
+                    fields['turn_index'] = ti
+                    fields.setdefault('created_at', datetime.utcnow())
+                    fields.setdefault('updated_at', datetime.utcnow())
+                    self.db.add(TestCase(**fields))
+                # flush 使后续查询能看到本条记录，避免同批次重复 key 冲突
+                self.db.flush()
+                count += 1
+            except Exception as e:
+                errors += 1
+                logger.warning(f"[upsert_records] skip record id={r.get('id')} turn={r.get('turn_index')}: {e}")
+                try:
+                    self.db.rollback()
+                except Exception:
+                    pass
+        try:
+            self.db.commit()
+        except Exception as e:
+            logger.error(f"[upsert_records] final commit failed: {e}")
+            self.db.rollback()
+        if errors:
+            logger.warning(f"[upsert_records] completed with {count} ok, {errors} errors")
+        return count
+
+    def get_max_tc_id_num(self) -> int:
+        """查询 DB 中最大的 TCxxxx 数字部分，用于生成新 ID 避免冲突"""
+        # 取出所有 TC 开头的 id，提取数字部分取最大值
+        # 使用 SQL 子查询在 DB 端做正则匹配，避免拉全表
+        from sqlalchemy import text
+        result = self.db.execute(
+            text("SELECT MAX(CAST(SUBSTRING(id FROM 3) AS INTEGER)) FROM ai_chatbot_tester.test_cases WHERE id LIKE 'TC%'")
+        ).scalar()
+        return int(result) if result else 0
 
     def __del__(self):
         if hasattr(self, 'db'):
