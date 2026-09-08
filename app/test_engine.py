@@ -131,6 +131,23 @@ except ImportError:
             def get_model_name(self): return "MockModel"
 import openai
 
+
+def _safe_str(v) -> str:
+    """将 pandas 读出的 NaN/None/数值等安全转为非空 str，空值返回 ''。"""
+    if v is None:
+        return ""
+    try:
+        import math
+        if isinstance(v, float) and math.isnan(v):
+            return ""
+    except Exception:
+        pass
+    s = str(v).strip()
+    if s in ("", "nan", "None", "NaN"):
+        return ""
+    return s
+
+
 class SynchronousEvalModel(DeepEvalBaseLLM):
     def __init__(self, model_name, base_url, api_key):
         self.model_name = model_name
@@ -204,7 +221,19 @@ class SynchronousEvalModel(DeepEvalBaseLLM):
         return self.model_name
 
 class TestEngine:
+    _instance = None  # 模块级单例：避免每次 Run 都重新初始化 DeepEval 指标
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            cls._instance._initialized = False
+        return cls._instance
+
     def __init__(self):
+        if getattr(self, "_initialized", False):
+            return
+        self._initialized = True
+
         # Use our custom Synchronous Model
         self.custom_model = SynchronousEvalModel(
             model_name=os.getenv("COMPATIBLE_MODEL", "qwen3-max"), 
@@ -251,29 +280,11 @@ class TestEngine:
         except Exception as e:
             print(f"WARNING: ConversationalGEval initialization failed: {e}. Multi-turn will use fallback scoring.")
             self.conversational_metric = None
-        
-        # Warm up metrics to prevent first-run 20-30s delay loading NLTK/Spacy models
-        self._warmup_metrics()
-        
-    def _warmup_metrics(self):
-        """Pre-load DeepEval NLP models asynchronously to avoid lag on first runtime click."""
-        dummy_case = LLMTestCase(
-            input="warmup",
-            actual_output="warmup",
-            expected_output="warmup",
-            retrieval_context=["warmup"]
-        )
-        
-        try:
-            async def run_warmup():
-                if self.correctness_metric is not None:
-                    await self.correctness_metric.a_measure(dummy_case)
-                if self.faithfulness_metric is not None:
-                    await self.faithfulness_metric.a_measure(dummy_case)
-                
-            asyncio.run(run_warmup())
-        except Exception:
-            pass # Ignore warmup errors
+
+        # 注：原来这里会 _warmup_metrics() 同步发 2 次 LLM 请求预热，这是每次点击 Run
+        # 都卡顿的主因。DeepEval 指标对象构造只是存配置（不发网络请求），真正的 LLM
+        # 调用发生在 a_measure() 评分时，首条用例评分稍慢是可接受的。
+
 
     @staticmethod
     def _extract_assertion_response(raw_data, raw_response, actual_output) -> dict:
@@ -875,15 +886,18 @@ class TestEngine:
                 turns_for_eval = []
                 expected_outcomes = []
                 for t in turn_results:
-                    if t.get("user"):
-                        turns_for_eval.append(Turn(role="user", content=t["user"]))
-                    if t.get("actual"):
-                        turns_for_eval.append(Turn(role="assistant", content=t["actual"]))
-                    if t.get("expected"):
-                        expected_outcomes.append(t["expected"])
+                    user_msg = _safe_str(t.get("user"))
+                    actual_msg = _safe_str(t.get("actual"))
+                    expected_msg = _safe_str(t.get("expected"))
+                    if user_msg:
+                        turns_for_eval.append(Turn(role="user", content=user_msg))
+                    if actual_msg:
+                        turns_for_eval.append(Turn(role="assistant", content=actual_msg))
+                    if expected_msg:
+                        expected_outcomes.append(expected_msg)
                 
                 # Create ConversationalTestCase
-                scenario = case_data.get("description", "Multi-turn conversation test")
+                scenario = _safe_str(case_data.get("description")) or "Multi-turn conversation test"
                 expected_outcome = "; ".join(expected_outcomes) if expected_outcomes else "Assistant should provide correct responses"
                 
                 convo_test_case = ConversationalTestCase(
