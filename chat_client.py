@@ -163,6 +163,15 @@ TYPE_DEFAULTS = {
     },
     "dc_qa": {
         "request_params": {}
+    },
+    "portal_im": {
+        "request_params": {
+            "channel": "JUPITA",
+            "source": "",
+            "lang": "en-US",
+            "currency": "BRL",
+            "payload_format": "full"
+        }
     }
 }
 
@@ -2018,6 +2027,224 @@ def get_dify_workflow_response(message: str, url: str, token: str = None, user_i
         return f"Error: {str(e)}"
 
 
+# ──────────────────────────────────────────────────────────────
+# Portal IM（公网 IM 门户接口）客户端
+#
+# 调用流程（两步）：
+#   1. POST {base}/api/customer/im/conversation/init  → 拿到服务端 sessionId
+#   2. POST {base}/api/customer/im/sendStreamMsg        → SSE 流式对话（同 sessionId 维持多轮上下文）
+#
+# SSE 事件格式：
+#   {"type": "content", "content": "...", "agent_id": "...", "is_thinking": true/false, ...}
+#     - is_thinking=true  → 各 agent（intent_classification/supervisor/summarize）的过程输出 → thinking
+#     - is_thinking=false → 最终答案（agent_id=summarize）→ result
+#   {"type": "done", "data": {"agents_info": [...]}, "meta": {...}} → 结构化结果 + 元信息 → inform_base
+#   data:[DONE] → 流结束
+#
+# payload 两种格式（request_params.payload_format 配置）：
+#   full   → {"sessionId","msgContent","randomId","query","user_id","session_id","lob","extra_args"}（fitness 抓包格式）
+#   simple → {"sessionId","msgContent","randomId"}（hotel 抓包格式）
+# 两种格式实测均可用，按抓包原始格式区分以贴近真实客户端行为。
+# ──────────────────────────────────────────────────────────────
+
+# 本地 session_id → 门户 sessionId 的映射缓存（多轮 case 依赖此缓存复用同一个门户会话）
+_PORTAL_SESSION_CACHE = {}
+
+
+def _portal_init_session(base_url: str, headers_base: dict, extra_params: dict) -> str:
+    """调用 conversation/init 获取门户 sessionId"""
+    init_url = base_url.rstrip("/") + "/api/customer/im/conversation/init"
+    payload = {
+        "source": extra_params.get("source", ""),
+        "channel": extra_params.get("channel", "JUPITA"),
+    }
+    try:
+        resp = requests.post(
+            init_url,
+            json=payload,
+            headers={**headers_base, "Accept": "application/json"},
+            timeout=60,
+        )
+        if not resp.ok:
+            return f"❌ SERVER DETAIL ({resp.status_code}): {resp.text[:500]}"
+        body = resp.json()
+        if str(body.get("code")) != "200" or not body.get("success", False):
+            return f"❌ SERVER DETAIL (init): {body.get('msg', 'Unknown error')}"
+        session_id = (body.get("data") or {}).get("sessionId")
+        if not session_id:
+            return f"❌ SERVER DETAIL (init): sessionId not found in response: {str(body)[:500]}"
+        return str(session_id)
+    except requests.exceptions.Timeout:
+        return "Error: Portal init request timed out (60s)"
+    except Exception as e:
+        return f"Error: Portal init failed: {e}"
+
+
+def get_portal_im_response(message: str, url: str, token: str = None, user_id: str = None, session_id: str = None, extra_params: dict = None) -> str:
+    """Portal IM（公网门户）流式接口客户端
+
+    Args:
+        message: 用户消息
+        url: 门户 base URL（如 https://dc-portal-api-uk-uat.dragonpass.com）
+        token: JWT token（header: token）
+        session_id: 本地会话 ID；同一 ID 的多次调用复用同一门户会话（多轮上下文）
+        extra_params: request_params（channel/source/lang/currency/payload_format）
+    """
+    extra_params = extra_params or {}
+    if session_id is None:
+        session_id = str(uuid.uuid4())
+
+    headers_base = {
+        "Content-Type": "application/json",
+        "token": token or "",
+        "lang": extra_params.get("lang", "en-US"),
+        "currency": extra_params.get("currency", "BRL"),
+    }
+
+    # 获取/复用门户 sessionId
+    portal_sid = _PORTAL_SESSION_CACHE.get(session_id)
+    if portal_sid is None:
+        portal_sid = _portal_init_session(url, headers_base, extra_params)
+        if portal_sid.startswith("❌") or portal_sid.startswith("Error"):
+            return portal_sid  # init 失败，直接返回错误
+        _PORTAL_SESSION_CACHE[session_id] = portal_sid
+
+    random_id = f"tester_{uuid.uuid4().hex[:16]}"
+    payload_format = extra_params.get("payload_format", "full")
+    if payload_format == "simple":
+        # hotel 抓包格式
+        payload = {
+            "sessionId": portal_sid,
+            "msgContent": message,
+            "randomId": random_id,
+        }
+    else:
+        # fitness 抓包格式（带 query/user_id/session_id/lob/extra_args）
+        payload = {
+            "sessionId": portal_sid,
+            "msgContent": message,
+            "randomId": random_id,
+            "query": message,
+            "user_id": portal_sid,
+            "session_id": portal_sid,
+            "lob": extra_params.get("lob", ""),
+            "extra_args": {"sessionId": portal_sid},
+        }
+
+    headers = {**headers_base, "Accept": "text/event-stream"}
+    send_url = url.rstrip("/") + "/api/customer/im/sendStreamMsg"
+
+    print("=" * 60, flush=True)
+    print(f"[Portal IM] URL: {send_url}", flush=True)
+    print(f"[Portal IM] Portal sessionId: {portal_sid} (local: {session_id})", flush=True)
+    print(f"[Portal IM] Payload keys: {list(payload.keys())} (format={payload_format})", flush=True)
+    print("=" * 60, flush=True)
+
+    # 单个 SSE chunk / 汇总字段的截断上限（done 事件含酒店列表等大 JSON，防止 raw/inform_base 撑爆存储与页面）
+    MAX_CHUNK_LEN = 100_000
+    MAX_TOTAL_LEN = 300_000
+    MAX_INFORM_BASE_LEN = 100_000
+
+    try:
+        start_time = time.time()
+        response = requests.post(send_url, json=payload, headers=headers, stream=True, timeout=600)
+
+        if not response.ok:
+            err_text = response.text[:1000]
+            # 401/token 过期等错误时使缓存的 sessionId 失效，下次调用重新 init
+            _PORTAL_SESSION_CACHE.pop(session_id, None)
+            print(f"[Portal IM] API Error {response.status_code}: {err_text}")
+            return f"❌ SERVER DETAIL ({response.status_code}): {err_text}"
+
+        answer_parts = []
+        thinking_parts = []
+        raw_chunks = []
+        inform_base_data = None
+        ttft = 0.0
+        got_first_answer = False
+        last_thinking_agent = None
+
+        for line in response.iter_lines():
+            if line:
+                decoded_line = line.decode("utf-8")
+                # 兼容 "data: {...}" 与 "data:{...}" 两种前缀写法
+                if decoded_line.startswith("data:"):
+                    json_str = decoded_line[5:].strip()
+                    if json_str == "[DONE]":
+                        break
+                    try:
+                        data = json.loads(json_str)
+                    except json.JSONDecodeError:
+                        chunk = f"Decode Error: {json_str[:500]}"
+                        raw_chunks.append(chunk)
+                        continue
+
+                    raw_s = json.dumps(data, ensure_ascii=False)
+                    if len(raw_s) > MAX_CHUNK_LEN:
+                        raw_s = raw_s[:MAX_CHUNK_LEN] + f'...[truncated, total {len(raw_s)} chars]'
+                    raw_chunks.append(raw_s)
+
+                    msg_type = data.get("type")
+                    content = data.get("content") or ""
+                    is_thinking = bool(data.get("is_thinking", False))
+
+                    if msg_type == "content":
+                        if content:
+                            if is_thinking:
+                                # agent 切换时加标签，便于区分各阶段（避免每个 token 都带前缀）
+                                agent = data.get("agent_id") or "unknown"
+                                if agent != last_thinking_agent:
+                                    thinking_parts.append(f"\n[{agent}] ")
+                                    last_thinking_agent = agent
+                                thinking_parts.append(content)
+                            else:
+                                if not got_first_answer:
+                                    ttft = time.time() - start_time
+                                    got_first_answer = True
+                                answer_parts.append(content)
+                    elif msg_type == "done":
+                        # 结构化结果（agents_info + meta）→ inform_base
+                        inform_base_data = {
+                            "agents_info": (data.get("data") or {}).get("agents_info"),
+                            "meta": data.get("meta"),
+                        }
+
+        raw_full_str = "\n".join(raw_chunks)
+        if len(raw_full_str) > MAX_TOTAL_LEN:
+            raw_full_str = raw_full_str[:MAX_TOTAL_LEN] + f"\n...[truncated, total {len(raw_full_str)} chars]"
+
+        final_answer = "".join(answer_parts)
+        thinking_text = "".join(thinking_parts)
+
+        if not final_answer:
+            if raw_chunks:
+                final_answer = "Raw data captured (no answer content). See Raw Data."
+            else:
+                final_answer = "Error: No response content found."
+            if not got_first_answer:
+                ttft = time.time() - start_time
+
+        inform_base_str = ""
+        if inform_base_data is not None:
+            inform_base_str = json.dumps(inform_base_data, ensure_ascii=False)
+            if len(inform_base_str) > MAX_INFORM_BASE_LEN:
+                inform_base_str = inform_base_str[:MAX_INFORM_BASE_LEN] + f'...[truncated, total {len(inform_base_str)} chars]'
+
+        return json.dumps({
+            "result": final_answer,
+            "thinking": thinking_text,
+            "inform_base": inform_base_str,
+            "raw": raw_full_str,
+            "ttft": ttft,
+        }, ensure_ascii=False)
+
+    except requests.exceptions.Timeout:
+        return "Error: Portal IM API Request Timed Out (600s)"
+    except Exception as e:
+        print(f"[Portal IM] Error: {e}")
+        return f"Error: {e}"
+
+
 def get_chat_response(message: str, api_name: str = "Bundle API", user_id: str = None, session_id: str = None) -> str:
     """Unified API call function - selects the appropriate API based on api_name"""
     
@@ -2070,6 +2297,8 @@ def get_chat_response(message: str, api_name: str = "Bundle API", user_id: str =
         return get_dc_qa_response(message, url=url, user_id=user_id, session_id=session_id, extra_params=extra_params)
     elif api_type == "dify_workflow":
         return get_dify_workflow_response(message, url=url, token=token, user_id=user_id, session_id=session_id, extra_params=extra_params)
+    elif api_type == "portal_im":
+        return get_portal_im_response(message, url=url, token=token, user_id=user_id, session_id=session_id, extra_params=extra_params)
     else:
         return get_bundle_response(message, url=url, user_id=user_id, session_id=session_id, extra_params=extra_params)
 

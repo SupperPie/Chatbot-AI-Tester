@@ -1,4 +1,30 @@
 {
+    "Portal Fitness (UAT)": {
+        "url": "https://dc-portal-api-uk-uat.dragonpass.com",
+        "description": "公网 IM 门户接口 - Fitness 场景（init+sendStreamMsg，fitness 抓包 payload 格式）",
+        "type": "portal_im",
+        "token": "eyJhbGciOiJIUzI1NiJ9.eyJpYXQiOjE3ODg3NjA5NTIsInN1YiI6IjgyNGZkY2E0LTBkZDktNGYyYy05OTdhLTk2MmM1ZGI1YzE4MiIsImp0aSI6IjgyNGZkY2E0LTBkZDktNGYyYy05OTdhLTk2MmM1ZGI1YzE4MiIsImV4cCI6MTc4ODkzMzc1Mn0.AbBH3PUyPtEpJkGxhMWW3Zh-MmgxWjSTGvmb6lK26KQ",
+        "request_params": {
+            "channel": "JUPITA",
+            "source": "",
+            "lang": "en-US",
+            "currency": "BRL",
+            "payload_format": "full"
+        }
+    },
+    "Portal Hotel (UAT)": {
+        "url": "https://dc-portal-api-uk-uat.dragonpass.com",
+        "description": "公网 IM 门户接口 - Hotel 场景（init+sendStreamMsg，hotel 抓包 payload 格式）",
+        "type": "portal_im",
+        "token": "eyJhbGciOiJIUzI1NiJ9.eyJpYXQiOjE3ODg3NjA5NTIsInN1YiI6IjgyNGZkY2E0LTBkZDktNGYyYy05OTdhLTk2MmM1ZGI1YzE4MiIsImp0aSI6IjgyNGZkY2E0LTBkZDktNGYyYy05OTdhLTk2MmM1ZGI1YzE4MiIsImV4cCI6MTc4ODkzMzc1Mn0.AbBH3PUyPtEpJkGxhMWW3Zh-MmgxWjSTGvmb6lK26KQ",
+        "request_params": {
+            "channel": "JUPITA",
+            "source": "",
+            "lang": "en-US",
+            "currency": "BRL",
+            "payload_format": "simple"
+        }
+    },
     "Agent Q&A": {
         "url": "http://172.21.9.45:10087/stream",
         "description": "Test description update",
@@ -9,7 +35,7 @@
         "description": "Bundle API",
         "type": "bundle",
         "request_params": {
-            "context": "2026上海劳力士大师赛尊享权益"
+            "context": "上海劳力士大师赛决赛盛典"
         }
     },
     "DC_Q&A": {
@@ -81,6 +107,11 @@
         "description": "Agent Hotel",
         "type": "hotel"
     },
+    "【UAT】Limo": {
+        "url": "http://agent-limo--platform-ai--80--aws-uk-uat.gz-debug.dp-svc.com/stream",
+        "description": "",
+        "type": "limo"
+    },
     "【UAT】Q&A": {
         "url": "http://agent-question-and-answer--platform-ai--80--aws-uk-uat.gz-debug.dp-svc.com/stream",
         "description": "",
@@ -99,7 +130,10 @@
         "description": "Supervisor",
         "type": "ai_engineering",
         "request_params": {
-            "lob": "dc"
+            "lob": "dc",
+            "extra_args": {
+                "app_name": "Eleva Beyond"
+            }
         }
     },
     "【UAT】TripIdea": {
@@ -110,7 +144,12 @@
     "【UAT】eSIM": {
         "url": "http://agent-esim--platform-ai--80--aws-uk-uat.gz-debug.dp-svc.com/stream",
         "description": "",
-        "type": "esim_agent"
+        "type": "esim_agent",
+        "request_params": {
+            "extra_args": {
+                "app_name": "Eleva Beyond"
+            }
+        }
     },
     "劳斯莱斯": {
         "url": "http://192.168.25.247/v1/chat-messages",
@@ -174,10 +213,5 @@
             },
             "session_id": ""
         }
-    },
-    "【UAT】Limo": {
-        "url": "http://agent-limo--platform-ai--80--aws-uk-uat.gz-debug.dp-svc.com/stream",
-        "description": "",
-        "type": "limo"
     }
 }
