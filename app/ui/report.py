@@ -374,6 +374,10 @@ def render_report_page():
                 unrolled_rows = []
                 for _, row in res_df.iterrows():
                     if "turns" in row and isinstance(row["turns"], list) and len(row["turns"]) > 0:
+                        # 多轮：继承外层 case 的整体 score/passed（ConversationalGEval 给的是整段对话的分，
+                        # 每个 turn 没有单独评分，不能用 t.get("score",0) 兜底成 0，否则会误覆盖成 failed）
+                        outer_score = float(row.get("score", 0)) if pd.notna(row.get("score")) else 0.0
+                        outer_passed = bool(row.get("passed", False))
                         for idx, t in enumerate(row["turns"]):
                             new_row = row.copy().to_dict()
                             new_row["turn_index"] = t.get("turn", idx + 1)
@@ -383,10 +387,18 @@ def render_report_page():
                             
                             is_manual = t.get("manual_review", False)
                             if is_manual:
-                                new_row["passed"] = t.get("passed", False)
+                                new_row["passed"] = t.get("passed", outer_passed)
+                                if t.get("score") is not None:
+                                    new_row["score"] = t.get("score")
                             else:
-                                score_val = float(t.get("score", 0)) if t.get("score") is not None else 0.0
-                                new_row["passed"] = (score_val >= 0.5)
+                                # turn 有自己的 score 就用 turn 的，否则继承外层整体分
+                                t_score = t.get("score")
+                                if t_score is not None and not (isinstance(t_score, float) and pd.isna(t_score)):
+                                    new_row["score"] = float(t_score)
+                                    new_row["passed"] = (float(t_score) >= 0.5)
+                                else:
+                                    new_row["score"] = outer_score
+                                    new_row["passed"] = outer_passed
                             
                             new_row["latency"] = t.get("latency", 0)
                             new_row["ttft"] = t.get("ttft", 0)

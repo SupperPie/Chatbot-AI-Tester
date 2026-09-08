@@ -884,7 +884,6 @@ class TestEngine:
         overall_passed = False
         
         # Check if ConversationalTestCase and Turn are available
-        print(f"[DEBUG] ConversationalTestCase={ConversationalTestCase}, Turn={Turn}, conversational_metric={self.conversational_metric}")
         if ConversationalTestCase is not None and Turn is not None and self.conversational_metric is not None:
             try:
                 # Build Turn list for ConversationalTestCase
