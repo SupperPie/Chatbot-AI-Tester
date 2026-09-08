@@ -318,9 +318,14 @@ class TestEngine:
             base = dict(done_msg) if done_msg else dict(all_lines[-1])
             # 附加 raw_lines 供 scope 过滤
             base['__raw_lines__'] = all_lines
-            # 附加拼接的完整文本
+            # 附加拼接的完整文本（兼容内部接口 type=token 和 portal_im type=content 两种 SSE 格式）
             if 'result' not in base:
-                tokens = [l.get('data', '') for l in all_lines if l.get('type') == 'token' and isinstance(l.get('data'), str)]
+                tokens = []
+                for l in all_lines:
+                    if l.get("type") in ("token", "content") and not l.get("is_thinking"):
+                        d = l.get("data") or l.get("content")
+                        if isinstance(d, str):
+                            tokens.append(d)
                 if tokens:
                     base['result'] = ''.join(tokens)
                 elif actual_output:

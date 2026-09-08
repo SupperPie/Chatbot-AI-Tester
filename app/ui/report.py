@@ -236,12 +236,25 @@ def render_report_page():
             mgmt_col1, mgmt_col2, mgmt_col3, mgmt_col4 = st.columns([3, 1, 1.5, 1])
             
             with mgmt_col1:
-                # API SELECTOR
-                stored_api = entry.get("api_name", "Bundle API")
-                default_idx = 0
-                if stored_api in available_apis:
-                    default_idx = available_apis.index(stored_api)
-                st.selectbox("API", options=available_apis, index=default_idx, key=f"api_sel_{entry_id}", label_visibility="collapsed")
+                # API SELECTOR + 执行模式选择（Rerun/Continue 使用）
+                api_col, mode_col = st.columns([2, 1])
+                with api_col:
+                    stored_api = entry.get("api_name", "Bundle API")
+                    default_idx = 0
+                    if stored_api in available_apis:
+                        default_idx = available_apis.index(stored_api)
+                    st.selectbox("API", options=available_apis, index=default_idx, key=f"api_sel_{entry_id}", label_visibility="collapsed")
+                with mode_col:
+                    mode_key = f"exec_mode_{entry_id}"
+                    if mode_key not in st.session_state:
+                        # 默认用上一次全局选择，否则用 full
+                        st.session_state[mode_key] = st.session_state.get("execution_mode_select", "full (语义+断言)")
+                    st.selectbox(
+                        "执行模式",
+                        ["full (语义+断言)", "semantic (仅语义)", "assertion (仅断言)"],
+                        key=mode_key,
+                        label_visibility="collapsed",
+                    )
 
             with mgmt_col2:
                 # DELETE BUTTON
@@ -598,10 +611,12 @@ def render_report_page():
                                 from app.utils import get_job_manager
                                 mgr = get_job_manager()
                                 target_api = st.session_state.get(f"api_sel_{entry_id}", "Bundle API")
+                                _mode_raw = st.session_state.get(f"exec_mode_{entry_id}", "full (语义+断言)")
+                                _mode_val = _mode_raw.split(" ")[0]  # "full" / "semantic" / "assertion"
                                 job_id = mgr.run_background_job(
                                     unique_cases_to_rerun,
                                     api_name=target_api,
-                                    execution_mode="full",
+                                    execution_mode=_mode_val,
                                     max_workers=_read_max_workers(),
                                 )
                                 st.success(f"Rerun started for {len(unique_cases_to_rerun)} case(s)! Job ID: {job_id}")
