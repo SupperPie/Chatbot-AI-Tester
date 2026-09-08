@@ -170,7 +170,7 @@ TYPE_DEFAULTS = {
             "source": "",
             "lang": "en-US",
             "currency": "BRL",
-            "payload_format": "full"
+            "lob": ""
         }
     }
 }
@@ -2030,21 +2030,23 @@ def get_dify_workflow_response(message: str, url: str, token: str = None, user_i
 # ──────────────────────────────────────────────────────────────
 # Portal IM（公网 IM 门户接口）客户端
 #
+# 架构：所有 agent（hotel/fitness/flight/limo/esim/supervisor...）都走同一个接口，
+#      由服务端 supervisor 基于 query 意图自动路由到对应子 agent。
+#
 # 调用流程（两步）：
 #   1. POST {base}/api/customer/im/conversation/init  → 拿到服务端 sessionId
 #   2. POST {base}/api/customer/im/sendStreamMsg        → SSE 流式对话（同 sessionId 维持多轮上下文）
 #
 # SSE 事件格式：
 #   {"type": "content", "content": "...", "agent_id": "...", "is_thinking": true/false, ...}
-#     - is_thinking=true  → 各 agent（intent_classification/supervisor/summarize）的过程输出 → thinking
+#     - is_thinking=true  → 各 agent（intent_classification/supervisor/summarize/各子agent）的过程输出 → thinking
 #     - is_thinking=false → 最终答案（agent_id=summarize）→ result
 #   {"type": "done", "data": {"agents_info": [...]}, "meta": {...}} → 结构化结果 + 元信息 → inform_base
 #   data:[DONE] → 流结束
 #
-# payload 两种格式（request_params.payload_format 配置）：
-#   full   → {"sessionId","msgContent","randomId","query","user_id","session_id","lob","extra_args"}（fitness 抓包格式）
-#   simple → {"sessionId","msgContent","randomId"}（hotel 抓包格式）
-# 两种格式实测均可用，按抓包原始格式区分以贴近真实客户端行为。
+# Payload：基础字段（sessionId/msgContent/randomId）必填，其余字段（query/user_id/session_id/lob/extra_args）
+#   是"健身/eSIM/附近健身"路径额外携带的字段，但实测对其他场景无副作用，统一全量发送即可。
+#   coordinates 可选：附近健身且拿到定位时 "lat, lng"，由 request_params.coordinates 配置。
 # ──────────────────────────────────────────────────────────────
 
 # 本地 session_id → 门户 sessionId 的映射缓存（多轮 case 依赖此缓存复用同一个门户会话）
@@ -2110,26 +2112,23 @@ def get_portal_im_response(message: str, url: str, token: str = None, user_id: s
         _PORTAL_SESSION_CACHE[session_id] = portal_sid
 
     random_id = f"tester_{uuid.uuid4().hex[:16]}"
-    payload_format = extra_params.get("payload_format", "full")
-    if payload_format == "simple":
-        # hotel 抓包格式
-        payload = {
-            "sessionId": portal_sid,
-            "msgContent": message,
-            "randomId": random_id,
-        }
-    else:
-        # fitness 抓包格式（带 query/user_id/session_id/lob/extra_args）
-        payload = {
-            "sessionId": portal_sid,
-            "msgContent": message,
-            "randomId": random_id,
-            "query": message,
-            "user_id": portal_sid,
-            "session_id": portal_sid,
-            "lob": extra_params.get("lob", ""),
-            "extra_args": {"sessionId": portal_sid},
-        }
+
+    # 统一 payload：基础字段 + 健身/eSIM 扩展字段（加在基础字段上，对 hotel/flight/limo 等场景无副作用）
+    extra_args = {"sessionId": portal_sid}
+    coords = extra_params.get("coordinates")
+    if coords:
+        extra_args["coordinates"] = coords
+
+    payload = {
+        "sessionId": portal_sid,
+        "msgContent": message,
+        "randomId": random_id,
+        "query": message,
+        "user_id": portal_sid,
+        "session_id": portal_sid,
+        "lob": extra_params.get("lob", ""),
+        "extra_args": extra_args,
+    }
 
     headers = {**headers_base, "Accept": "text/event-stream"}
     send_url = url.rstrip("/") + "/api/customer/im/sendStreamMsg"
@@ -2137,7 +2136,8 @@ def get_portal_im_response(message: str, url: str, token: str = None, user_id: s
     print("=" * 60, flush=True)
     print(f"[Portal IM] URL: {send_url}", flush=True)
     print(f"[Portal IM] Portal sessionId: {portal_sid} (local: {session_id})", flush=True)
-    print(f"[Portal IM] Payload keys: {list(payload.keys())} (format={payload_format})", flush=True)
+    if coords:
+        print(f"[Portal IM] coordinates: {coords}", flush=True)
     print("=" * 60, flush=True)
 
     # 单个 SSE chunk / 汇总字段的截断上限（done 事件含酒店列表等大 JSON，防止 raw/inform_base 撑爆存储与页面）

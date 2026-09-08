@@ -1,28 +1,14 @@
 {
-    "Portal Fitness (UAT)": {
+    "Portal IM (UAT)": {
         "url": "https://dc-portal-api-uk-uat.dragonpass.com",
-        "description": "公网 IM 门户接口 - Fitness 场景（init+sendStreamMsg，fitness 抓包 payload 格式）",
+        "description": "公网 IM 门户统一接口（所有 agent 自动路由：hotel/fitness/flight/limo/esim/supervisor...）",
         "type": "portal_im",
         "token": "eyJhbGciOiJIUzI1NiJ9.eyJpYXQiOjE3ODg3NjA5NTIsInN1YiI6IjgyNGZkY2E0LTBkZDktNGYyYy05OTdhLTk2MmM1ZGI1YzE4MiIsImp0aSI6IjgyNGZkY2E0LTBkZDktNGYyYy05OTdhLTk2MmM1ZGI1YzE4MiIsImV4cCI6MTc4ODkzMzc1Mn0.AbBH3PUyPtEpJkGxhMWW3Zh-MmgxWjSTGvmb6lK26KQ",
         "request_params": {
             "channel": "JUPITA",
             "source": "",
             "lang": "en-US",
-            "currency": "BRL",
-            "payload_format": "full"
-        }
-    },
-    "Portal Hotel (UAT)": {
-        "url": "https://dc-portal-api-uk-uat.dragonpass.com",
-        "description": "公网 IM 门户接口 - Hotel 场景（init+sendStreamMsg，hotel 抓包 payload 格式）",
-        "type": "portal_im",
-        "token": "eyJhbGciOiJIUzI1NiJ9.eyJpYXQiOjE3ODg3NjA5NTIsInN1YiI6IjgyNGZkY2E0LTBkZDktNGYyYy05OTdhLTk2MmM1ZGI1YzE4MiIsImp0aSI6IjgyNGZkY2E0LTBkZDktNGYyYy05OTdhLTk2MmM1ZGI1YzE4MiIsImV4cCI6MTc4ODkzMzc1Mn0.AbBH3PUyPtEpJkGxhMWW3Zh-MmgxWjSTGvmb6lK26KQ",
-        "request_params": {
-            "channel": "JUPITA",
-            "source": "",
-            "lang": "en-US",
-            "currency": "BRL",
-            "payload_format": "simple"
+            "currency": "BRL"
         }
     },
     "Agent Q&A": {
