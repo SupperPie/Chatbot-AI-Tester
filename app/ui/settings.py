@@ -63,7 +63,7 @@ def render_settings_page():
                 "Type",
                 options=["bundle", "skills", "flight", "flight_agent", "esim_agent", "faq_zzairport", "dc_qa", "limo", "dify", "dify_workflow", "agent_qa", "hotel", "fitness", "ai_engineering", "entitlements", "translation", "trip_planner", "portal_im"],
                 default="bundle",
-                help="portal_im = 公网 IM 门户接口 (conversation/init + sendStreamMsg); dify = Dify /v1/chat-messages; dify_workflow = Dify Workflow API; ai_engineering = AI Engineering 流式接口; entitlements = 权益查询; trip_planner = 行程规划 (data.summary_state.details); fitness = 健身场馆查询; esim_agent = eSIM Agent 查询; faq_zzairport = FAQ郑州机场; dc_qa = DC问答; flight_agent = Flight Agent 航班查询; skills/bundle/limo/flight/agent_qa/hotel = internal APIs"
+                help="portal_im = 公网 IM 门户接口 (conversation/init + sendStreamMsg，Supervisor 自动路由所有 agent，token 为用户登录 JWT); dify = Dify /v1/chat-messages; dify_workflow = Dify Workflow API; ai_engineering = AI Engineering 流式接口; entitlements = 权益查询; trip_planner = 行程规划 (data.summary_state.details); fitness = 健身场馆查询; esim_agent = eSIM Agent 查询; faq_zzairport = FAQ郑州机场; dc_qa = DC问答; flight_agent = Flight Agent 航班查询; skills/bundle/limo/flight/agent_qa/hotel = internal APIs"
             ),
             "Token": st.column_config.TextColumn("Token (Dify/Workflow/Portal)", help="Dify: Bearer token (app-xxx); Workflow: x-app-code|x-app-passport; portal_im: JWT token（header: token，有效期短需定期更新）"),
             "Request Params": st.column_config.TextColumn("Request Params (JSON)", help="自定义请求参数，JSON 格式。留空则使用 Type 默认值。", width="large"),

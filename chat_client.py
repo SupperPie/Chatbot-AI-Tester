@@ -2045,8 +2045,8 @@ def get_dify_workflow_response(message: str, url: str, token: str = None, user_i
 #   data:[DONE] → 流结束
 #
 # Payload：基础字段（sessionId/msgContent/randomId）必填，其余字段（query/user_id/session_id/lob/extra_args）
-#   是"健身/eSIM/附近健身"路径额外携带的字段，但实测对其他场景无副作用，统一全量发送即可。
-#   coordinates 可选：附近健身且拿到定位时 "lat, lng"，由 request_params.coordinates 配置。
+#   是"健身/eSIM/附近"路径额外携带的字段，但实测对其他场景无副作用，统一全量发送即可。
+#   coordinates 可选：附近健身 / eSIM 定位场景传 "lat, lng"，由 request_params.coordinates 配置。
 # ──────────────────────────────────────────────────────────────
 
 # 本地 session_id → 门户 sessionId 的映射缓存（多轮 case 依赖此缓存复用同一个门户会话）
@@ -2095,6 +2095,26 @@ def get_portal_im_response(message: str, url: str, token: str = None, user_id: s
     extra_params = extra_params or {}
     if session_id is None:
         session_id = str(uuid.uuid4())
+
+    if not token or not token.strip():
+        return ("Error: Portal IM token 未配置。请在 Settings 页面找到对应 API 配置，"
+                "在 Token 列填入登录后的 JWT token（从 App 抓包获取 header 中的 token 字段）。"
+                "token 有效期 48 小时，过期需重新获取。")
+
+    # 提前解析 JWT exp，过期直接提示，避免白跑一轮网络请求
+    try:
+        import base64 as _b64
+        _payload = token.split(".")[1]
+        _payload += "=" * (4 - len(_payload) % 4)
+        import json as _json
+        _claims = _json.loads(_b64.urlsafe_b64decode(_payload))
+        if _claims.get("exp") and _claims["exp"] < time.time():
+            import datetime as _dt
+            _exp_str = _dt.datetime.fromtimestamp(_claims["exp"]).strftime("%Y-%m-%d %H:%M")
+            return (f"Error: Portal IM token 已于 {_exp_str} 过期。"
+                    "请重新登录 App 抓包获取新 token，并在 Settings 页面更新。")
+    except Exception:
+        pass  # 解析失败就直接发请求，由服务端校验
 
     headers_base = {
         "Content-Type": "application/json",
