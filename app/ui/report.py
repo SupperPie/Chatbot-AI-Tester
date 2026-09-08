@@ -701,13 +701,14 @@ def render_report_page():
                         if selected_rows.empty:
                             st.warning("Please select at least one test case to update.")
                         else:
-                            from app.utils import load_data, save_data
+                            from app.utils import load_data, save_records
                             main_df = load_data()
                             
                             updated_cases = 0
                             total_rows = len(selected_rows)
                             progress_bar = st.progress(0, text=f"Updating 0/{total_rows}...")
                             
+                            modified_records = []
                             for i, (_, sel_row) in enumerate(selected_rows.iterrows()):
                                 cid = sel_row['case_id']
                                 tidx = sel_row.get('turn_index')
@@ -716,25 +717,55 @@ def render_report_page():
                                 if pd.isna(tidx) or tidx is None:
                                     mask = (main_df['id'] == cid)
                                 else:
-                                    mask = (main_df['id'] == cid) & (main_df['turn_index'] == tidx)
+                                    mask = (main_df['id'] == cid) & (main_df['turn_index'] == int(tidx))
                                     
                                 if mask.any():
                                     main_df.loc[mask, 'expected_output'] = new_val
                                     updated_cases += mask.sum()
+                                    modified_records.extend(
+                                        main_df.loc[mask].drop(columns=["Select"], errors='ignore').to_dict(orient="records")
+                                    )
                                 
                                 progress_bar.progress((i + 1) / total_rows, text=f"Updating {i + 1}/{total_rows}...")
                             
                             progress_bar.progress(1.0, text="Saving...")
                             if updated_cases > 0:
-                                final_df = save_data(main_df)
-                                if "df" in st.session_state:
-                                    if "Select" not in final_df.columns:
-                                        final_df.insert(0, "Select", False)
-                                    st.session_state.df = final_df
-                                    content_df = final_df.drop(columns=["Select"], errors='ignore')
-                                    st.session_state.df_content_sig = content_df.to_json(orient='records', force_ascii=False)
+                                # 增量写入测试用例 DB（只写变更行，避免全量 upsert 上万条记录导致保存缓慢）
+                                saved_count = save_records(modified_records)
+
+                                # 同步更新 history entry 中的 expected 值：
+                                # 报告页表格数据来自 history，不同步的话刷新后仍显示旧值
+                                current_results = entry.get('results', [])
+                                selected_case_ids = set(selected_rows['case_id'])
+                                for res in current_results:
+                                    if res.get('case_id') not in selected_case_ids:
+                                        continue
+                                    case_sel_rows = selected_rows[selected_rows['case_id'] == res.get('case_id')]
+                                    turns = res.get('turns')
+                                    if isinstance(turns, list) and turns:
+                                        # 多轮：更新对应 turn 的 expected
+                                        for t in turns:
+                                            for _, sel_row in case_sel_rows.iterrows():
+                                                _ti = sel_row.get('turn_index')
+                                                if _ti is not None and not pd.isna(_ti) and int(_ti) == t.get('turn'):
+                                                    t['expected'] = sel_row['actual_output']
+                                    else:
+                                        # 单轮：直接更新 expected_output
+                                        for _, sel_row in case_sel_rows.iterrows():
+                                            _ti = sel_row.get('turn_index')
+                                            if _ti is None or pd.isna(_ti):
+                                                res['expected_output'] = sel_row['actual_output']
+                                update_history_entry(entry_id, current_results)
+
+                                # 让 Test Cases 页面下次进入时强制从 DB 重新加载
+                                st.session_state["_force_reload"] = True
+
                                 progress_bar.empty()
+                                if saved_count < len(modified_records):
+                                    st.warning(f"注意: {len(modified_records) - saved_count} 条写入 DB 失败，请查看服务端日志")
                                 st.success(f"Successfully updated Expected Output for {updated_cases} rows.")
+                                time.sleep(1)
+                                st.rerun()
                             else:
                                 progress_bar.empty()
                                 st.warning("No matching test cases found in reality to update.")

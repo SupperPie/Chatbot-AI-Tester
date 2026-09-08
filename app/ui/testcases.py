@@ -484,14 +484,27 @@ def render_testcases_page():
                      try:
                          from app.ui.components.category_selector import get_category_options
                          cat_opts = get_category_options()
+                         # 默认选中目录树当前节点，减少导入到错误目录的情况
+                         _opt_ids = [c[0] for c in cat_opts]
+                         _default_idx = 0
+                         _cur_cat = st.session_state.get('selected_category')
+                         if _cur_cat in _opt_ids:
+                             _default_idx = _opt_ids.index(_cur_cat)
                          import_category = st.selectbox(
                              "📂 目标目录",
-                             options=[c[0] for c in cat_opts],
+                             options=_opt_ids,
+                             index=_default_idx,
                              format_func=lambda x: next((c[1] for c in cat_opts if c[0] == x), x),
                              key="import_category_select"
                          )
                      except Exception:
                          st.text("目录加载失败，将导入到根目录")
+                 # 目标目录显示名（导入结果提示用）
+                 try:
+                     _import_target_name = next(
+                         (c[1].strip() for c in cat_opts if c[0] == import_category), import_category)
+                 except Exception:
+                     _import_target_name = import_category or 'root'
                  
                  st.divider()
                  
@@ -684,7 +697,7 @@ def render_testcases_page():
                                     if updated_records:
                                         save_records(updated_records)
                                 
-                                    st.toast(f"Updated {updated_count} cases, Added {new_count} new cases.")
+                                    st.toast(f"已更新 {updated_count} 条，新增 {new_count} 条 →【{_import_target_name}】")
                                 
                                 else:
                                     # Standard Append Mode: 增量写入，不做全量 upsert
@@ -736,8 +749,8 @@ def render_testcases_page():
                                             new_rows_df[col] = None
                                     new_rows_df = new_rows_df[current_df.columns]
                                     final_df = pd.concat([current_df, new_rows_df], ignore_index=True)
-                                    st.toast(f"Imported {len(new_rows)} new cases.")
-                            
+                                    st.toast(f"已导入 {len(new_rows)} 条新用例 →【{_import_target_name}】")
+
                                 # Update State
                                 if "Select" not in final_df.columns:
                                      final_df.insert(0, "Select", False)
@@ -746,6 +759,20 @@ def render_testcases_page():
                                 st.session_state.df_content_sig = get_content_signature(final_df)
                                 st.session_state.df_preprocessed = False
                                 invalidate_case_views(reset_page=True)
+
+                                # 导入成功后自动切换到目标目录，让用户立即看到新导入的用例
+                                # （避免停留在原目录视图，误以为导入失败而反复上传造成重复）
+                                if import_category and import_category != st.session_state.get('selected_category'):
+                                    st.session_state.selected_category = import_category
+                                    # 同步目录树组件的选中状态（与删除目录后的处理方式一致）。
+                                    # 树组件的索引 = cat_opts 中的位置 + 1（索引 0 是"全部用例"包装节点）
+                                    try:
+                                        _tree_idx = [c[0] for c in cat_opts].index(import_category) + 1
+                                        st.session_state.sac_category_tree = [_tree_idx]
+                                        st.session_state.pop('_sac_category_tree_last_raw', None)
+                                    except (ValueError, NameError, TypeError):
+                                        # 找不到索引时退化为重置组件状态，由 default index 兜底
+                                        st.session_state.pop('sac_category_tree', None)
 
                                 st.rerun()
                             

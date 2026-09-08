@@ -122,6 +122,11 @@ class HistoryService:
                     target.reason = updated.get('reason', target.reason)
                 if 'score' in updated:
                     target.score = updated['score']
+                # Update Expect Result：同步 expected 值到报告数据
+                if updated.get('expected_output') is not None:
+                    target.expected_output = updated['expected_output']
+                if updated.get('turns') is not None:
+                    target.turns = updated['turns']
 
         # 重新计算 summary
         all_results = self.db.query(TestResult).filter(TestResult.history_id == history_id).all()
