@@ -175,6 +175,10 @@ def render_report_page():
         
         # Stats display
         api_name = entry.get('api_name') or 'Unknown'
+        ts = entry.get('timestamp', '')
+        dur = entry.get('duration', '')
+        dur_part = f" [{dur}]" if dur else ""
+
         if status == "running":
             # Estimate or use started_count if available
             started = entry.get('started_count', 0)
@@ -183,21 +187,21 @@ def render_report_page():
             if total_count == 0: total_count = 1 
             progress = min(started / total_count, 1.0)
             
-            label = f"⏳ {entry.get('timestamp')} - Running... {started}/{total_count} - API: {api_name}"
+            label = f"⏳ {ts}{dur_part} - Running... {started}/{total_count} - API: {api_name}"
         elif status == "interrupted":
             started = entry.get('started_count', 0)
             remaining = total_count - started if total_count > started else 0
-            label = f"🔴 {entry.get('timestamp')} - Interrupted {started}/{total_count} (remaining {remaining}) - API: {api_name}"
+            label = f"🔴 {ts}{dur_part} - Interrupted {started}/{total_count} (remaining {remaining}) - API: {api_name}"
         elif status == "cancelled":
             started = entry.get('started_count', 0)
             remaining = total_count - started if total_count > started else 0
-            label = f"⏸ {entry.get('timestamp')} - Cancelled {started}/{total_count} (remaining {remaining}) - API: {api_name}"
+            label = f"⏸ {ts}{dur_part} - Cancelled {started}/{total_count} (remaining {remaining}) - API: {api_name}"
         elif status == "failed":
             started = entry.get('started_count', 0)
-            label = f"❌ {entry.get('timestamp')} - Failed {started}/{total_count} - API: {api_name}"
+            label = f"❌ {ts}{dur_part} - Failed {started}/{total_count} - API: {api_name}"
         else:
             pass_rate = (passed_count / total_count * 100) if total_count > 0 else 0
-            label = f"{entry.get('timestamp')} - Pass Rate: {pass_rate:.1f}% ({passed_count}/{total_count}) - API: {api_name}"
+            label = f"{ts}{dur_part} - Pass Rate: {pass_rate:.1f}% ({passed_count}/{total_count}) - API: {api_name}"
         
         with st.expander(label):
             # 懒加载：展开时才加载 results 详情

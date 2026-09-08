@@ -154,9 +154,53 @@ class HistoryService:
         Args:
             include_results: 是否包含 results 详情
         """
+        # ── 时间处理：DB 存的是 UTC naive datetime，显示转北京时间 (UTC+8) ──
+        import datetime as _dt
+        BJ_TZ = _dt.timezone(_dt.timedelta(hours=8))
+
+        def _to_bj_str(dt_val):
+            if not dt_val:
+                return ''
+            # DB 里的 datetime 是 naive UTC，先标记为 UTC 再转北京时间
+            if dt_val.tzinfo is None:
+                dt_val = dt_val.replace(tzinfo=_dt.timezone.utc)
+            return dt_val.astimezone(BJ_TZ).strftime("%Y-%m-%d %H:%M:%S")
+
+        def _calc_duration(start_dt, end_dt):
+            """返回 "Xm Ys" / "Xh Ym" / "Xs" 形式的时长字符串"""
+            if not start_dt or not end_dt:
+                return ''
+            delta = end_dt - start_dt
+            total_sec = int(delta.total_seconds())
+            if total_sec < 0:
+                return ''
+            if total_sec < 60:
+                return f"{total_sec}s"
+            minutes, sec = divmod(total_sec, 60)
+            if minutes < 60:
+                return f"{minutes}m {sec}s" if sec else f"{minutes}m"
+            hours, minutes = divmod(minutes, 60)
+            return f"{hours}h {minutes}m" if minutes else f"{hours}h"
+
+        # 计算结束时间：
+        # - completed/failed/cancelled/interrupted：用最后一条 result 的 created_at（若存在）
+        # - running：用当前时间（显示实时耗时）
+        start_dt = entry.timestamp
+        end_dt = None
+        if entry.status == 'running' and start_dt:
+            end_dt = _dt.datetime.utcnow()
+        elif include_results and entry.results:
+            # results 按 id 排序（模型里 order_by='TestResult.id'），最后一条就是最后完成的
+            last_result = entry.results[-1]
+            if last_result.created_at:
+                end_dt = last_result.created_at
+
+        duration_str = _calc_duration(start_dt, end_dt) if start_dt else ''
+
         base_dict = {
             'id': entry.id,
-            'timestamp': entry.timestamp.strftime("%Y-%m-%d %H:%M:%S") if entry.timestamp else '',
+            'timestamp': _to_bj_str(entry.timestamp),
+            'duration': duration_str,
             'api_name': entry.api_name,
             'total': entry.total,
             'passed': entry.passed,
