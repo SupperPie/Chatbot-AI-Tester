@@ -391,14 +391,20 @@ def render_report_page():
                                 if t.get("score") is not None:
                                     new_row["score"] = t.get("score")
                             else:
-                                # turn 有自己的 score 就用 turn 的，否则继承外层整体分
-                                t_score = t.get("score")
-                                if t_score is not None and not (isinstance(t_score, float) and pd.isna(t_score)):
-                                    new_row["score"] = float(t_score)
-                                    new_row["passed"] = (float(t_score) >= 0.5)
+                                # 1) turn 自己有 passed（未来扩展 turn 级评分/断言）→ 用 turn 的
+                                if "passed" in t and t.get("passed") is not None:
+                                    new_row["passed"] = bool(t["passed"])
+                                    if t.get("score") is not None:
+                                        new_row["score"] = float(t["score"])
                                 else:
-                                    new_row["score"] = outer_score
+                                    # 2) turn 无 passed → 继承外层整体判定（不是 score>=0.5 重算，
+                                    #    因为 full 模式下 passed 已经考虑了断言结果）
                                     new_row["passed"] = outer_passed
+                                    t_score = t.get("score")
+                                    if t_score is not None and not (isinstance(t_score, float) and pd.isna(t_score)):
+                                        new_row["score"] = float(t_score)
+                                    else:
+                                        new_row["score"] = outer_score
                             
                             new_row["latency"] = t.get("latency", 0)
                             new_row["ttft"] = t.get("ttft", 0)
@@ -415,8 +421,13 @@ def render_report_page():
                         if is_manual:
                             row_dict["passed"] = row_dict.get("passed", False)
                         else:
-                            score_val = float(row_dict.get("score", 0)) if pd.notna(row_dict.get("score")) else 0.0
-                            row_dict["passed"] = (score_val >= 0.5)
+                            # 优先用执行层算好的 passed（full 模式下包含断言结果），
+                            # 只有 passed 缺失（老数据）时才用 score>=0.5 兜底
+                            if "passed" in row_dict and row_dict.get("passed") is not None:
+                                row_dict["passed"] = bool(row_dict["passed"])
+                            else:
+                                score_val = float(row_dict.get("score", 0)) if pd.notna(row_dict.get("score")) else 0.0
+                                row_dict["passed"] = (score_val >= 0.5)
                         
                         row_dict["raw"] = str(row_dict.get("raw", ""))
                         
