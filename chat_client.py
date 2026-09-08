@@ -2183,6 +2183,9 @@ def get_portal_im_response(message: str, url: str, token: str = None, user_id: s
         ttft = 0.0
         got_first_answer = False
         last_thinking_agent = None
+        last_data_time = time.time()
+        MAX_STREAM_DURATION = 180  # 单条消息 SSE 流最长 180s，超过主动断开
+        MAX_IDLE_SECONDS = 60      # 连续 60s 无新消息则认为流结束
 
         for line in response.iter_lines():
             if line:
@@ -2228,6 +2231,8 @@ def get_portal_im_response(message: str, url: str, token: str = None, user_id: s
                             "agents_info": (data.get("data") or {}).get("agents_info"),
                             "meta": data.get("meta"),
                         }
+                        # done 事件就是 SSE 流结束信号，后面不会再发 [DONE]，直接退出
+                        break
 
         raw_full_str = "\n".join(raw_chunks)
         if len(raw_full_str) > MAX_TOTAL_LEN:
