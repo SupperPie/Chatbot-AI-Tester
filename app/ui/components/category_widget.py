@@ -370,10 +370,12 @@ def _delete_category_dialog(service: CategoryService):
             try:
                 service.delete(cat_id)
                 st.toast(f"✅ 目录 '{cat_name}' 已删除")
-                # 如果删除的是当前选中的目录，切换到 root
+                # 如果删除的是当前选中的目录，切换到全部用例
                 if st.session_state.get('selected_category') == cat_id:
                     st.session_state.selected_category = '__all__'
-                    st.session_state.sac_category_tree = [0]
+                    # 不能直接写 st.session_state.sac_category_tree（组件已实例化），
+                    # 清掉 last_raw 缓存让下次 rerun 时 default_index 生效
+                    st.session_state.pop('_sac_category_tree_last_raw', None)
                 st.session_state.show_delete_dialog = False
                 st.session_state.pop('category_counts_cache', None)
                 st.rerun()

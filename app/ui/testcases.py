@@ -762,17 +762,13 @@ def render_testcases_page():
 
                                 # 导入成功后自动切换到目标目录，让用户立即看到新导入的用例
                                 # （避免停留在原目录视图，误以为导入失败而反复上传造成重复）
+                                # 注意：不能在组件已实例化后直接写 st.session_state.sac_category_tree，
+                                # Streamlit 会报错。这里只改自己的状态位 selected_category，
+                                # 下一次 rerun 时 category_widget 会读到新值，default_index 自动正确。
                                 if import_category and import_category != st.session_state.get('selected_category'):
                                     st.session_state.selected_category = import_category
-                                    # 同步目录树组件的选中状态（与删除目录后的处理方式一致）。
-                                    # 树组件的索引 = cat_opts 中的位置 + 1（索引 0 是"全部用例"包装节点）
-                                    try:
-                                        _tree_idx = [c[0] for c in cat_opts].index(import_category) + 1
-                                        st.session_state.sac_category_tree = [_tree_idx]
-                                        st.session_state.pop('_sac_category_tree_last_raw', None)
-                                    except (ValueError, NameError, TypeError):
-                                        # 找不到索引时退化为重置组件状态，由 default index 兜底
-                                        st.session_state.pop('sac_category_tree', None)
+                                    # 清除组件的"上次返回值"缓存，避免组件用旧返回值覆盖 selected_category
+                                    st.session_state.pop('_sac_category_tree_last_raw', None)
 
                                 st.rerun()
                             
