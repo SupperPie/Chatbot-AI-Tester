@@ -50,6 +50,7 @@ class JobManager:
                         ).count()
                         job.passed = passed_count
                         job.failed = total_results - passed_count
+                        job.total = total_results
                         job.started_count = total_results
                         print(f"[stale-detect] Job {job.id} marked as interrupted ({total_results} results preserved)")
                 db.commit()
@@ -69,9 +70,17 @@ class JobManager:
             {"id": c.get("id"), "turn_index": c.get("turn_index", 1)}
             for c in cases
         ]
+
+        # 实际要执行的任务数 = 单轮数 + 多轮组数（同一 id 的多 turn 合并为 1 个任务）
+        unique_case_ids = set()
+        for c in cases:
+            cid = c.get("id")
+            if cid is not None:
+                unique_case_ids.add(cid)
+        total_tasks = len(unique_case_ids)
         
         # 1. Create initial entry in DB with status=running
-        self._create_history_entry(report_id, api_name, len(cases), case_ids=case_ids_snapshot)
+        self._create_history_entry(report_id, api_name, total_tasks, case_ids=case_ids_snapshot)
         
         # 2. Start Thread
         thread = threading.Thread(target=self._worker, args=(report_id, cases, api_name, execution_mode, max_workers))
@@ -301,13 +310,14 @@ class JobManager:
                 # Update history stats
                 entry = db.query(TestHistory).filter(TestHistory.id == report_id).first()
                 if entry:
+                    # total_tasks 以 run_batch 传的 total_count 为准（已经是单轮 + 多轮组数量，不含多轮子turn）
                     entry.total = total_count
                     entry.started_count = current_count
-                    # Recalculate passed/failed from DB
+                    # Recalculate passed from DB（刚 add 的 tr 在 flush 后会被 count 到，不需要额外 +1）
                     passed = db.query(TestResult).filter(
                         TestResult.history_id == report_id,
                         TestResult.passed == True
-                    ).count() + (1 if new_result.get('passed') else 0)
+                    ).count()
                     entry.passed = passed
                     entry.failed = current_count - passed
 
@@ -331,19 +341,13 @@ class JobManager:
                         entry.error_message = error
                     else:
                         entry.error_message = None
-                    # Final stats from DB rows
+                    # Final stats from DB rows（TestResult 行数 = 单轮数 + 多轮组数，与 run_batch 的 total_tasks 一致）
                     total_results = db.query(TestResult).filter(TestResult.history_id == report_id).count()
                     passed_count = db.query(TestResult).filter(
                         TestResult.history_id == report_id,
                         TestResult.passed == True
                     ).count()
-                    # total 保持为 case_ids 的长度（若有），否则以实际结果数为准
-                    if entry.case_ids:
-                        # 去重：多轮的多条 turn 共享 id，case_ids 里只按唯一 id 统计
-                        unique_case_count = len({c["id"] for c in entry.case_ids})
-                        entry.total = unique_case_count
-                    else:
-                        entry.total = total_results
+                    entry.total = total_results
                     entry.passed = passed_count
                     entry.failed = total_results - passed_count
                     entry.started_count = total_results

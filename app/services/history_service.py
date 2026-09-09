@@ -189,11 +189,14 @@ class HistoryService:
         end_dt = None
         if entry.status == 'running' and start_dt:
             end_dt = _dt.datetime.utcnow()
-        elif include_results and entry.results:
-            # results 按 id 排序（模型里 order_by='TestResult.id'），最后一条就是最后完成的
-            last_result = entry.results[-1]
-            if last_result.created_at:
-                end_dt = last_result.created_at
+        elif start_dt and entry.status != 'running':
+            # 单独查最后一条 result 的 created_at（不依赖 entry.results 是否被 relationship 加载）
+            from app.models.test_history import TestResult
+            last_r = self.db.query(TestResult.created_at).filter(
+                TestResult.history_id == entry.id
+            ).order_by(TestResult.id.desc()).first()
+            if last_r and last_r[0]:
+                end_dt = last_r[0]
 
         duration_str = _calc_duration(start_dt, end_dt) if start_dt else ''
 

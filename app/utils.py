@@ -336,3 +336,281 @@ def update_history_entry(entry_id: str, new_results: List[Dict]):
     except Exception as e:
         print(f"Error updating history: {e}")
         return False
+
+
+# =====================================================================
+# 日期刷新工具：将测试用例 input 中的过去日期替换为未来 1 个月内的日期
+# 支持中文 / 英文 / 葡萄牙语 三种语言，自动识别语言后按对应格式输出
+# =====================================================================
+import re as _re
+import random as _random
+from datetime import datetime as _dt, timedelta as _td
+
+# 月份名
+_EN_MONTHS = ['january','february','march','april','may','june',
+              'july','august','september','october','november','december']
+_EN_MON_ABBR = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec']
+_PT_MONTHS = ['janeiro','fevereiro','março','abril','maio','junho',
+              'julho','agosto','setembro','outubro','novembro','dezembro']
+
+def _detect_lang(text: str) -> str:
+    """根据特征词判断语言：zh / en / pt"""
+    t = text.lower()
+    # 中文字符
+    if _re.search(r'[\u4e00-\u9fff]', text):
+        return 'zh'
+    # 葡语特征词
+    pt_markers = [' de ', ' às ', ' para ', ' com ', ' no ', ' na ', ' em ', ' dia ',
+                  'reservar', 'quero', 'agendar', 'transfer', 'hotel', 'check-in',
+                  'adulto', 'criança', 'crianca', 'bagagem', 'voo', 'partida', 'chegada']
+    if any(m in t for m in pt_markers):
+        return 'pt'
+    # 英语兜底（check-in/book/hotel/flight 等在葡语里也会出现，但葡语带 de 介词）
+    return 'en'
+
+def _future_date(min_days=1, max_days=30, ref=None):
+    """返回未来 [min_days, max_days] 范围内的一个 date（北京时区日历日）"""
+    ref = ref or _dt.utcnow() + _td(hours=8)  # 用北京时间做参考
+    delta = _random.randint(min_days, max_days)
+    return (ref + _td(days=delta)).date()
+
+def _fmt_date(d: _dt, lang: str, day_pad: bool = False) -> str:
+    """按语言格式化日期（不含时间）"""
+    if lang == 'zh':
+        return f"{d.year}年{d.month}月{d.day}日"
+    if lang == 'pt':
+        mname = _PT_MONTHS[d.month - 1]
+        day = f"{d.day:02d}" if day_pad else str(d.day)
+        return f"{day} de {mname} de {d.year}"
+    # en
+    mname = _EN_MON_ABBR[d.month - 1]
+    return f"{d.day:02d} {mname} {d.year}"
+
+def _replace_all_dates(text: str) -> tuple:
+    """替换文本中所有过去日期为未来日期。
+    返回 (new_text, replaced_count)。
+    同一条文本中，日期按先后顺序替换；check-in 先随机，check-out 在 check-in 之后至少 1 天。
+    时间部分（HH:MM）原样保留。
+    """
+    lang = _detect_lang(text)
+
+    # 收集所有日期匹配：(start, end, parser_func, formatter_func, time_suffix)
+    # 每个 parser 返回 date 对象或 None；formatter 接收 date 返回字符串
+    matches = []
+
+    # --- 1. 中文 yyyy年m月d日[ H:MM / HH:MM] ---
+    zh_pat = _re.compile(
+        r'(\d{4})年(\d{1,2})月(\d{1,2})日(?:\s*(\d{1,2}:\d{2}))?'
+    )
+    for m in zh_pat.finditer(text):
+        y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        try:
+            dt_obj = _dt(y, mo, d).date()
+        except ValueError:
+            continue
+        time_part = m.group(4)
+        def _fmt_zh(d, tp=time_part):
+            base = _fmt_date(d, 'zh')
+            return base + (tp if tp else '')
+        matches.append((m.start(), m.end(), dt_obj, _fmt_zh))
+
+    # --- 2. 葡语 d de mês de yyyy[ às HH:MM] ---
+    pt_pat = _re.compile(
+        r'(\d{1,2})\s+de\s+([a-zç]+)\s+de\s+(\d{4})(?:\s+às\s+(\d{1,2}:\d{2}))?',
+        _re.IGNORECASE
+    )
+    for m in pt_pat.finditer(text):
+        d, mname, y = int(m.group(1)), m.group(2).lower(), int(m.group(3))
+        if mname not in _PT_MONTHS:
+            continue
+        mo = _PT_MONTHS.index(mname) + 1
+        try:
+            dt_obj = _dt(y, mo, d).date()
+        except ValueError:
+            continue
+        time_part = m.group(4)
+        day_pad = (len(m.group(1)) == 2)  # 原文 2 位日就保持 2 位
+        def _fmt_pt(d, tp=time_part, pad=day_pad):
+            day = f"{d.day:02d}" if pad else str(d.day)
+            base = f"{day} de {_PT_MONTHS[d.month - 1]} de {d.year}"
+            return base + (f" às {tp}" if tp else '')
+        matches.append((m.start(), m.end(), dt_obj, _fmt_pt))
+
+    # --- 3. 英文 dd Mmm yyyy[ at HH:MM] ---
+    en_pat = _re.compile(
+        r'(\d{1,2})\s+(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|'
+        r'Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)'
+        r'\s+(\d{4})(?:\s+at\s+(\d{1,2}:\d{2}))?',
+        _re.IGNORECASE
+    )
+    for m in en_pat.finditer(text):
+        d, mname, y = int(m.group(1)), m.group(2)[:3].lower(), int(m.group(3))
+        if mname not in _EN_MON_ABBR:
+            continue
+        mo = _EN_MON_ABBR.index(mname) + 1
+        try:
+            dt_obj = _dt(y, mo, d).date()
+        except ValueError:
+            continue
+        time_part = m.group(4)
+        day_pad = (len(m.group(1)) == 2)
+        # 保留原文月份首字母大小写（Sep/SEP/september 等）
+        orig_month = m.group(2)
+        def _fmt_en(d, tp=time_part, pad=day_pad, om=orig_month):
+            day = f"{d.day:02d}" if pad else str(d.day)
+            # 若原文是 3 字母缩写（Sep），用缩写；若全拼（September），用全拼；首字母大写
+            if len(om) <= 4:
+                m_str = _EN_MON_ABBR[d.month - 1].capitalize()
+            else:
+                m_str = _EN_MONTHS[d.month - 1].capitalize()
+            base = f"{day} {m_str} {d.year}"
+            return base + (f" at {tp}" if tp else '')
+        matches.append((m.start(), m.end(), dt_obj, _fmt_en))
+
+    # --- 4. yyyy-m-d / yyyy-mm-dd ---
+    iso_pat = _re.compile(r'\b(\d{4})-(\d{1,2})-(\d{1,2})\b')
+    for m in iso_pat.finditer(text):
+        y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        try:
+            dt_obj = _dt(y, mo, d).date()
+        except ValueError:
+            continue
+        mo_pad = (len(m.group(2)) == 2)
+        d_pad = (len(m.group(3)) == 2)
+        def _fmt_iso(d, mp=mo_pad, dp=d_pad):
+            m_str = f"{d.month:02d}" if mp else str(d.month)
+            d_str = f"{d.day:02d}" if dp else str(d.day)
+            return f"{d.year}-{m_str}-{d_str}"
+        # iso 格式常见于英文/葡语
+        matches.append((m.start(), m.end(), dt_obj, _fmt_iso))
+
+    # --- 5. M/D/YYYY (美式，中文 query 里也出现过) ---
+    # 不用 \b 因为中文字符旁 \b 不生效；用 (?<!\d) 防止和 yyyy-mm-dd 的片段误匹配
+    md_pat = _re.compile(r'(?<!\d)(\d{1,2})/(\d{1,2})/(\d{4})(?!\d)')
+    for m in md_pat.finditer(text):
+        mo, d, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        # 合理性检查：月 1-12，日 1-31，年 >= 2020（避免把其他数字/分数误判）
+        if not (1 <= mo <= 12 and 1 <= d <= 31 and y >= 2020):
+            continue
+        # 避免和 yyyy-mm-dd 重叠（已在 iso_pat 中处理）：前一个字符不能是 '-'
+        if m.start() > 0 and text[m.start() - 1] == '-':
+            continue
+        try:
+            dt_obj = _dt(y, mo, d).date()
+        except ValueError:
+            continue
+        mo_pad = (len(m.group(1)) == 2)
+        d_pad = (len(m.group(2)) == 2)
+        def _fmt_md(d, mp=mo_pad, dp=d_pad):
+            m_str = f"{d.month:02d}" if mp else str(d.month)
+            d_str = f"{d.day:02d}" if dp else str(d.day)
+            return f"{m_str}/{d_str}/{d.year}"
+        matches.append((m.start(), m.end(), dt_obj, _fmt_md))
+
+    # 去重 & 排序：可能存在重叠（比如 iso 和 md 都可能匹配类似片段，但 iso 有连字符不会和 / 冲突）
+    # 按 start 排序，如果 start 相同取更长的
+    matches.sort(key=lambda x: (x[0], -(x[1] - x[0])))
+    dedup = []
+    last_end = -1
+    for s, e, dt_obj, fmt in matches:
+        if s >= last_end:
+            dedup.append((s, e, dt_obj, fmt))
+            last_end = e
+    matches = dedup
+
+    if not matches:
+        return text, 0
+
+    today = (_dt.utcnow() + _td(hours=8)).date()
+
+    # 判断文本是否"明显是过去事件"，只要存在过去日期就全部替换为未来
+    # 策略：第一个日期分配一个未来基准日；后续日期如果在原文本中在它之后，保持相对间隔
+    # 为简单稳定：对每个日期独立生成未来 1-30 天的随机日期；
+    # 若文本同时含 check-in / check-out（或"入住"/"退房"、entrada/saída），做特殊处理保证 out > in。
+
+    # 先检测 check-in/out 对
+    # 中文: 入住/到店/抵达 + 退房/离店/离开
+    # 英文: check-in/check-in on + check-out/check-out on
+    # 葡语: check-in/entrada + check-out/saída
+    date_spans = [(s, e) for s, e, _, _ in matches]
+
+    def _find_pair(keywords_in, keywords_out):
+        """找 (check-in idx, check-out idx) in matches"""
+        in_idx = out_idx = None
+        for i, (s, e, _, _) in enumerate(matches):
+            before = text[max(0, s-40):s].lower()
+            if in_idx is None and any(k in before for k in keywords_in):
+                in_idx = i
+            elif in_idx is not None and out_idx is None and any(k in before for k in keywords_out):
+                out_idx = i
+                break
+        return in_idx, out_idx
+
+    ci_idx, co_idx = None, None
+    if lang == 'zh':
+        ci_idx, co_idx = _find_pair(['入住','到店','抵达','接机','接'], ['退房','离店','离开','送机'])
+    elif lang == 'en':
+        ci_idx, co_idx = _find_pair(['check in','check-in','checkin','arriving','arrival','pickup'],
+                                    ['check out','check-out','checkout','departure','dropoff','drop-off'])
+    else:
+        ci_idx, co_idx = _find_pair(['check in','check-in','checkin','entrada','chegada','em '],
+                                    ['check out','check-out','checkout','saída','saida'])
+
+    # 生成未来日期
+    new_dates = {}
+    if ci_idx is not None and co_idx is not None and co_idx != ci_idx:
+        # 先分配 check-in，再保证 check-out 在其之后
+        ci_new = _future_date(2, 25)
+        stay = _random.randint(1, 7)
+        co_new = ci_new + _td(days=stay)
+        new_dates[ci_idx] = ci_new
+        new_dates[co_idx] = co_new
+
+    for i, (s, e, dt_obj, fmt) in enumerate(matches):
+        if i in new_dates:
+            continue
+        # 如果是未来且距今 > 90 天的日期（比如 2099、2100），也替换
+        is_past = dt_obj < today
+        is_far_future = (dt_obj - today).days > 90
+        if is_past or is_far_future:
+            # 检查是否应该基于前一个日期顺延
+            new_dates[i] = _future_date(1, 30)
+        # else: 未来 90 天内的日期不动
+
+    # 按 start 从后往前替换，避免位置偏移
+    result = text
+    replaced = 0
+    for i in reversed(range(len(matches))):
+        s, e, dt_obj, fmt = matches[i]
+        if i in new_dates:
+            new_str = fmt(new_dates[i])
+            result = result[:s] + new_str + result[e:]
+            replaced += 1
+
+    return result, replaced
+
+
+def refresh_dates_in_text(text: str) -> tuple:
+    """刷新单条文本中的过去日期，返回 (new_text, replaced_count)。
+    多轮用例的每个 turn 应分别调用。
+    """
+    if not isinstance(text, str) or not text.strip():
+        return text, 0
+    return _replace_all_dates(text)
+
+
+def refresh_dates_for_records(records: list) -> tuple:
+    """批量刷新一组测试用例记录（df.to_dict('records') 形式）中的日期。
+    同时更新 input 字段；返回 (updated_records, total_replaced)。
+    """
+    total = 0
+    updated = []
+    for r in records:
+        new_r = dict(r)
+        inp = new_r.get('input', '')
+        new_inp, n = refresh_dates_in_text(inp)
+        if n > 0:
+            new_r['input'] = new_inp
+            total += n
+        updated.append(new_r)
+    return updated, total

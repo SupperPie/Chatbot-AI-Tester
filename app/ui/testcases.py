@@ -461,7 +461,7 @@ def render_testcases_page():
             return v
 
         # 第二行：批量操作按钮（Move / Priority / Assert / Delete）
-        btn_col1, btn_col2, btn_col3, btn_col4 = st.columns(4)
+        btn_col1, btn_col2, btn_col3, btn_col4, btn_col5 = st.columns(5)
         with btn_col1:
             move_to_category_clicked = st.button("📂 Move", width="stretch", key="btn_move_category") if ENABLE_CATEGORY_FEATURE else False
         with btn_col2:
@@ -469,6 +469,9 @@ def render_testcases_page():
         with btn_col3:
             bind_assertions_clicked = st.button("🧩 Assert", width="stretch", key="btn_bind_assertions")
         with btn_col4:
+            refresh_dates_clicked = st.button("📅 Refresh Dates", width="stretch", key="btn_refresh_dates",
+                                             help="将选中用例 input 中的过去日期替换为未来 1 个月内的日期，按原语言（中/英/葡）格式化")
+        with btn_col5:
             delete_selected_clicked = st.button("🗑️ Delete", width="stretch", key="btn_delete_selected")
 
         # 顶部右侧：Import（与参数说明手册同一行，下移避免贴顶裁剪）
@@ -1243,6 +1246,56 @@ def render_testcases_page():
             execution_placeholder.warning("请先选择要绑定断言的测试用例")
         else:
             _assertion_binding_dialog(selected_rows['id'].tolist())
+
+    elif refresh_dates_clicked:
+        selected_rows = all_selected
+        if selected_rows.empty:
+            execution_placeholder.warning("请先选择要刷新日期的测试用例")
+        else:
+            from app.utils import refresh_dates_for_records
+            records = selected_rows.drop(columns=["Select", "__row_key"], errors='ignore').to_dict(orient="records")
+            try:
+                updated_records, total_replaced = refresh_dates_for_records(records)
+                if total_replaced == 0:
+                    execution_placeholder.info("选中用例中没有需要刷新的过去日期（或日期已是未来 90 天内）")
+                else:
+                    # 持久化到 DB
+                    from app.utils import save_records
+                    save_records(updated_records)
+
+                    # 同步更新内存 st.session_state.df，避免用户看不到变化
+                    df = st.session_state.df
+                    updated_map = {r['id']: r for r in updated_records if r.get('turn_index') is not None}
+                    # 多轮用例相同 id 会有多条，用 (id, turn_index) 做 key
+                    updated_map_multi = {}
+                    for r in updated_records:
+                        ti = r.get('turn_index', 1)
+                        try:
+                            ti = int(ti) if ti is not None else 1
+                        except (TypeError, ValueError):
+                            ti = 1
+                        updated_map_multi[(r['id'], ti)] = r
+
+                    changed_cases = 0
+                    for idx, row in df.iterrows():
+                        rid = row.get('id')
+                        rti = row.get('turn_index', 1)
+                        try:
+                            rti = int(rti) if not pd.isna(rti) else 1
+                        except (TypeError, ValueError):
+                            rti = 1
+                        new_r = updated_map_multi.get((rid, rti))
+                        if new_r and new_r.get('input') != row.get('input'):
+                            df.at[idx, 'input'] = new_r['input']
+                            changed_cases += 1
+
+                    # 清掉预处理标记，下次 render 重新做 schema 安全处理
+                    st.session_state["df_preprocessed"] = False
+                    st.session_state["edited_df_cached"] = None
+                    st.success(f"✅ 已刷新 {changed_cases} 条用例中的 {total_replaced} 个日期（未来 1 个月内）")
+                    st.rerun()
+            except Exception as e:
+                execution_placeholder.error(f"刷新日期失败: {e}")
     
     elif run_range_clicked:
         start_id = st.session_state.get('filter_id_from', '').strip()
