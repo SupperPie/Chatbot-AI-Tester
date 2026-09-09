@@ -163,6 +163,54 @@ def render_settings_page():
         st.rerun()
 
     st.divider()
+
+    # --------------------------
+    # Feishu (Lark) Export Config
+    # --------------------------
+    st.subheader("📊 Feishu Export Configuration")
+    st.caption("配置飞书开放平台应用凭证，用于将测试报告导出到飞书表格。需要在 [飞书开放平台](https://open.feishu.cn/) 创建企业自建应用，并授予电子表格读写权限。")
+
+    from app.feishu_client import _load_feishu_config, save_feishu_config, FEISHU_CONFIG_FILE
+    _feishu_cfg = _load_feishu_config()
+
+    feishu_col1, feishu_col2, feishu_col3 = st.columns([2, 2, 1])
+    with feishu_col1:
+        feishu_app_id = st.text_input(
+            "FEISHU_APP_ID",
+            value=_feishu_cfg.get("app_id", ""),
+            key="feishu_app_id_input",
+            placeholder="cli_xxxxxxxxxxxxx",
+            help="飞书应用 App ID (以 cli_ 开头)"
+        )
+    with feishu_col2:
+        feishu_app_secret = st.text_input(
+            "FEISHU_APP_SECRET",
+            value=_feishu_cfg.get("app_secret", ""),
+            key="feishu_app_secret_input",
+            type="password",
+            placeholder="xxxxxxxxxxxxxxxxxxxxxxxx",
+            help="飞书应用 App Secret"
+        )
+    with feishu_col3:
+        st.markdown("<div style='padding-top: 28px;'></div>", unsafe_allow_html=True)
+        if st.button("💾 保存飞书配置", key="btn_save_feishu"):
+            aid = (feishu_app_id or "").strip()
+            asec = (feishu_app_secret or "").strip()
+            if not aid or not asec:
+                st.error("App ID 和 App Secret 不能为空")
+            else:
+                if save_feishu_config(aid, asec):
+                    st.success("✅ 飞书配置已保存")
+                    st.rerun()
+                else:
+                    st.error("❌ 保存失败，请检查文件权限")
+
+    if _feishu_cfg.get("app_id"):
+        st.caption(f"当前配置文件: {FEISHU_CONFIG_FILE}")
+    else:
+        st.info("💡 当前未配置飞书凭证。除了在页面填写保存外，也可以通过服务器环境变量 FEISHU_APP_ID / FEISHU_APP_SECRET 配置。")
+
+    st.divider()
     
     # Debug Section
     st.subheader("🛠️ Debug / Test Connectivity")

@@ -77,6 +77,8 @@ class HistoryService:
                 user_id=r.get('user_id'),
                 session_id=r.get('session_id'),
                 assertion_detail=r.get('assertion_detail'),
+                category=r.get('category'),
+                priority=r.get('priority'),
                 created_at=now
             )
             self.db.add(test_result)
@@ -245,6 +247,8 @@ class HistoryService:
                     'user_id': r.user_id,
                     'session_id': r.session_id,
                     'assertion_detail': r.assertion_detail,
+                    'category': r.category,
+                    'priority': r.priority,
                 }
                 results.append(result_dict)
             base_dict['results'] = results

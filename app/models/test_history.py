@@ -57,6 +57,8 @@ class TestResult(Base):
     user_id = Column(String(100))
     session_id = Column(String(100))
     assertion_detail = Column(JSONB)  # 断言执行结果 {"passed": bool, "score": float, "results": [...]}
+    category = Column(String(200))    # 执行时用例所在分类
+    priority = Column(String(2))      # 执行时用例优先级 P0/P1/P2
     created_at = Column(DateTime, default=datetime.utcnow)
 
     history = relationship('TestHistory', back_populates='results')

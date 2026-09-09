@@ -303,6 +303,8 @@ class JobManager:
                     user_id=new_result.get('user_id'),
                     session_id=new_result.get('session_id'),
                     assertion_detail=new_result.get('assertion_detail'),
+                    category=new_result.get('category'),
+                    priority=new_result.get('priority'),
                     created_at=datetime.datetime.utcnow()
                 )
                 db.add(tr)

@@ -8,9 +8,16 @@ from app.utils import export_pdf, delete_reports, run_tests_sync, save_history, 
 from chat_client import get_available_apis
 
 
-def _read_max_workers() -> int:
-    """从 testcases 页面的 Thread text_input 读取并 clamp 到 1-10。"""
-    raw = st.session_state.get("page_max_workers_input", "3")
+def _read_max_workers(entry_id=None) -> int:
+    """读取并发线程数并 clamp 到 1-10。
+    优先读取当前 report 的 thread 设置（f"max_workers_{entry_id}"），
+    回退到 testcases 页面的全局 page_max_workers_input。
+    """
+    raw = None
+    if entry_id:
+        raw = st.session_state.get(f"max_workers_{entry_id}")
+    if raw is None:
+        raw = st.session_state.get("page_max_workers_input", "3")
     try:
         v = int(str(raw).strip())
     except Exception:
@@ -20,6 +27,84 @@ def _read_max_workers() -> int:
     if v > 10:
         return 10
     return v
+
+
+@st.fragment
+def _render_report_table_fragment(entry_id, display_res_df, tbl_key_suffix, all_cols, disabled_cols):
+    """表格片段：隔离勾选/编辑导致的重绘范围，避免勾选一行就刷新整个页面。"""
+    # Action Row 2: Select Controls
+    op_col1, op_col2, op_spacer = st.columns([1, 1, 6])
+    with op_col1:
+        if st.button("☑ 全选", key=f"btn_select_all_{entry_id}", use_container_width=True):
+            st.session_state[f"select_all_{entry_id}"] = True
+            st.session_state[f"tbl_ver_{entry_id}"] = st.session_state.get(f"tbl_ver_{entry_id}", 0) + 1
+            st.rerun(scope="fragment")
+    with op_col2:
+        if st.button("☐ 取消", key=f"btn_deselect_all_{entry_id}", use_container_width=True):
+            st.session_state[f"select_all_{entry_id}"] = False
+            st.session_state[f"tbl_ver_{entry_id}"] = st.session_state.get(f"tbl_ver_{entry_id}", 0) + 1
+            st.rerun(scope="fragment")
+
+    # 消费 select_all 状态（应用到 display_res_df 的 Select 列）
+    select_all_state = st.session_state.pop(f"select_all_{entry_id}", None)
+    if f"rerun_select_{entry_id}" not in st.session_state:
+        st.session_state[f"rerun_select_{entry_id}"] = set()
+    rerun_select = st.session_state[f"rerun_select_{entry_id}"]
+    if select_all_state is True:
+        display_res_df["Select"] = True
+        rerun_select.clear()
+        rerun_select.update(range(len(display_res_df)))
+    elif select_all_state is False:
+        display_res_df["Select"] = False
+        rerun_select.clear()
+
+    # 恢复持久化的 Select 状态（跨 fragment rerun 保持勾选）
+    for ridx in list(rerun_select):
+        if ridx < len(display_res_df):
+            display_res_df.at[ridx, "Select"] = True
+
+    tbl_key = f"hist_tbl_{entry_id}_v{tbl_key_suffix}"
+    edited_df = st.data_editor(
+        display_res_df,
+        column_config={
+            "Select": st.column_config.CheckboxColumn("✓", width="small", default=False),
+            "case_id": st.column_config.TextColumn("ID", width="small"),
+            "priority": st.column_config.TextColumn("Priority", width="small"),
+            "turn_index": st.column_config.NumberColumn("Turn", width="small"),
+            "input": st.column_config.TextColumn("Input", width="medium"),
+            "expected_output": st.column_config.TextColumn("Expected", width="medium"),
+            "actual_output": st.column_config.TextColumn("Actual Output", width="large"),
+            "retrieval_context": st.column_config.TextColumn("Retrieval Context", width="large"),
+            "thinking": st.column_config.TextColumn("Thinking Process", width="large"),
+            "inform_base": st.column_config.TextColumn("Inform Base / Tools", width="large"),
+            "raw": st.column_config.TextColumn("Raw Data", width="large"),
+            "score": st.column_config.NumberColumn("Score", format="%.2f"),
+            "passed": st.column_config.CheckboxColumn("Passed", width="small"),
+            "review_comment": st.column_config.TextColumn("Review Comment", width="medium"),
+            "ttft": st.column_config.NumberColumn("TTFT", format="%.2f s"),
+            "latency": st.column_config.NumberColumn("Latency", format="%.2f s"),
+            "reason": st.column_config.TextColumn("Reason", width="large"),
+            "assertion_result": st.column_config.TextColumn("Assertion Result", width="large"),
+        },
+        use_container_width=True,
+        disabled=disabled_cols,
+        hide_index=True,
+        key=tbl_key,
+    )
+
+    # 将 data_editor 的 edited_rows 同步到持久化勾选集合（跨 rerun 保持）
+    editor_state = st.session_state.get(tbl_key, {})
+    edited_rows = editor_state.get("edited_rows", {}) if isinstance(editor_state, dict) else {}
+    if edited_rows:
+        for ridx_str, patch in edited_rows.items():
+            if "Select" in patch:
+                ridx = int(ridx_str)
+                if patch.get("Select"):
+                    rerun_select.add(ridx)
+                else:
+                    rerun_select.discard(ridx)
+
+    return edited_df
 
 
 def render_report_page():
@@ -237,11 +322,11 @@ def render_report_page():
             # --------------------------
             # Action Buttons Row 1: Report Management
             # --------------------------
-            mgmt_col1, mgmt_col2, mgmt_col3, mgmt_col4 = st.columns([3, 1, 1.5, 1])
+            mgmt_col1, mgmt_col2, mgmt_col3, mgmt_col4 = st.columns([3.5, 1, 1.5, 1])
             
             with mgmt_col1:
-                # API SELECTOR + 执行模式选择（Rerun/Continue 使用）
-                api_col, mode_col = st.columns([2, 1])
+                # API SELECTOR + 执行模式选择 + Thread并发数（Rerun/Continue 使用）
+                api_col, mode_col, thread_col = st.columns([2.2, 1.3, 0.8])
                 with api_col:
                     stored_api = entry.get("api_name", "Bundle API")
                     default_idx = 0
@@ -258,6 +343,18 @@ def render_report_page():
                         ["full (语义+断言)", "semantic (仅语义)", "assertion (仅断言)"],
                         key=mode_key,
                         label_visibility="collapsed",
+                    )
+                with thread_col:
+                    thread_key = f"max_workers_{entry_id}"
+                    if thread_key not in st.session_state:
+                        # 默认继承 testcases 页的全局设置
+                        st.session_state[thread_key] = st.session_state.get("page_max_workers_input", "3")
+                    st.text_input(
+                        "Thread",
+                        key=thread_key,
+                        placeholder="1-10",
+                        label_visibility="collapsed",
+                        help="并发线程数（1-10，默认 3）。多轮对话仍串行执行。",
                     )
 
             with mgmt_col2:
@@ -305,7 +402,7 @@ def render_report_page():
                             if st.button("▶ Continue", key=f"btn_cont_{entry_id}", use_container_width=True, help="从断点续跑，结果合并到当前 report"):
                                 from app.utils import get_job_manager
                                 mgr = get_job_manager()
-                                result = mgr.continue_job(entry_id, max_workers=_read_max_workers())
+                                result = mgr.continue_job(entry_id, max_workers=_read_max_workers(entry_id))
                                 if result.get("ok"):
                                     st.success(result.get("message", "Continue started"))
                                 else:
@@ -479,7 +576,7 @@ def render_report_page():
 
                 # Configure standard columns order
                 target_cols = [
-                    "Select", "case_id", "turn_index", "input", "expected_output", "actual_output", "retrieval_context",
+                    "Select", "case_id", "priority", "turn_index", "input", "expected_output", "actual_output", "retrieval_context",
                     "score", "passed", "assertion_result", "ttft", "latency", "reason",
                     "review_comment", "thinking", "inform_base", "raw"
                 ]
@@ -506,88 +603,15 @@ def render_report_page():
                 display_res_df = display_res_df[display_cols]
                 
                 # --------------------------
-                # Action Row 2: Select Controls
+                # Table Fragment（隔离勾选/编辑导致的重绘，只刷新表格区域）
                 # --------------------------
                 tbl_key_suffix = st.session_state.get(f"tbl_ver_{entry_id}", 0)
-                op_col1, op_col2, op_spacer = st.columns([1, 1, 6])
-                with op_col1:
-                    if st.button("☑ 全选", key=f"btn_select_all_{entry_id}", use_container_width=True):
-                        st.session_state[f"select_all_{entry_id}"] = True
-                        st.session_state[f"tbl_ver_{entry_id}"] = tbl_key_suffix + 1
-                        st.rerun()
-                with op_col2:
-                    if st.button("☐ 取消", key=f"btn_deselect_all_{entry_id}", use_container_width=True):
-                        st.session_state[f"select_all_{entry_id}"] = False
-                        st.session_state[f"tbl_ver_{entry_id}"] = tbl_key_suffix + 1
-                        st.rerun()
-                
-                # 根据 session_state 中的全选状态设置 Select 列（消费一次即清，避免每次 rerun 都覆盖用户勾选）
-                select_all_state = st.session_state.pop(f"select_all_{entry_id}", None)
-                # 确保持久化集合存在
-                if f"rerun_select_{entry_id}" not in st.session_state:
-                    st.session_state[f"rerun_select_{entry_id}"] = set()
-                rerun_select = st.session_state[f"rerun_select_{entry_id}"]
-                if select_all_state is True:
-                    display_res_df["Select"] = True
-                    # 全选：把所有行加入持久化集合
-                    rerun_select.clear()
-                    rerun_select.update(range(len(display_res_df)))
-                elif select_all_state is False:
-                    display_res_df["Select"] = False
-                    # 取消全选：清空持久化集合
-                    rerun_select.clear()
-                
                 all_cols = display_res_df.columns.tolist()
                 editable_cols = ["Select", "passed", "review_comment"]
                 disabled_cols = [c for c in all_cols if c not in editable_cols]
 
-                # 保存当前用户手动勾选的 Select 状态（跨 rerun 持久化）
-                tbl_key = f"hist_tbl_{entry_id}_v{tbl_key_suffix}"
-                editor_state = st.session_state.get(tbl_key, {})
-                edited_rows = editor_state.get("edited_rows", {})
-                if edited_rows:
-                    # 合并用户手动勾选的状态到持久化 key
-                    if f"rerun_select_{entry_id}" not in st.session_state:
-                        st.session_state[f"rerun_select_{entry_id}"] = set()
-                    rerun_select = st.session_state[f"rerun_select_{entry_id}"]
-                    for ridx_str, patch in edited_rows.items():
-                        if patch.get("Select"):
-                            rerun_select.add(int(ridx_str))
-                        elif int(ridx_str) in rerun_select:
-                            rerun_select.discard(int(ridx_str))
-
-                # 恢复持久化的 Select 状态
-                if f"rerun_select_{entry_id}" in st.session_state:
-                    saved = st.session_state[f"rerun_select_{entry_id}"]
-                    for ridx in saved:
-                        if ridx < len(display_res_df):
-                            display_res_df.at[ridx, "Select"] = True
-
-                edited_df = st.data_editor(
-                    display_res_df,
-                    column_config={
-                        "Select": st.column_config.CheckboxColumn("✓", width="small", default=False),
-                        "case_id": st.column_config.TextColumn("ID", width="small"),
-                        "turn_index": st.column_config.NumberColumn("Turn", width="small"),
-                        "input": st.column_config.TextColumn("Input", width="medium"),
-                        "expected_output": st.column_config.TextColumn("Expected", width="medium"),
-                        "actual_output": st.column_config.TextColumn("Actual Output", width="large"),
-                        "retrieval_context": st.column_config.TextColumn("Retrieval Context", width="large"),
-                        "thinking": st.column_config.TextColumn("Thinking Process", width="large"),
-                        "inform_base": st.column_config.TextColumn("Inform Base / Tools", width="large"),
-                        "raw": st.column_config.TextColumn("Raw Data", width="large"),
-                        "score": st.column_config.NumberColumn("Score", format="%.2f"),
-                        "passed": st.column_config.CheckboxColumn("Passed", width="small"),
-                        "review_comment": st.column_config.TextColumn("Review Comment", width="medium"),
-                        "ttft": st.column_config.NumberColumn("TTFT", format="%.2f s"),
-                        "latency": st.column_config.NumberColumn("Latency", format="%.2f s"),
-                        "reason": st.column_config.TextColumn("Reason", width="large"),
-                        "assertion_result": st.column_config.TextColumn("Assertion Result", width="large"),
-                    },
-                    use_container_width=True,
-                    disabled=disabled_cols,
-                    hide_index=True,
-                    key=f"hist_tbl_{entry_id}_v{tbl_key_suffix}"
+                edited_df = _render_report_table_fragment(
+                    entry_id, display_res_df, tbl_key_suffix, all_cols, disabled_cols
                 )
 
 
@@ -623,6 +647,8 @@ def render_report_page():
                                         "expected_output": row.get("expected_output", ""),
                                         "type": row.get("type", "single_turn"),
                                         "turns": row.get("turns", []),
+                                        "priority": row.get("priority"),
+                                        "category": row.get("category"),
                                     })
 
                             seen = set()
@@ -644,7 +670,7 @@ def render_report_page():
                                     unique_cases_to_rerun,
                                     api_name=target_api,
                                     execution_mode=_mode_val,
-                                    max_workers=_read_max_workers(),
+                                    max_workers=_read_max_workers(entry_id),
                                 )
                                 st.success(f"Rerun started for {len(unique_cases_to_rerun)} case(s)! Job ID: {job_id}")
                                 time.sleep(1)

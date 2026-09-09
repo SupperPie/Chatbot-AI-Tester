@@ -8,6 +8,45 @@ import requests
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
+# 飞书配置文件路径（与 api_config.json 同目录）
+FEISHU_CONFIG_FILE = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "data", "feishu_config.json"
+)
+
+
+def _load_feishu_config() -> Dict[str, str]:
+    """从配置文件读取飞书凭证，优先级：环境变量 > 配置文件"""
+    app_id = os.getenv("FEISHU_APP_ID", "")
+    app_secret = os.getenv("FEISHU_APP_SECRET", "")
+    if app_id and app_secret:
+        return {"app_id": app_id.strip().strip('"').strip("'"),
+                "app_secret": app_secret.strip().strip('"').strip("'")}
+    # 从配置文件读取
+    if os.path.exists(FEISHU_CONFIG_FILE):
+        try:
+            with open(FEISHU_CONFIG_FILE, "r", encoding="utf-8") as f:
+                cfg = json.load(f)
+            return {
+                "app_id": (cfg.get("app_id") or "").strip().strip('"').strip("'"),
+                "app_secret": (cfg.get("app_secret") or "").strip().strip('"').strip("'"),
+            }
+        except Exception:
+            pass
+    return {"app_id": "", "app_secret": ""}
+
+
+def save_feishu_config(app_id: str, app_secret: str) -> bool:
+    """保存飞书凭证到配置文件"""
+    try:
+        os.makedirs(os.path.dirname(FEISHU_CONFIG_FILE), exist_ok=True)
+        with open(FEISHU_CONFIG_FILE, "w", encoding="utf-8") as f:
+            json.dump({"app_id": app_id.strip(), "app_secret": app_secret.strip()}, f, indent=2, ensure_ascii=False)
+        return True
+    except Exception as e:
+        print(f"[feishu] save config failed: {e}")
+        return False
+
 
 def _json_escaped_bytes(val: str) -> int:
     """计算字符串按 JSON 转义（ensure_ascii=False）后的 UTF-8 字节数。
@@ -22,8 +61,9 @@ class FeishuClient:
     """飞书开放平台 API 客户端"""
     
     def __init__(self):
-        self.app_id = os.getenv("FEISHU_APP_ID")
-        self.app_secret = os.getenv("FEISHU_APP_SECRET")
+        cfg = _load_feishu_config()
+        self.app_id = cfg["app_id"]
+        self.app_secret = cfg["app_secret"]
         self.base_url = "https://open.feishu.cn/open-apis"
         self._tenant_access_token = None
         self._token_expires_at = 0
@@ -274,6 +314,7 @@ def export_report_to_feishu(
                 score_val = turn.get("score") if turn.get("score") is not None else item.get("score", 0)
                 row = [
                     item.get("case_id", ""),
+                    item.get("priority", ""),
                     turn.get("turn", ""),
                     _truncate_cell(str(turn.get("user", ""))),
                     _truncate_cell(str(turn.get("expected", ""))),
@@ -299,6 +340,7 @@ def export_report_to_feishu(
             
             row = [
                 item.get("case_id", ""),
+                item.get("priority", ""),
                 "",  # turn_index
                 _truncate_cell(str(item.get("input", ""))),
                 _truncate_cell(str(item.get("expected_output", ""))),
@@ -322,7 +364,7 @@ def export_report_to_feishu(
     
     # 先写入表头（与 report 页面一致）
     headers = [[
-        "Case ID", "Turn", "Input", "Expected", "Actual Output", "Retrieval Context",
+        "Case ID", "Priority", "Turn", "Input", "Expected", "Actual Output", "Retrieval Context",
         "Score", "Passed", "Assertion Result", "TTFT", "Latency", "Reason", 
         "Review Comment", "Thinking", "Inform Base", "Raw"
     ]]
@@ -332,7 +374,7 @@ def export_report_to_feishu(
     oversized_cells = []
     for row_idx, row in enumerate(rows):
         case_id = str(row[0]) if len(row) > 0 else ""
-        turn = str(row[1]) if len(row) > 1 else ""
+        turn = str(row[2]) if len(row) > 2 else ""  # priority 插入后 turn 在 index 2
         for col_idx, cell in enumerate(row):
             txt = "" if cell is None else str(cell)
             b = _json_escaped_bytes(txt)

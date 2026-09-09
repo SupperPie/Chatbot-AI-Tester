@@ -602,6 +602,8 @@ class TestEngine:
             "latency": latency,
             "ttft": ttft,
             "assertion_detail": assertion_detail,
+            "category": case_data.get("category"),
+            "priority": case_data.get("priority"),
         }
 
     def run_batch(self, cases: List[Dict[str, Any]], api_name: str = "Skills", on_step_complete=None, should_stop=None, execution_mode: str = "full", max_workers: int = 1) -> List[Dict[str, Any]]:
@@ -655,6 +657,8 @@ class TestEngine:
                     "latency": 0,
                     "ttft": 0,
                     "assertion_detail": None,
+                    "category": case.get("category"),
+                    "priority": case.get("priority"),
                 }
 
         # Run single turn cases (并发或串行)
@@ -875,7 +879,9 @@ class TestEngine:
                 "turns": turn_results,
                 "user_id": user_id,
                 "session_id": session_id,
-                "error": error_msg
+                "error": error_msg,
+                "category": case_data.get("category"),
+                "priority": case_data.get("priority"),
             }
         
         # Phase 3: Build ConversationalTestCase and evaluate with ConversationalGEval
@@ -942,5 +948,7 @@ class TestEngine:
             "ttft": sum(t.get("ttft", 0) for t in turn_results),
             "turns": turn_results,
             "user_id": user_id,
-            "session_id": session_id
+            "session_id": session_id,
+            "category": case_data.get("category"),
+            "priority": case_data.get("priority"),
         }
