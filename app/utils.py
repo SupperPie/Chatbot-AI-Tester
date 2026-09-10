@@ -59,6 +59,7 @@ def load_data() -> pd.DataFrame:
                         'validation': tc.validation,
                         'assertions': tc.assertions or [],
                         'priority': tc.priority,
+                        'module': tc.module,
                     }
                     data.append(record)
                 df = pd.DataFrame(data)
@@ -78,7 +79,7 @@ def load_data() -> pd.DataFrame:
                 
         if not data:
             # Return empty structure with Select column
-            return pd.DataFrame(columns=["Select", "id", "turn_index", "input", "expected_output", "tags", "category_id", "priority"])
+            return pd.DataFrame(columns=["Select", "id", "turn_index", "input", "expected_output", "tags", "category_id", "priority", "module"])
 
         df = pd.DataFrame(data)
         # Add default category_id for JSON data
@@ -86,6 +87,8 @@ def load_data() -> pd.DataFrame:
             df['category_id'] = 'root'
         if 'priority' not in df.columns:
             df['priority'] = None
+        if 'module' not in df.columns:
+            df['module'] = None
         if 'description' not in df.columns:
             df['description'] = None
     
@@ -145,6 +148,10 @@ def load_data() -> pd.DataFrame:
             s = str(v).strip().upper()
             return s if s in ("P0", "P1", "P2") else None
         df["priority"] = df["priority"].apply(normalize_priority)
+    if "module" not in df.columns:
+        df["module"] = None
+    else:
+        df["module"] = df["module"].apply(lambda v: str(v).strip() if v is not None and not (isinstance(v, float) and pd.isna(v)) else None)
     if "tags" not in df.columns:
         df["tags"] = [[] for _ in range(len(df))]
     else:

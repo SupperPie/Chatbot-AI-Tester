@@ -28,7 +28,7 @@ class HistoryService:
             return self._entry_to_dict(entry)
         return None
 
-    def save(self, results: List[Dict], api_name: str = "Unknown") -> str:
+    def save(self, results: List[Dict], api_name: str = "Unknown", report_name: str = None) -> str:
         """保存一次测试执行结果到 DB"""
         now = datetime.utcnow()
         history_id = now.strftime("%Y%m%d%H%M%S")
@@ -40,6 +40,7 @@ class HistoryService:
             id=history_id,
             timestamp=now,
             api_name=api_name,
+            report_name=report_name,
             total=total_count,
             passed=passed_count,
             failed=total_count - passed_count,
@@ -79,6 +80,7 @@ class HistoryService:
                 assertion_detail=r.get('assertion_detail'),
                 category=r.get('category'),
                 priority=r.get('priority'),
+                module=r.get('module'),
                 created_at=now
             )
             self.db.add(test_result)
@@ -207,6 +209,7 @@ class HistoryService:
             'timestamp': _to_bj_str(entry.timestamp),
             'duration': duration_str,
             'api_name': entry.api_name,
+            'report_name': entry.report_name,
             'total': entry.total,
             'passed': entry.passed,
             'failed': entry.failed,
@@ -249,6 +252,7 @@ class HistoryService:
                     'assertion_detail': r.assertion_detail,
                     'category': r.category,
                     'priority': r.priority,
+                    'module': r.module,
                 }
                 results.append(result_dict)
             base_dict['results'] = results

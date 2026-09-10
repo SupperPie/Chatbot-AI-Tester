@@ -29,11 +29,65 @@ def _read_max_workers(entry_id=None) -> int:
     return v
 
 
+@st.dialog("🚀 Rerun - Report Name")
+def _rerun_confirm_dialog(entry_id, cases, api_name, case_count):
+    """Rerun 前的确认弹窗：输入本次 Test Report 的名称。
+    默认值：{endpoint}_{当天日期}_{时间戳}，用户可编辑。
+    """
+    from datetime import datetime as _dt
+    default_name = f"{api_name}_{_dt.now().strftime('%Y%m%d')}_{_dt.now().strftime('%H%M%S')}"
+
+    st.info(f"即将重新执行 **{case_count}** 条测试用例（API: **{api_name}**）")
+
+    report_name = st.text_input(
+        "本次 Test Report 名称",
+        value=default_name,
+        key=f"rerun_report_name_{entry_id}",
+        help="显示在 Test Report 页面的报告名称，可自定义编辑"
+    )
+
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("取消", width="stretch"):
+            st.session_state.pop(f"confirmed_rerun_{entry_id}", None)
+            st.rerun()
+    with col2:
+        if st.button("▶ 开始执行", type="primary", width="stretch"):
+            name = (report_name or "").strip() or default_name
+            st.session_state[f"confirmed_rerun_{entry_id}"] = {
+                'cases': cases,
+                'report_name': name,
+            }
+            st.rerun()
+
+
 @st.fragment
-def _render_report_table_fragment(entry_id, display_res_df, tbl_key_suffix, all_cols, disabled_cols):
-    """表格片段：隔离勾选/编辑导致的重绘范围，避免勾选一行就刷新整个页面。"""
-    # Action Row 2: Select Controls
-    op_col1, op_col2, op_spacer = st.columns([1, 1, 6])
+def _render_report_table_fragment(entry_id, full_display_df, tbl_key_suffix, all_cols, disabled_cols):
+    """表格片段：隔离勾选/编辑导致的重绘范围，避免勾选一行就刷新整个页面。
+    内部使用分页，大数据量时每次只渲染 TBL_PAGE_SIZE 行到 data_editor，
+    大幅减少前端 DOM 和数据传输量。
+    """
+    TBL_PAGE_SIZE = 50  # 表格内部分页，每页 50 行
+
+    # 表格分页状态
+    pg_key = f"_tbl_pg_{entry_id}"
+    if pg_key not in st.session_state:
+        st.session_state[pg_key] = 1
+    tbl_page = st.session_state[pg_key]
+
+    total_rows = len(full_display_df)
+    total_tbl_pages = max(1, math.ceil(total_rows / TBL_PAGE_SIZE))
+    if tbl_page > total_tbl_pages:
+        tbl_page = total_tbl_pages
+        st.session_state[pg_key] = tbl_page
+
+    t_start = (tbl_page - 1) * TBL_PAGE_SIZE
+    t_end = min(t_start + TBL_PAGE_SIZE, total_rows)
+
+    # Action Row 2: Select Controls + Pagination
+    op_col1, op_col2, op_col3, op_spacer, pg_prev, pg_info, pg_next = st.columns(
+        [0.8, 0.8, 0.8, 2, 0.5, 1.2, 0.5]
+    )
     with op_col1:
         if st.button("☑ 全选", key=f"btn_select_all_{entry_id}", use_container_width=True):
             st.session_state[f"select_all_{entry_id}"] = True
@@ -44,67 +98,102 @@ def _render_report_table_fragment(entry_id, display_res_df, tbl_key_suffix, all_
             st.session_state[f"select_all_{entry_id}"] = False
             st.session_state[f"tbl_ver_{entry_id}"] = st.session_state.get(f"tbl_ver_{entry_id}", 0) + 1
             st.rerun(scope="fragment")
+    with op_col3:
+        if total_rows > TBL_PAGE_SIZE:
+            st.caption(f"共 {total_rows} 行")
+    with pg_prev:
+        if st.button("◀", key=f"pg_prev_{entry_id}", disabled=(tbl_page <= 1), use_container_width=True):
+            st.session_state[pg_key] = max(1, tbl_page - 1)
+            st.rerun(scope="fragment")
+    with pg_info:
+        st.caption(f"第 {tbl_page}/{total_tbl_pages} 页")
+    with pg_next:
+        if st.button("▶", key=f"pg_next_{entry_id}", disabled=(tbl_page >= total_tbl_pages), use_container_width=True):
+            st.session_state[pg_key] = min(total_tbl_pages, tbl_page + 1)
+            st.rerun(scope="fragment")
 
-    # 消费 select_all 状态（应用到 display_res_df 的 Select 列）
+    # 消费 select_all 状态（应用到全量数据的 Select 列）
     select_all_state = st.session_state.pop(f"select_all_{entry_id}", None)
     if f"rerun_select_{entry_id}" not in st.session_state:
         st.session_state[f"rerun_select_{entry_id}"] = set()
     rerun_select = st.session_state[f"rerun_select_{entry_id}"]
     if select_all_state is True:
-        display_res_df["Select"] = True
+        full_display_df["Select"] = True
         rerun_select.clear()
-        rerun_select.update(range(len(display_res_df)))
+        rerun_select.update(range(total_rows))
     elif select_all_state is False:
-        display_res_df["Select"] = False
+        full_display_df["Select"] = False
         rerun_select.clear()
 
     # 恢复持久化的 Select 状态（跨 fragment rerun 保持勾选）
     for ridx in list(rerun_select):
-        if ridx < len(display_res_df):
-            display_res_df.at[ridx, "Select"] = True
+        if ridx < total_rows:
+            full_display_df.at[ridx, "Select"] = True
 
-    tbl_key = f"hist_tbl_{entry_id}_v{tbl_key_suffix}"
-    edited_df = st.data_editor(
-        display_res_df,
+    # 只取当前页的数据传给 data_editor（大幅减少前端数据量）
+    page_df = full_display_df.iloc[t_start:t_end].reset_index(drop=True).copy()
+
+    # 对大文本列做显示截断（只影响表格展示，不修改 full_display_df 原始数据）
+    _DISP_TRUNC = 200
+    _LONG_COLS = ("input", "expected_output", "actual_output", "retrieval_context",
+                  "reason", "assertion_result", "review_comment", "thinking",
+                  "inform_base", "raw")
+    for _lc in _LONG_COLS:
+        if _lc in page_df.columns:
+            page_df[_lc] = page_df[_lc].apply(
+                lambda v: (str(v)[:_DISP_TRUNC] + "…") if isinstance(v, str) and len(v) > _DISP_TRUNC
+                          else ("" if (v is None or (isinstance(v, float) and pd.isna(v))) else v)
+            )
+
+    tbl_key = f"hist_tbl_{entry_id}_v{tbl_key_suffix}_p{tbl_page}"
+    edited_page_df = st.data_editor(
+        page_df,
         column_config={
             "Select": st.column_config.CheckboxColumn("✓", width="small", default=False),
             "case_id": st.column_config.TextColumn("ID", width="small"),
             "priority": st.column_config.TextColumn("Priority", width="small"),
+            "module": st.column_config.TextColumn("Module", width="small"),
             "turn_index": st.column_config.NumberColumn("Turn", width="small"),
             "input": st.column_config.TextColumn("Input", width="medium"),
             "expected_output": st.column_config.TextColumn("Expected", width="medium"),
             "actual_output": st.column_config.TextColumn("Actual Output", width="large"),
-            "retrieval_context": st.column_config.TextColumn("Retrieval Context", width="large"),
-            "thinking": st.column_config.TextColumn("Thinking Process", width="large"),
-            "inform_base": st.column_config.TextColumn("Inform Base / Tools", width="large"),
-            "raw": st.column_config.TextColumn("Raw Data", width="large"),
-            "score": st.column_config.NumberColumn("Score", format="%.2f"),
+            "retrieval_context": st.column_config.TextColumn("Retrieval Ctx", width="medium"),
+            "thinking": st.column_config.TextColumn("Thinking", width="medium"),
+            "inform_base": st.column_config.TextColumn("Inform Base", width="medium"),
+            "raw": st.column_config.TextColumn("Raw", width="medium"),
+            "score": st.column_config.NumberColumn("Score", format="%.2f", width="small"),
             "passed": st.column_config.CheckboxColumn("Passed", width="small"),
-            "review_comment": st.column_config.TextColumn("Review Comment", width="medium"),
-            "ttft": st.column_config.NumberColumn("TTFT", format="%.2f s"),
-            "latency": st.column_config.NumberColumn("Latency", format="%.2f s"),
-            "reason": st.column_config.TextColumn("Reason", width="large"),
-            "assertion_result": st.column_config.TextColumn("Assertion Result", width="large"),
+            "review_comment": st.column_config.TextColumn("Comment", width="medium"),
+            "ttft": st.column_config.NumberColumn("TTFT", format="%.1f", width="small"),
+            "latency": st.column_config.NumberColumn("Latency", format="%.1f", width="small"),
+            "reason": st.column_config.TextColumn("Reason", width="medium"),
+            "assertion_result": st.column_config.TextColumn("Assertion", width="medium"),
         },
         use_container_width=True,
         disabled=disabled_cols,
         hide_index=True,
         key=tbl_key,
+        height=min(600, 35 * max(1, len(page_df)) + 40),
     )
 
-    # 将 data_editor 的 edited_rows 同步到持久化勾选集合（跨 rerun 保持）
+    # 将当前页的编辑（勾选/passed/comment）同步回全量 DataFrame
     editor_state = st.session_state.get(tbl_key, {})
     edited_rows = editor_state.get("edited_rows", {}) if isinstance(editor_state, dict) else {}
     if edited_rows:
-        for ridx_str, patch in edited_rows.items():
+        for page_ridx_str, patch in edited_rows.items():
+            page_ridx = int(page_ridx_str)
+            global_ridx = t_start + page_ridx
+            for col, val in patch.items():
+                if global_ridx < total_rows:
+                    full_display_df.at[global_ridx, col] = val
             if "Select" in patch:
-                ridx = int(ridx_str)
                 if patch.get("Select"):
-                    rerun_select.add(ridx)
+                    rerun_select.add(global_ridx)
                 else:
-                    rerun_select.discard(ridx)
+                    rerun_select.discard(global_ridx)
 
-    return edited_df
+    # 返回全量 DataFrame（带最新勾选状态），供外部 Rerun/Export 使用
+    return full_display_df
 
 
 def render_report_page():
@@ -263,36 +352,46 @@ def render_report_page():
         ts = entry.get('timestamp', '')
         dur = entry.get('duration', '')
         dur_part = f" [{dur}]" if dur else ""
+        # 自定义报告名（Run 弹窗中输入），显示在标签最前面
+        report_name = entry.get('report_name')
+        name_part = f"{report_name} | " if report_name else ""
 
         if status == "running":
             # Estimate or use started_count if available
             started = entry.get('started_count', 0)
             # Total might be initial count, or updated.
             # Avoid div by zero
-            if total_count == 0: total_count = 1 
+            if total_count == 0: total_count = 1
             progress = min(started / total_count, 1.0)
-            
-            label = f"⏳ {ts}{dur_part} - Running... {started}/{total_count} - API: {api_name}"
+
+            label = f"⏳ {name_part}{ts}{dur_part} - Running... {started}/{total_count} - API: {api_name}"
         elif status == "interrupted":
             started = entry.get('started_count', 0)
             remaining = total_count - started if total_count > started else 0
-            label = f"🔴 {ts}{dur_part} - Interrupted {started}/{total_count} (remaining {remaining}) - API: {api_name}"
+            label = f"🔴 {name_part}{ts}{dur_part} - Interrupted {started}/{total_count} (remaining {remaining}) - API: {api_name}"
         elif status == "cancelled":
             started = entry.get('started_count', 0)
             remaining = total_count - started if total_count > started else 0
-            label = f"⏸ {ts}{dur_part} - Cancelled {started}/{total_count} (remaining {remaining}) - API: {api_name}"
+            label = f"⏸ {name_part}{ts}{dur_part} - Cancelled {started}/{total_count} (remaining {remaining}) - API: {api_name}"
         elif status == "failed":
             started = entry.get('started_count', 0)
-            label = f"❌ {ts}{dur_part} - Failed {started}/{total_count} - API: {api_name}"
+            label = f"❌ {name_part}{ts}{dur_part} - Failed {started}/{total_count} - API: {api_name}"
         else:
             pass_rate = (passed_count / total_count * 100) if total_count > 0 else 0
-            label = f"{ts}{dur_part} - Pass Rate: {pass_rate:.1f}% ({passed_count}/{total_count}) - API: {api_name}"
+            label = f"{name_part}{ts}{dur_part} - Pass Rate: {pass_rate:.1f}% ({passed_count}/{total_count}) - API: {api_name}"
         
         with st.expander(label):
-            # 懒加载：展开时才加载 results 详情
-            entry_detail = service.get_by_id(entry_id)
-            if entry_detail:
-                entry = entry_detail  # 使用包含 results 的完整数据
+            # 懒加载+缓存：展开时才加载 results 详情，并缓存到 session_state 避免每次交互都查DB
+            cache_key = f"entry_detail_cache_{entry_id}"
+            # running 状态下每次都刷新（进度需要）；completed 等终态走缓存
+            if status == "running" or cache_key not in st.session_state:
+                entry_detail = service.get_by_id(entry_id)
+                if entry_detail:
+                    entry = entry_detail
+                    if status != "running":
+                        st.session_state[cache_key] = entry_detail
+            else:
+                entry = st.session_state[cache_key]
             
             # SHOW PROGRESS BAR IF RUNNING
             if status == "running":
@@ -440,16 +539,19 @@ def render_report_page():
                                     results = entry.get('results', [])
                                     report_api_name = entry.get('api_name', 'Test')
                                     if results:
-                                        export_result = export_report_to_feishu(
-                                            results,
-                                            spreadsheet_token=parsed.get("spreadsheet_token"),
-                                            sheet_id=parsed.get("sheet_id"),
-                                            wiki_token=parsed.get("wiki_token"),
-                                            api_name=report_api_name,
-                                            create_new_sheet=True
-                                        )
+                                        est_batches = max(1, (len(results) + 19) // 20)
+                                        est_sec = est_batches * 2  # 每批约含0.8s首延迟+0.3s间隔
+                                        with st.spinner(f"正在导出 {len(results)} 条记录到飞书（约 {est_batches} 批，预计 {est_sec}-{est_sec+10} 秒）..."):
+                                            export_result = export_report_to_feishu(
+                                                results,
+                                                spreadsheet_token=parsed.get("spreadsheet_token"),
+                                                sheet_id=parsed.get("sheet_id"),
+                                                wiki_token=parsed.get("wiki_token"),
+                                                api_name=report_api_name,
+                                                create_new_sheet=True
+                                            )
                                         if export_result.get("success"):
-                                            st.success(export_result.get("message"))
+                                            st.success(f"✅ {export_result.get('message')}")
                                         else:
                                             st.error(export_result.get("message"))
                                     else:
@@ -576,7 +678,7 @@ def render_report_page():
 
                 # Configure standard columns order
                 target_cols = [
-                    "Select", "case_id", "priority", "turn_index", "input", "expected_output", "actual_output", "retrieval_context",
+                    "Select", "case_id", "priority", "module", "turn_index", "input", "expected_output", "actual_output", "retrieval_context",
                     "score", "passed", "assertion_result", "ttft", "latency", "reason",
                     "review_comment", "thinking", "inform_base", "raw"
                 ]
@@ -604,6 +706,8 @@ def render_report_page():
                 
                 # --------------------------
                 # Table Fragment（隔离勾选/编辑导致的重绘，只刷新表格区域）
+                # 注意：大文本列截断在 fragment 内部的 page_df 上做（仅显示用），
+                # 返回的 full_display_df 保持原始完整文本，供 Rerun/Update 操作使用。
                 # --------------------------
                 tbl_key_suffix = st.session_state.get(f"tbl_ver_{entry_id}", 0)
                 all_cols = display_res_df.columns.tolist()
@@ -618,7 +722,29 @@ def render_report_page():
                 # --------------------------
                 # Consume pending Rerun (must run AFTER data_editor so we can read Select column)
                 # --------------------------
-                if st.session_state.pop(f"pending_rerun_{entry_id}", False):
+                # 弹窗确认后的 Rerun 执行（_rerun_confirm_dialog 设置）
+                _confirmed_rerun = st.session_state.pop(f"confirmed_rerun_{entry_id}", None)
+                if _confirmed_rerun:
+                    try:
+                        from app.utils import get_job_manager
+                        mgr = get_job_manager()
+                        target_api = st.session_state.get(f"api_sel_{entry_id}", "Bundle API")
+                        _mode_raw = st.session_state.get(f"exec_mode_{entry_id}", "full (语义+断言)")
+                        _mode_val = _mode_raw.split(" ")[0]  # "full" / "semantic" / "assertion"
+                        job_id = mgr.run_background_job(
+                            _confirmed_rerun['cases'],
+                            api_name=target_api,
+                            execution_mode=_mode_val,
+                            max_workers=_read_max_workers(entry_id),
+                            report_name=_confirmed_rerun.get('report_name'),
+                        )
+                        st.success(f"Rerun started for {len(_confirmed_rerun['cases'])} case(s)! Job ID: {job_id}")
+                        time.sleep(1)
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Rerun failed: {e}")
+
+                elif st.session_state.pop(f"pending_rerun_{entry_id}", False):
                     if edited_df is None or edited_df.empty:
                         st.warning("No results to rerun.")
                     else:
@@ -648,6 +774,7 @@ def render_report_page():
                                         "type": row.get("type", "single_turn"),
                                         "turns": row.get("turns", []),
                                         "priority": row.get("priority"),
+                                        "module": row.get("module"),
                                         "category": row.get("category"),
                                     })
 
@@ -660,23 +787,10 @@ def render_report_page():
                                     seen.add(unique_key)
                                     unique_cases_to_rerun.append(c)
 
-                            try:
-                                from app.utils import get_job_manager
-                                mgr = get_job_manager()
-                                target_api = st.session_state.get(f"api_sel_{entry_id}", "Bundle API")
-                                _mode_raw = st.session_state.get(f"exec_mode_{entry_id}", "full (语义+断言)")
-                                _mode_val = _mode_raw.split(" ")[0]  # "full" / "semantic" / "assertion"
-                                job_id = mgr.run_background_job(
-                                    unique_cases_to_rerun,
-                                    api_name=target_api,
-                                    execution_mode=_mode_val,
-                                    max_workers=_read_max_workers(entry_id),
-                                )
-                                st.success(f"Rerun started for {len(unique_cases_to_rerun)} case(s)! Job ID: {job_id}")
-                                time.sleep(1)
-                                st.rerun()
-                            except Exception as e:
-                                st.error(f"Rerun failed: {e}")
+                            # 弹出 Report Name 确认框（默认 endpoint_日期_时间戳，可编辑）
+                            target_api = st.session_state.get(f"api_sel_{entry_id}", "Bundle API")
+                            st.session_state.pop(f"rerun_report_name_{entry_id}", None)
+                            _rerun_confirm_dialog(entry_id, unique_cases_to_rerun, target_api, len(unique_cases_to_rerun))
 
 
                 # --------------------------

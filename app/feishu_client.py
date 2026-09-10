@@ -136,7 +136,7 @@ class FeishuClient:
         sheet_id: str, 
         rows: List[List[Any]]
     ) -> Dict[str, Any]:
-        """向表格追加数据行
+        """向表格追加数据行（自动分批，避免 request too large）
         
         Args:
             spreadsheet_token: 电子表格 token
@@ -144,27 +144,86 @@ class FeishuClient:
             rows: 要追加的数据行，每行是一个列表
         
         Returns:
-            API 响应
+            最后一批 API 响应（批量时返回汇总信息）
         """
+        import time as _time
+
+        # 飞书单次请求体限制约 20MB，这里保守控制在 ~2MB（含 headers/JSON 结构开销）
+        # 每行 thinking/raw 等文本可能很大（经 _truncate_cell 后单格 ≤49500 bytes），
+        # 17 列 × ~50KB ≈ 850KB 为单行理论上限，因此每批按 20 行上限 + 2MB 字节上限双控
+        MAX_BATCH_BYTES = 2 * 1024 * 1024
+        # 同时限制每批最多行数（保守值，避免大文本行叠加超限）
+        MAX_BATCH_ROWS = 20
+        # 批次间间隔（秒），避免触发飞书频率限制（QPS 约 5）
+        BATCH_INTERVAL = 0.3
+        # 首次写入前的间隔（避免 create_sheet 后立即写入的时序问题）
+        FIRST_BATCH_DELAY = 0.8
+
         url = f"{self.base_url}/sheets/v2/spreadsheets/{spreadsheet_token}/values_append"
-        
-        # 构建范围，追加到表格末尾
         range_str = f"{sheet_id}!A:Z"
-        
-        payload = {
-            "valueRange": {
-                "range": range_str,
-                "values": rows
+
+        if not rows:
+            return {"code": 0, "msg": "no data", "data": {}}
+
+        def _build_payload(batch):
+            return {
+                "valueRange": {
+                    "range": range_str,
+                    "values": batch
+                }
             }
+
+        def _payload_bytes(batch):
+            return len(json.dumps(_build_payload(batch), ensure_ascii=False).encode("utf-8"))
+
+        # 按字节数和行数双重限制切分批次
+        batches = []
+        current_batch = []
+        current_bytes = 0
+        for row in rows:
+            row_bytes = len(json.dumps(row, ensure_ascii=False).encode("utf-8")) + 50  # 逗号等结构开销
+            if current_batch and (
+                len(current_batch) >= MAX_BATCH_ROWS
+                or current_bytes + row_bytes > MAX_BATCH_BYTES
+            ):
+                batches.append(current_batch)
+                current_batch = []
+                current_bytes = 0
+            current_batch.append(row)
+            current_bytes += row_bytes
+        if current_batch:
+            batches.append(current_batch)
+
+        total_written = 0
+        last_result = None
+        for i, batch in enumerate(batches):
+            if i == 0:
+                _time.sleep(FIRST_BATCH_DELAY)
+            payload = _build_payload(batch)
+            batch_bytes = len(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
+            print(f"[feishu] appending batch {i+1}/{len(batches)}: {len(batch)} rows, ~{batch_bytes/1024:.1f} KB")
+
+            resp = requests.post(url, headers=self._headers(), json=payload, timeout=60)
+            data = resp.json()
+            last_result = data
+
+            if data.get("code") != 0:
+                raise Exception(
+                    f"写入飞书表格失败 (batch {i+1}/{len(batches)}, rows={len(batch)}, "
+                    f"~{batch_bytes/1024:.1f} KB): {data.get('msg')}"
+                )
+            total_written += len(batch)
+
+            if i < len(batches) - 1:
+                _time.sleep(BATCH_INTERVAL)
+
+        print(f"[feishu] append done: total {total_written} rows in {len(batches)} batches")
+        return {
+            "code": 0,
+            "msg": f"success ({total_written} rows in {len(batches)} batches)",
+            "data": {"total_rows": total_written, "batches": len(batches)},
+            "last_response": last_result,
         }
-        
-        resp = requests.post(url, headers=self._headers(), json=payload)
-        data = resp.json()
-        
-        if data.get("code") != 0:
-            raise Exception(f"写入飞书表格失败: {data.get('msg')}")
-        
-        return data
     
     def get_sheet_meta(self, spreadsheet_token: str) -> Dict[str, Any]:
         """获取电子表格元信息"""
@@ -223,7 +282,8 @@ def export_report_to_feishu(
     sheet_id: str = None,
     wiki_token: str = None,
     api_name: str = "Test",
-    create_new_sheet: bool = True
+    create_new_sheet: bool = True,
+    progress_callback = None,
 ) -> Dict[str, Any]:
     """导出测试报告到飞书表格
     
@@ -234,14 +294,23 @@ def export_report_to_feishu(
         wiki_token: 知识库文档 token（如果表格在 wiki 中）
         api_name: API 名称，用于生成新 sheet 名称
         create_new_sheet: 是否创建新的工作表（默认 True）
+        progress_callback: 可选回调 fn(stage: str, current: int, total: int, detail: str)
     
     Returns:
         导出结果
     """
+    def _report(stage, cur, tot, detail=""):
+        if progress_callback:
+            try:
+                progress_callback(stage, cur, tot, detail)
+            except Exception:
+                pass
+
     client = FeishuClient()
     
     # 如果是 wiki 中的表格，需要先获取实际的 spreadsheet token
     if wiki_token:
+        _report("wiki", 0, 1, "解析 wiki 链接...")
         node_info = client.get_wiki_node_info(wiki_token)
         spreadsheet_token = node_info.get("obj_token")
         if not spreadsheet_token:
@@ -249,10 +318,12 @@ def export_report_to_feishu(
     
     # 创建新的工作表，名称为 "API名称_日期"
     if create_new_sheet:
+        _report("create_sheet", 0, 1, "创建新 sheet...")
         sheet_title = f"{api_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         sheet_id = client.create_sheet(spreadsheet_token, sheet_title)
     elif not sheet_id:
         # 如果不创建新 sheet 且没有指定 sheet_id，获取第一个工作表
+        _report("meta", 0, 1, "读取表格元信息...")
         meta = client.get_sheet_meta(spreadsheet_token)
         sheets = meta.get("sheets", [])
         if sheets:
@@ -315,17 +386,18 @@ def export_report_to_feishu(
                 row = [
                     item.get("case_id", ""),
                     item.get("priority", ""),
+                    item.get("module", ""),
                     turn.get("turn", ""),
                     _truncate_cell(str(turn.get("user", ""))),
                     _truncate_cell(str(turn.get("expected", ""))),
                     _truncate_cell(str(turn.get("actual", ""))),
-                    str(turn.get("retrieval_context", "")),
+                    _truncate_cell(str(turn.get("retrieval_context", ""))),
                     score_val,
                     "Pass" if item.get("passed") else "Fail",
-                    assertion_result_str,
+                    _truncate_cell(assertion_result_str),
                     turn.get("ttft", 0),
                     turn.get("latency", 0),
-                    item.get("reason", ""),
+                    _truncate_cell(str(item.get("reason", ""))),
                     "",  # review_comment
                     _truncate_cell(str(turn.get("thinking", ""))),
                     _truncate_cell(str(turn.get("inform_base", ""))),
@@ -341,17 +413,18 @@ def export_report_to_feishu(
             row = [
                 item.get("case_id", ""),
                 item.get("priority", ""),
+                item.get("module", ""),
                 "",  # turn_index
                 _truncate_cell(str(item.get("input", ""))),
                 _truncate_cell(str(item.get("expected_output", ""))),
                 _truncate_cell(str(item.get("actual_output", ""))),
-                str(retrieval_context),
+                _truncate_cell(str(retrieval_context)),
                 item.get("score", 0),
                 "Pass" if item.get("passed") else "Fail",
-                assertion_result_str,
+                _truncate_cell(assertion_result_str),
                 item.get("ttft", 0),
                 item.get("latency", 0),
-                item.get("reason", ""),
+                _truncate_cell(str(item.get("reason", ""))),
                 "",  # review_comment
                 _truncate_cell(str(item.get("thinking", ""))),
                 _truncate_cell(str(item.get("inform_base", ""))),
@@ -364,7 +437,7 @@ def export_report_to_feishu(
     
     # 先写入表头（与 report 页面一致）
     headers = [[
-        "Case ID", "Priority", "Turn", "Input", "Expected", "Actual Output", "Retrieval Context",
+        "Case ID", "Priority", "Module", "Turn", "Input", "Expected", "Actual Output", "Retrieval Context",
         "Score", "Passed", "Assertion Result", "TTFT", "Latency", "Reason", 
         "Review Comment", "Thinking", "Inform Base", "Raw"
     ]]
@@ -374,7 +447,7 @@ def export_report_to_feishu(
     oversized_cells = []
     for row_idx, row in enumerate(rows):
         case_id = str(row[0]) if len(row) > 0 else ""
-        turn = str(row[2]) if len(row) > 2 else ""  # priority 插入后 turn 在 index 2
+        turn = str(row[3]) if len(row) > 3 else ""  # priority+module 插入后 turn 在 index 3
         for col_idx, cell in enumerate(row):
             txt = "" if cell is None else str(cell)
             b = _json_escaped_bytes(txt)

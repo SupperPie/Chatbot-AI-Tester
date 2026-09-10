@@ -12,6 +12,7 @@ class TestHistory(Base):
     id = Column(String(50), primary_key=True)
     timestamp = Column(DateTime, nullable=False)
     api_name = Column(String(100))
+    report_name = Column(String(200))  # 用户自定义的报告名称（Test Report 页显示）
     total = Column(Integer, default=0)
     passed = Column(Integer, default=0)
     failed = Column(Integer, default=0)
@@ -59,6 +60,7 @@ class TestResult(Base):
     assertion_detail = Column(JSONB)  # 断言执行结果 {"passed": bool, "score": float, "results": [...]}
     category = Column(String(200))    # 执行时用例所在分类
     priority = Column(String(2))      # 执行时用例优先级 P0/P1/P2
+    module = Column(String(100))      # 执行时用例模块标签
     created_at = Column(DateTime, default=datetime.utcnow)
 
     history = relationship('TestHistory', back_populates='results')

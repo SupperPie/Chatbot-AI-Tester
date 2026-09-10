@@ -1,6 +1,7 @@
 from typing import List, Optional, Dict
 from datetime import datetime
 from sqlalchemy import func
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 import json
 import math
 import logging
@@ -60,6 +61,14 @@ def _sanitize_record(r: dict) -> dict:
     else:
         out['priority'] = str(pr).strip().upper() if str(pr).strip().upper() in ('P0', 'P1', 'P2') else None
 
+    # module: 自由文本，仅做 trim
+    md = out.get('module')
+    if md is None:
+        out['module'] = None
+    else:
+        s = str(md).strip()
+        out['module'] = s if s else None
+
     return out
 
 
@@ -117,150 +126,135 @@ class TestCaseService:
         self.db.commit()
         return count
 
+    def update_module_by_ids(self, test_case_ids: List[str], module: Optional[str]) -> int:
+        """按用例 ID 列表批量更新 module（同 id 的所有 turn 一并更新）。"""
+        if module is not None:
+            module = str(module).strip() or None
+        count = self.db.query(TestCase).filter(TestCase.id.in_(test_case_ids)).update(
+            {TestCase.module: module},
+            synchronize_session=False
+        )
+        self.db.commit()
+        return count
+
     def delete_by_ids(self, ids: List[str]) -> int:
         """按 ID 列表批量删除测试用例"""
         count = self.db.query(TestCase).filter(TestCase.id.in_(ids)).delete(synchronize_session=False)
         self.db.commit()
         return count
 
-    def insert_many(self, records: List[Dict]) -> int:
-        """只插入新记录（不做全量同步）"""
+    def _bulk_upsert(self, records: List[Dict], batch_size: int = 500,
+                     on_conflict: str = 'update') -> int:
+        """批量写 DB：使用 PostgreSQL INSERT ... ON CONFLICT，一条 SQL 写一批。
+
+        相比逐条 SELECT+INSERT/UPDATE（每条 2~3 次网络往返），4000 条导入
+        从十几分钟缩短到几秒。
+
+        Args:
+            records: 待写入的记录列表（无需预先清洗）
+            batch_size: 每条 SQL 携带的行数
+            on_conflict: 'update' 冲突时更新已有行；'nothing' 冲突时跳过（只插新）
+        Returns:
+            实际发送到 DB 的记录数（含冲突跳过的行）
+        """
         allowed_fields = {c.name for c in TestCase.__table__.columns}
-        count = 0
-        
+        now = datetime.utcnow()
+
+        # 预清洗 + 批内按 (id, turn_index) 去重（后出现的覆盖先出现的，
+        # 与 ORM 逐条 upsert "最后一条生效" 的语义一致）
+        dedup: Dict[tuple, Dict] = {}
         for r in records:
             if not r.get('id'):
                 continue
             clean = _sanitize_record(r)
             ti = int(clean.get('turn_index') or 1)
             clean['turn_index'] = ti
-            
-            # 检查是否已存在
-            existing = self.db.query(TestCase).filter(
-                TestCase.id == clean['id'],
-                TestCase.turn_index == ti
-            ).first()
-            
-            if not existing:
-                fields = {k: v for k, v in clean.items() if k in allowed_fields}
-                fields['turn_index'] = ti
-                fields.setdefault('created_at', datetime.utcnow())
-                fields.setdefault('updated_at', datetime.utcnow())
-                self.db.add(TestCase(**fields))
-                count += 1
-        
-        self.db.commit()
+            clean = {k: v for k, v in clean.items() if k in allowed_fields}
+            clean.setdefault('created_at', now)
+            clean.setdefault('updated_at', now)
+            dedup[(clean['id'], ti)] = clean
+
+        if not dedup:
+            return 0
+
+        rows = list(dedup.values())
+        count = 0
+        errors = 0
+
+        for i in range(0, len(rows), batch_size):
+            batch = rows[i:i + batch_size]
+            stmt = pg_insert(TestCase).values(batch)
+            if on_conflict == 'nothing':
+                stmt = stmt.on_conflict_do_nothing(index_elements=['id', 'turn_index'])
+            else:
+                # 冲突时更新除主键、created_at 外的所有列（created_at 保留首次插入值）
+                update_cols = {
+                    c.name: getattr(stmt.excluded, c.name)
+                    for c in TestCase.__table__.columns
+                    if c.name not in ('id', 'turn_index', 'created_at')
+                }
+                update_cols['updated_at'] = now
+                stmt = stmt.on_conflict_do_update(
+                    index_elements=['id', 'turn_index'],
+                    set_=update_cols,
+                )
+            try:
+                self.db.execute(stmt)
+                count += len(batch)
+            except Exception as e:
+                # 批内可能混有脏数据：回滚后降级为逐条写，单条失败只跳过该条
+                self.db.rollback()
+                for row in batch:
+                    try:
+                        row_stmt = pg_insert(TestCase).values(row)
+                        if on_conflict == 'nothing':
+                            row_stmt = row_stmt.on_conflict_do_nothing(index_elements=['id', 'turn_index'])
+                        else:
+                            update_cols = {
+                                c.name: getattr(row_stmt.excluded, c.name)
+                                for c in TestCase.__table__.columns
+                                if c.name not in ('id', 'turn_index', 'created_at')
+                            }
+                            update_cols['updated_at'] = now
+                            row_stmt = row_stmt.on_conflict_do_update(
+                                index_elements=['id', 'turn_index'],
+                                set_=update_cols,
+                            )
+                        self.db.execute(row_stmt)
+                        count += 1
+                    except Exception as e2:
+                        errors += 1
+                        self.db.rollback()
+                        logger.warning(f"[_bulk_upsert] skip record id={row.get('id')} turn={row.get('turn_index')}: {e2}")
+                self.db.commit()
+
+        try:
+            self.db.commit()
+        except Exception as e:
+            logger.error(f"[_bulk_upsert] final commit failed: {e}")
+            self.db.rollback()
+        if errors:
+            logger.warning(f"[_bulk_upsert] completed with {count} ok, {errors} errors")
         return count
+
+    def insert_many(self, records: List[Dict]) -> int:
+        """只插入新记录，已存在的 (id, turn_index) 跳过"""
+        return self._bulk_upsert(records, on_conflict='nothing')
 
     def upsert_all(self, records: List[Dict]) -> int:
         """批量 upsert：更新已有、新增缺少（不自动删除其他记录）"""
         # 注意：此方法不会删除数据库中不在 records 里的记录
         # 如需删除，请显式调用 delete_by_ids()
-        
-        # Upsert 每条记录，分批提交避免超时；单条失败不影响整批
-        allowed_fields = {c.name for c in TestCase.__table__.columns}
-        BATCH_SIZE = 100  # 每 100 条提交一次
-        count = 0
-        errors = 0
-        
-        for r in records:
-            if not r.get('id'):
-                continue
-            try:
-                clean = _sanitize_record(r)
-                ti = int(clean.get('turn_index') or 1)
-                clean['turn_index'] = ti
-                existing = self.db.query(TestCase).filter(
-                    TestCase.id == clean['id'],
-                    TestCase.turn_index == ti
-                ).first()
-                if existing:
-                    for k, v in clean.items():
-                        if k not in ('id', 'turn_index') and k in allowed_fields:
-                            setattr(existing, k, v)
-                    existing.updated_at = datetime.utcnow()
-                else:
-                    fields = {k: v for k, v in clean.items() if k in allowed_fields}
-                    fields['turn_index'] = ti
-                    fields.setdefault('created_at', datetime.utcnow())
-                    fields.setdefault('updated_at', datetime.utcnow())
-                    self.db.add(TestCase(**fields))
-                
-                count += 1
-                # 每 BATCH_SIZE 条提交一次
-                if count % BATCH_SIZE == 0:
-                    self.db.commit()
-            except Exception as e:
-                errors += 1
-                logger.warning(f"[upsert_all] skip record id={r.get('id')} turn={r.get('turn_index')}: {e}")
-                try:
-                    self.db.rollback()
-                except Exception:
-                    pass
-
-        # 提交剩余的
-        try:
-            self.db.commit()
-        except Exception as e:
-            logger.error(f"[upsert_all] final commit failed: {e}")
-            self.db.rollback()
-        if errors:
-            logger.warning(f"[upsert_all] completed with {count} ok, {errors} errors")
-        return count
+        return self._bulk_upsert(records, on_conflict='update')
 
     def upsert_records(self, records: List[Dict]) -> int:
         """增量 upsert：只对给定的若干条记录做更新或插入。
 
         与 upsert_all 的区别：
         - 语义明确为"只保存这几条"，不做全量同步
-        - 单条失败不影响整批（与 upsert_all 一致）
-        - 不含任何 ID 自动生成/重分配逻辑：id 仅作为 (id, turn_index) 查询条件
-          用于定位 DB 记录；如果传入的 record 中字段值由用户修改（包括 id 本身），
-          会按用户提供的值写入，但方法内部不会主动生成新 ID
+        - 不含任何 ID 自动生成/重分配逻辑：id 仅作为 (id, turn_index) 定位条件
         """
-        allowed_fields = {c.name for c in TestCase.__table__.columns}
-        count = 0
-        errors = 0
-        for r in records:
-            if not r.get('id'):
-                continue
-            try:
-                clean = _sanitize_record(r)
-                ti = int(clean.get('turn_index') or 1)
-                clean['turn_index'] = ti
-                existing = self.db.query(TestCase).filter(
-                    TestCase.id == clean['id'],
-                    TestCase.turn_index == ti
-                ).first()
-                if existing:
-                    for k, v in clean.items():
-                        if k not in ('id', 'turn_index') and k in allowed_fields:
-                            setattr(existing, k, v)
-                    existing.updated_at = datetime.utcnow()
-                else:
-                    fields = {k: v for k, v in clean.items() if k in allowed_fields}
-                    fields['turn_index'] = ti
-                    fields.setdefault('created_at', datetime.utcnow())
-                    fields.setdefault('updated_at', datetime.utcnow())
-                    self.db.add(TestCase(**fields))
-                # flush 使后续查询能看到本条记录，避免同批次重复 key 冲突
-                self.db.flush()
-                count += 1
-            except Exception as e:
-                errors += 1
-                logger.warning(f"[upsert_records] skip record id={r.get('id')} turn={r.get('turn_index')}: {e}")
-                try:
-                    self.db.rollback()
-                except Exception:
-                    pass
-        try:
-            self.db.commit()
-        except Exception as e:
-            logger.error(f"[upsert_records] final commit failed: {e}")
-            self.db.rollback()
-        if errors:
-            logger.warning(f"[upsert_records] completed with {count} ok, {errors} errors")
-        return count
+        return self._bulk_upsert(records, on_conflict='update')
 
     def get_max_tc_id_num(self) -> int:
         """查询 DB 中最大的 TCxxxx 数字部分，用于生成新 ID 避免冲突"""

@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import json
+import os
 import time
 from chat_client import load_api_configs, get_chat_response
 
@@ -168,47 +169,67 @@ def render_settings_page():
     # Feishu (Lark) Export Config
     # --------------------------
     st.subheader("📊 Feishu Export Configuration")
-    st.caption("配置飞书开放平台应用凭证，用于将测试报告导出到飞书表格。需要在 [飞书开放平台](https://open.feishu.cn/) 创建企业自建应用，并授予电子表格读写权限。")
+    st.caption(
+        "配置飞书开放平台应用凭证，用于将测试报告导出到飞书表格。"
+        "需要在 [飞书开放平台](https://open.feishu.cn/) 创建企业自建应用，"
+        "并授予 **电子表格读写权限**。"
+    )
 
     from app.feishu_client import _load_feishu_config, save_feishu_config, FEISHU_CONFIG_FILE
     _feishu_cfg = _load_feishu_config()
+
+    # 显示当前配置来源
+    _env_app_id = os.getenv("FEISHU_APP_ID", "").strip().strip('"').strip("'")
+    _env_app_secret = bool(os.getenv("FEISHU_APP_SECRET", "").strip().strip('"').strip("'"))
+    if _env_app_id:
+        st.success(f"✅ 已通过环境变量配置（FEISHU_APP_ID = {_env_app_id[:8]}...），无需在页面填写。")
+    elif _feishu_cfg.get("app_id"):
+        st.warning(
+            "⚠️ 当前通过配置文件读取凭证（保存在本地 data/feishu_config.json）。"
+            "**服务器/容器部署时，文件在容器重启后会丢失**，请改用环境变量方式配置。"
+        )
+    else:
+        st.info(
+            "💡 **服务器部署推荐方式**：在启动服务前设置环境变量，容器重启不丢失：\n\n"
+            "```bash\nexport FEISHU_APP_ID=\"cli_xxxxxxxxxxxxx\"\nexport FEISHU_APP_SECRET=\"xxxxxxxxxxxxxxxxxxxxxxxx\"\nstreamlit run streamlit_app.py\n```\n\n"
+            "本地开发可在下方填写并保存（写入 data/feishu_config.json）。"
+        )
 
     feishu_col1, feishu_col2, feishu_col3 = st.columns([2, 2, 1])
     with feishu_col1:
         feishu_app_id = st.text_input(
             "FEISHU_APP_ID",
-            value=_feishu_cfg.get("app_id", ""),
+            value=_feishu_cfg.get("app_id", "") if not _env_app_id else "",
             key="feishu_app_id_input",
             placeholder="cli_xxxxxxxxxxxxx",
-            help="飞书应用 App ID (以 cli_ 开头)"
+            help="飞书应用 App ID (以 cli_ 开头)" + ("（环境变量已配置，此处仅作覆盖）" if _env_app_id else ""),
+            disabled=bool(_env_app_id),
         )
     with feishu_col2:
         feishu_app_secret = st.text_input(
             "FEISHU_APP_SECRET",
-            value=_feishu_cfg.get("app_secret", ""),
+            value="" if _env_app_secret else "",
             key="feishu_app_secret_input",
             type="password",
             placeholder="xxxxxxxxxxxxxxxxxxxxxxxx",
-            help="飞书应用 App Secret"
+            help="飞书应用 App Secret" + ("（环境变量已配置，此处仅作覆盖）" if _env_app_secret else ""),
+            disabled=bool(_env_app_id),
         )
     with feishu_col3:
         st.markdown("<div style='padding-top: 28px;'></div>", unsafe_allow_html=True)
-        if st.button("💾 保存飞书配置", key="btn_save_feishu"):
+        if st.button("💾 保存到文件", key="btn_save_feishu", disabled=bool(_env_app_id)):
             aid = (feishu_app_id or "").strip()
             asec = (feishu_app_secret or "").strip()
             if not aid or not asec:
                 st.error("App ID 和 App Secret 不能为空")
             else:
                 if save_feishu_config(aid, asec):
-                    st.success("✅ 飞书配置已保存")
+                    st.success("✅ 飞书配置已保存到 data/feishu_config.json")
                     st.rerun()
                 else:
-                    st.error("❌ 保存失败，请检查文件权限")
+                    st.error("❌ 保存失败，请检查 data 目录写入权限")
 
-    if _feishu_cfg.get("app_id"):
-        st.caption(f"当前配置文件: {FEISHU_CONFIG_FILE}")
-    else:
-        st.info("💡 当前未配置飞书凭证。除了在页面填写保存外，也可以通过服务器环境变量 FEISHU_APP_ID / FEISHU_APP_SECRET 配置。")
+    st.caption(f"配置文件路径: `{FEISHU_CONFIG_FILE}` · 优先级: 环境变量 > 配置文件")
 
     st.divider()
     

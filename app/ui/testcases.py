@@ -47,9 +47,9 @@ def render_category_widget_safe():
         st.warning(f"目录功能暂不可用: {e}")
         return '__all__'
 
-def filter_test_cases(df, category_id=None, tags=None, id_from=None, id_to=None, keyword=None, priorities=None):
+def filter_test_cases(df, category_id=None, tags=None, id_from=None, id_to=None, keyword=None, priorities=None, modules=None):
     """多维度筛选测试用例
-    
+
     Args:
         df: 原始 DataFrame
         category_id: 目录 ID（含子目录）
@@ -58,7 +58,8 @@ def filter_test_cases(df, category_id=None, tags=None, id_from=None, id_to=None,
         id_to: ID 结束范围
         keyword: 关键词搜索（匹配 input 字段）
         priorities: Priority 过滤条件（支持 P0/P1/P2/(空)）
-    
+        modules: Module 过滤条件（自由文本，支持(空)）
+
     Returns:
         筛选后的 DataFrame
     """
@@ -147,7 +148,24 @@ def filter_test_cases(df, category_id=None, tags=None, id_from=None, id_to=None,
         if has_empty:
             mask = mask | (filtered_priority == '')
         filtered = filtered[mask]
-    
+
+    # Module 筛选（自由文本值，支持(空)）
+    if modules and len(modules) > 0:
+        normalized_mods = {str(m).strip() for m in modules if m is not None and str(m).strip()}
+
+        def _norm_module(v):
+            if v is None or (isinstance(v, float) and pd.isna(v)):
+                return ''
+            return str(v).strip()
+
+        has_empty_mod = '(空)' in modules
+        filtered_module = filtered['module'].apply(_norm_module) if 'module' in filtered.columns else pd.Series([''] * len(filtered), index=filtered.index)
+
+        mask = filtered_module.isin(normalized_mods)
+        if has_empty_mod:
+            mask = mask | (filtered_module == '')
+        filtered = filtered[mask]
+
     return filtered
 
 def render_testcases_page():
@@ -211,6 +229,9 @@ def render_testcases_page():
     # priority 列允许为空；历史数据保持为空，不做自动回填
     if 'priority' not in st.session_state.df.columns:
         st.session_state.df['priority'] = None
+    # module 列允许为空（自由文本）
+    if 'module' not in st.session_state.df.columns:
+        st.session_state.df['module'] = None
 
     # Internal row key (frontend only), do NOT persist to backend
     if '__row_key' not in st.session_state.df.columns:
@@ -393,6 +414,87 @@ def render_testcases_page():
                 except Exception as e:
                     st.error(f"批量设置 Priority 失败: {e}")
 
+    @st.dialog("📦 批量设置 Module")
+    def batch_module_dialog(ids_to_update):
+        st.info(f"将 **{len(ids_to_update)}** 个测试用例的 Module 批量更新为：")
+
+        # 收集现有 module 值作为建议选项
+        existing_modules = []
+        if 'module' in st.session_state.df.columns:
+            _vals = st.session_state.df['module'].dropna().astype(str).str.strip()
+            existing_modules = sorted({v for v in _vals if v})
+
+        target_module = st.selectbox(
+            "选择或输入目标 Module",
+            options=["(输入新值)", "(清空)"] + existing_modules,
+            key="batch_module_target_select"
+        )
+        custom_module = None
+        if target_module == "(输入新值)":
+            custom_module = st.text_input("输入新 Module 名称", key="batch_module_custom_input")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("取消", width="stretch"):
+                st.rerun()
+        with col2:
+            if st.button("✅ 确认设置", type="primary", width="stretch"):
+                try:
+                    if target_module == "(输入新值)":
+                        if not custom_module or not custom_module.strip():
+                            st.error("请输入新 Module 名称")
+                            return
+                        target = custom_module.strip()
+                    elif target_module == "(清空)":
+                        target = None
+                    else:
+                        target = target_module
+
+                    from app.services.test_case_service import TestCaseService
+                    updated_count = TestCaseService().update_module_by_ids(ids_to_update, target)
+
+                    if 'module' not in st.session_state.df.columns:
+                        st.session_state.df['module'] = None
+                    st.session_state.df.loc[st.session_state.df['id'].isin(ids_to_update), 'module'] = target
+                    st.session_state.df['Select'] = False
+                    invalidate_case_views(reset_page=False)
+
+                    st.toast(f"✅ 已更新 {updated_count} 条记录 Module")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"批量设置 Module 失败: {e}")
+
+    @st.dialog("🚀 开始测试 - Report Name")
+    def run_confirm_dialog(cases, api_name, case_count):
+        """运行测试前的确认弹窗：输入本次 Test Report 的名称。
+        默认值：{endpoint}_{当天日期}_{时间戳}，用户可编辑。
+        """
+        from datetime import datetime as _dt
+        default_name = f"{api_name}_{_dt.now().strftime('%Y%m%d')}_{_dt.now().strftime('%H%M%S')}"
+
+        st.info(f"即将执行 **{case_count}** 条测试用例（API: **{api_name}**）")
+
+        report_name = st.text_input(
+            "本次 Test Report 名称",
+            value=default_name,
+            key="run_report_name_input",
+            help="显示在 Test Report 页面的报告名称，可自定义编辑"
+        )
+
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("取消", width="stretch"):
+                st.session_state.pop('confirmed_run', None)
+                st.rerun()
+        with col2:
+            if st.button("▶ 开始执行", type="primary", width="stretch"):
+                name = (report_name or "").strip() or default_name
+                st.session_state['confirmed_run'] = {
+                    'cases': cases,
+                    'report_name': name,
+                }
+                st.rerun()
+
     with top_right_col:
         # ------------------
         # Control Panel
@@ -460,12 +562,14 @@ def render_testcases_page():
                 return 10
             return v
 
-        # 第二行：批量操作按钮（Move / Priority / Assert / Delete）
-        btn_col1, btn_col2, btn_col3, btn_col4, btn_col5 = st.columns(5)
+        # 第二行：批量操作按钮（Move / Priority / Module / Assert / Delete）
+        btn_col1, btn_col2, btn_col2b, btn_col3, btn_col4, btn_col5 = st.columns(6)
         with btn_col1:
             move_to_category_clicked = st.button("📂 Move", width="stretch", key="btn_move_category") if ENABLE_CATEGORY_FEATURE else False
         with btn_col2:
             batch_priority_clicked = st.button("🚩 Priority", width="stretch", key="btn_batch_priority")
+        with btn_col2b:
+            batch_module_clicked = st.button("📦 Module", width="stretch", key="btn_batch_module")
         with btn_col3:
             bind_assertions_clicked = st.button("🧩 Assert", width="stretch", key="btn_bind_assertions")
         with btn_col4:
@@ -518,24 +622,30 @@ def render_testcases_page():
                  except Exception as e:
                      st.error(f"Template not found: {e}")
              
-                 st.info("Upload CSV/JSON with `input`, `expected_output`, `description`(optional), `priority`(optional).")
+                 st.info("Upload CSV/JSON with `input`, `expected_output`, `description`(optional), `priority`(optional), `module`(optional).")
                  uploaded_file = st.file_uploader("Upload File", type=["csv", "json"], key="popover_uploader")
              
                  if uploaded_file is not None:
                     try:
                         if uploaded_file.name.endswith('.csv'):
                              try:
-                                 import_df = pd.read_csv(uploaded_file, encoding='utf-8')
+                                 # utf-8-sig：兼容 Excel 导出的带 BOM 的 CSV
+                                 import_df = pd.read_csv(uploaded_file, encoding='utf-8-sig')
                              except UnicodeDecodeError:
                                  uploaded_file.seek(0)
                                  import_df = pd.read_csv(uploaded_file, encoding='gb18030')
                         else:
                             import_df = pd.read_json(uploaded_file)
-                    
+
+                        # 列名规范化：去 BOM、去首尾空白（Excel 导出常见问题）
+                        import_df.columns = [str(c).lstrip('\ufeff').strip() for c in import_df.columns]
+
                         # Validation
                         required_cols = ["input", "expected_output"]
                         if not all(col in import_df.columns for col in required_cols):
-                            st.error(f"Missing columns: {', '.join(required_cols)}")
+                            missing = [c for c in required_cols if c not in import_df.columns]
+                            file_cols = ', '.join(str(c) for c in import_df.columns[:15])
+                            st.error(f"文件缺少必需列: {', '.join(missing)}。必需列: input, expected_output。文件实际的列: {file_cols}")
                         else:
                             update_existing = st.checkbox("Update existing cases by ID (if ID matches)", value=False, key="chk_update_cases")
                         
@@ -785,7 +895,7 @@ def render_testcases_page():
         # Filter & Run Section
         # ------------------
         st.markdown("#### 🔍 Filter")
-        filter_col1, filter_col2, filter_col3, filter_col4, filter_col5 = st.columns([2.4, 1.0, 1.0, 1.6, 1.8])
+        filter_col1, filter_col2, filter_col3, filter_col4, filter_col4b, filter_col5 = st.columns([2.2, 0.9, 0.9, 1.3, 1.3, 1.6])
 
         with filter_col1:
             filter_tags = st.multiselect(
@@ -811,6 +921,27 @@ def render_testcases_page():
                 key="filter_priority",
                 label_visibility="collapsed",
                 placeholder="🚩 Priority"
+            )
+
+        with filter_col4b:
+            # Module 筛选选项：从当前数据收集唯一值
+            module_values = []
+            if 'module' in st.session_state.df.columns:
+                _mv = st.session_state.df['module'].apply(
+                    lambda x: '' if x is None or (isinstance(x, float) and pd.isna(x)) else str(x).strip()
+                )
+                _uniq = sorted({v for v in _mv if v})
+                if _mv.eq('').any():
+                    module_values = _uniq + ["(空)"]
+                else:
+                    module_values = _uniq
+            filter_module = st.multiselect(
+                "Module",
+                options=module_values,
+                default=[],
+                key="filter_module",
+                label_visibility="collapsed",
+                placeholder="📦 Module"
             )
 
         with filter_col5:
@@ -846,8 +977,8 @@ def render_testcases_page():
         # 清除目录统计缓存，强制重新加载
         st.session_state.pop('category_counts_cache', None)
 
-    # 任意筛选条件（标签/ID范围/Priority/关键词）变化时重置到第一页
-    _filter_sig = repr((filter_tags, filter_id_from, filter_id_to, tuple(filter_priority or ()), filter_keyword))
+    # 任意筛选条件（标签/ID范围/Priority/Module/关键词）变化时重置到第一页
+    _filter_sig = repr((filter_tags, filter_id_from, filter_id_to, tuple(filter_priority or ()), tuple(filter_module or ()), filter_keyword))
     if st.session_state.get('_last_filter_sig') != _filter_sig:
         st.session_state.testcases_current_page = 1
         st.session_state['_last_filter_sig'] = _filter_sig
@@ -891,7 +1022,8 @@ def render_testcases_page():
         id_from=filter_id_from,
         id_to=filter_id_to,
         keyword=filter_keyword,
-        priorities=filter_priority
+        priorities=filter_priority,
+        modules=filter_module
     )
     
     # Debug: 输出筛选结果
@@ -1030,6 +1162,8 @@ def render_testcases_page():
 
         if 'priority' not in page_df.columns:
             page_df['priority'] = None
+        if 'module' not in page_df.columns:
+            page_df['module'] = None
 
         edited_page_df = st.data_editor(
             page_df,
@@ -1040,6 +1174,7 @@ def render_testcases_page():
                 "expected_output": st.column_config.TextColumn("Expected Output", width="medium"),
                 "description": st.column_config.TextColumn("Description", width="medium", help="描述测试用例的目的，对应产品需求中的验收标准(AC)"),
                 "priority": st.column_config.SelectboxColumn("Priority", options=["", "P0", "P1", "P2"], width="small"),
+                "module": st.column_config.TextColumn("Module", width="small", help="模块/功能域标签（自由文本）"),
                 "tags": st.column_config.ListColumn("Tags"),
                 "retrieval_context": st.column_config.Column("Retrieval Context", help="为大模型提供的参考上下文文件。用于验证模型的回答是否基于给定的知识库 (Faithfulness)。"),
                 "overall_criteria": st.column_config.Column("Overall Criteria", help="用于评估打分的特殊判定要求或全局自定义标准。"),
@@ -1106,6 +1241,7 @@ def render_testcases_page():
                     new_row_dict.setdefault('category_id', filter_category if filter_category not in ('__all__', '') else 'root')
                     new_row_dict.setdefault('type', 'single')
                     new_row_dict.setdefault('priority', None)
+                    new_row_dict.setdefault('module', None)
                     new_row_dict['Select'] = False
                     st.session_state.df = pd.concat(
                         [st.session_state.df, pd.DataFrame([new_row_dict])], ignore_index=True
@@ -1196,7 +1332,8 @@ def render_testcases_page():
         id_from=filter_id_from,
         id_to=filter_id_to,
         keyword=filter_keyword,
-        priorities=filter_priority
+        priorities=filter_priority,
+        modules=filter_module
     )
 
     # 全量选中行（跨所有目录/筛选条件），用于 Run/Delete/Move/Priority/Assert 操作
@@ -1207,13 +1344,23 @@ def render_testcases_page():
     # Execution Logic
     # ------------------
     cases_to_run = []
-    
+    run_report_name = None
+
+    # 弹窗确认后的执行请求（Run 确认弹窗设置）
+    _confirmed = st.session_state.pop('confirmed_run', None)
+    if _confirmed:
+        cases_to_run = _confirmed.get('cases') or []
+        run_report_name = _confirmed.get('report_name')
+
     if run_selected_clicked:
         selected_rows = all_selected
         if selected_rows.empty:
             execution_placeholder.warning("Please select cases to run.")
         else:
-             cases_to_run = selected_rows.drop(columns=["Select", "__row_key"], errors='ignore').to_dict(orient="records")
+             _pending = selected_rows.drop(columns=["Select", "__row_key"], errors='ignore').to_dict(orient="records")
+             # 清除上次弹窗的输入状态，确保默认名带最新时间戳
+             st.session_state.pop("run_report_name_input", None)
+             run_confirm_dialog(_pending, selected_api, len(_pending))
              
     elif delete_selected_clicked:
         selected_rows = all_selected
@@ -1239,6 +1386,14 @@ def render_testcases_page():
         else:
             ids_to_update = selected_rows['id'].tolist()
             batch_priority_dialog(ids_to_update)
+
+    elif batch_module_clicked:
+        selected_rows = all_selected
+        if selected_rows.empty:
+            execution_placeholder.warning("请先选择要设置 Module 的测试用例")
+        else:
+            ids_to_update = selected_rows['id'].tolist()
+            batch_module_dialog(ids_to_update)
 
     elif bind_assertions_clicked:
         selected_rows = all_selected
@@ -1307,7 +1462,9 @@ def render_testcases_page():
             if edited_df.empty:
                 execution_placeholder.warning(f"No cases found in range {start_id or '*'} to {end_id or '*'}")
             else:
-                cases_to_run = edited_df.drop(columns=["Select", "__row_key"], errors='ignore').to_dict(orient="records")
+                _pending = edited_df.drop(columns=["Select", "__row_key"], errors='ignore').to_dict(orient="records")
+                st.session_state.pop("run_report_name_input", None)
+                run_confirm_dialog(_pending, selected_api, len(_pending))
             
     elif run_tags_clicked:
         if not filter_tags:
@@ -1324,7 +1481,9 @@ def render_testcases_page():
             if tags_rows.empty:
                 execution_placeholder.warning("No cases found with selected tags.")
             else:
-                 cases_to_run = tags_rows.drop(columns=["Select", "__row_key"], errors='ignore').to_dict(orient="records")
+                 _pending = tags_rows.drop(columns=["Select", "__row_key"], errors='ignore').to_dict(orient="records")
+                 st.session_state.pop("run_report_name_input", None)
+                 run_confirm_dialog(_pending, selected_api, len(_pending))
                  
     if cases_to_run:
         try:
@@ -1338,6 +1497,7 @@ def render_testcases_page():
                 api_name=selected_api,
                 execution_mode=execution_mode_val,
                 max_workers=_get_max_workers(),
+                report_name=run_report_name,
             )
             
             with execution_placeholder.container():

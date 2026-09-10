@@ -58,13 +58,13 @@ class JobManager:
             except Exception as e:
                 print(f"Error detecting stale jobs: {e}")
 
-    def run_background_job(self, cases: List[Dict], api_name: str, execution_mode: str = "full", max_workers: int = 5) -> str:
+    def run_background_job(self, cases: List[Dict], api_name: str, execution_mode: str = "full", max_workers: int = 5, report_name: str = None) -> str:
         """
         Starts a background job.
         Returns the report_id (job_id).
         """
         report_id = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-        
+
         # 构造 case_ids 快照，用于后续 Continue Job 时差集计算
         case_ids_snapshot = [
             {"id": c.get("id"), "turn_index": c.get("turn_index", 1)}
@@ -78,9 +78,9 @@ class JobManager:
             if cid is not None:
                 unique_case_ids.add(cid)
         total_tasks = len(unique_case_ids)
-        
+
         # 1. Create initial entry in DB with status=running
-        self._create_history_entry(report_id, api_name, total_tasks, case_ids=case_ids_snapshot)
+        self._create_history_entry(report_id, api_name, total_tasks, case_ids=case_ids_snapshot, report_name=report_name)
         
         # 2. Start Thread
         thread = threading.Thread(target=self._worker, args=(report_id, cases, api_name, execution_mode, max_workers))
@@ -240,7 +240,7 @@ class JobManager:
             if report_id in self.active_jobs:
                 del self.active_jobs[report_id]
 
-    def _create_history_entry(self, report_id: str, api_name: str, total: int, case_ids=None):
+    def _create_history_entry(self, report_id: str, api_name: str, total: int, case_ids=None, report_name: str = None):
         """Create initial history entry in DB with status=running"""
         with self._db_lock:
             try:
@@ -252,6 +252,7 @@ class JobManager:
                     id=report_id,
                     timestamp=now,
                     api_name=api_name,
+                    report_name=report_name,
                     total=total,
                     passed=0,
                     failed=0,
@@ -305,6 +306,7 @@ class JobManager:
                     assertion_detail=new_result.get('assertion_detail'),
                     category=new_result.get('category'),
                     priority=new_result.get('priority'),
+                    module=new_result.get('module'),
                     created_at=datetime.datetime.utcnow()
                 )
                 db.add(tr)

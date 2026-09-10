@@ -604,6 +604,7 @@ class TestEngine:
             "assertion_detail": assertion_detail,
             "category": case_data.get("category"),
             "priority": case_data.get("priority"),
+            "module": case_data.get("module"),
         }
 
     def run_batch(self, cases: List[Dict[str, Any]], api_name: str = "Skills", on_step_complete=None, should_stop=None, execution_mode: str = "full", max_workers: int = 1) -> List[Dict[str, Any]]:
@@ -659,6 +660,7 @@ class TestEngine:
                     "assertion_detail": None,
                     "category": case.get("category"),
                     "priority": case.get("priority"),
+                    "module": case.get("module"),
                 }
 
         # Run single turn cases (并发或串行)
@@ -882,6 +884,7 @@ class TestEngine:
                 "error": error_msg,
                 "category": case_data.get("category"),
                 "priority": case_data.get("priority"),
+                "module": case_data.get("module"),
             }
         
         # Phase 3: Build ConversationalTestCase and evaluate with ConversationalGEval
@@ -951,4 +954,5 @@ class TestEngine:
             "session_id": session_id,
             "category": case_data.get("category"),
             "priority": case_data.get("priority"),
+            "module": case_data.get("module"),
         }

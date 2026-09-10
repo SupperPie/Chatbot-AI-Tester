@@ -18,7 +18,7 @@ def render_tester_page():
     
     # Initialize session state for generated cases
     if "generated_cases" not in st.session_state:
-        st.session_state.generated_cases = pd.DataFrame(columns=["id", "input", "expected_output", "retrieval_context", "description", "tags", "conversation", "priority"])
+        st.session_state.generated_cases = pd.DataFrame(columns=["id", "input", "expected_output", "retrieval_context", "description", "tags", "conversation", "priority", "module"])
         
     if "saved_req" not in st.session_state:
         st.session_state.saved_req = ""
@@ -162,6 +162,7 @@ def render_tester_page():
                                     "tags": list(intent_tags),
                                     "overall_criteria": json.dumps(case.get("overall_criteria", {"must_complete_all_turns": True, "min_success_rate": 0.8}), ensure_ascii=False),
                                     "priority": "P2",
+                                    "module": "",
                                 })
 
                             generated_df = pd.DataFrame(flat_cases)
@@ -203,7 +204,8 @@ def render_tester_page():
                 "description": st.column_config.TextColumn("Description", width="medium"),
                 "tags": st.column_config.ListColumn("Tags"),
                 "overall_criteria": st.column_config.TextColumn("Criteria", disabled=True),
-                "priority": st.column_config.SelectboxColumn("Priority", options=["P0", "P1", "P2"], width="small")
+                "priority": st.column_config.SelectboxColumn("Priority", options=["P0", "P1", "P2"], width="small"),
+                "module": st.column_config.TextColumn("Module", width="small", help="模块/功能域标签（自由文本）")
             },
             num_rows="dynamic",
             key="editor_generated",
@@ -370,7 +372,7 @@ def render_tester_page():
             saved_count = inserted
             
             # Clear generated cases
-            st.session_state.generated_cases = pd.DataFrame(columns=["id", "type", "turn_index", "input", "expected_output", "retrieval_context", "description", "tags", "priority"])
+            st.session_state.generated_cases = pd.DataFrame(columns=["id", "type", "turn_index", "input", "expected_output", "retrieval_context", "description", "tags", "priority", "module"])
             
             # Update main df in session state
             if "df" in st.session_state:
