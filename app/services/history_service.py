@@ -32,6 +32,14 @@ class HistoryService:
         """保存一次测试执行结果到 DB"""
         now = datetime.utcnow()
         history_id = now.strftime("%Y%m%d%H%M%S")
+        # 同秒内可能与其他报告（如 JobManager 生成的）主键冲突，冲突时加后缀重试
+        for attempt in range(5):
+            existing = self.db.query(TestHistory).filter(TestHistory.id == history_id).first()
+            if not existing:
+                break
+            history_id = f"{now.strftime('%Y%m%d%H%M%S')}-{attempt + 1}"
+        else:
+            raise RuntimeError("Failed to generate unique history id")
 
         passed_count = sum(1 for r in results if r.get("passed", False))
         total_count = len(results)

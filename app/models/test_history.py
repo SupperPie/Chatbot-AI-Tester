@@ -21,6 +21,7 @@ class TestHistory(Base):
     source = Column(String(20), default='local')
     case_ids = Column(JSONB)  # 原始用例 ID 列表 [{"id": "TC0001", "turn_index": 1}, ...]
     error_message = Column(Text)  # 失败/中断的错误信息
+    heartbeat = Column(DateTime)  # Job 心跳：每完成一条用例更新一次，用于跨进程判断 Job 是否存活
     created_at = Column(DateTime, default=datetime.utcnow)
 
     results = relationship('TestResult', back_populates='history', cascade='all, delete-orphan',
