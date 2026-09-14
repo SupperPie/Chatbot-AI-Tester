@@ -26,6 +26,13 @@ def render_tester_page():
         st.session_state.saved_kb = ""
     if "selected_intent" not in st.session_state:
         st.session_state.selected_intent = INTENT_DEFAULT
+
+    def _count_unique_case_ids(df: pd.DataFrame) -> int:
+        if df is None or df.empty or "id" not in df.columns:
+            return 0
+        ids = df["id"].dropna().astype(str).str.strip()
+        ids = ids[ids != ""]
+        return int(ids.nunique())
         
     def sync_req():
         st.session_state.saved_req = st.session_state.tester_requirements
@@ -177,7 +184,8 @@ def render_tester_page():
                             st.session_state.generated_cases = generated_df
                             p1_total = int((generated_df["priority"] == "P1").sum()) if not generated_df.empty else 0
                             p2_total = int((generated_df["priority"] == "P2").sum()) if not generated_df.empty else 0
-                            st.success(f"✅ Generated {len(generated_df)} test cases! Priority 分配：P1={p1_total}, P2={p2_total}")
+                            generated_case_count = _count_unique_case_ids(generated_df)
+                            st.success(f"✅ Generated {generated_case_count} test cases! Priority 分配：P1={p1_total}, P2={p2_total}")
                     else:
                         st.error("Failed to parse AI response. Please try again.")
                         st.text("AI Response:")
@@ -283,10 +291,11 @@ def render_tester_page():
                 clean_new_cases.append(case)
             
             # 调试信息：显示将要保存的目录
+            pending_case_count = _count_unique_case_ids(pd.DataFrame(clean_new_cases))
             if save_category:
-                st.info(f"📂 将保存到目录: {save_category} (共 {len(clean_new_cases)} 条用例)")
+                st.info(f"📂 将保存到目录: {save_category} (共 {pending_case_count} 个用例)")
             else:
-                st.info(f"📂 将保存到根目录 (共 {len(clean_new_cases)} 条用例)")
+                st.info(f"📂 将保存到根目录 (共 {pending_case_count} 个用例)")
 
             # 只插入新记录到数据库（不做全量同步）
             try:
@@ -369,7 +378,7 @@ def render_tester_page():
             final_df = combined_df
             
             # 保存成功后的处理
-            saved_count = inserted
+            saved_count = len({str(c.get('id')).strip() for c in clean_new_cases if c.get('id')})
             
             # Clear generated cases
             st.session_state.generated_cases = pd.DataFrame(columns=["id", "type", "turn_index", "input", "expected_output", "retrieval_context", "description", "tags", "priority", "module"])

@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from app.models.category import Category
 from app.models.test_case import TestCase
 from app.database import SessionLocal, DATABASE_SCHEMA
-from sqlalchemy import text
+from sqlalchemy import text, func, distinct
 import uuid
 
 class CategoryService:
@@ -208,13 +208,13 @@ class CategoryService:
             raise ValueError("目录不存在")
         
         # 检查该目录及子目录下是否有测试用例
-        case_count = self.db.query(TestCase).filter(
+        case_count = self.db.query(func.count(distinct(TestCase.id))).filter(
             TestCase.category_id.in_(
                 self.db.query(Category.id).filter(
                     (Category.id == cat_id) | (Category.path.like(f"{category.path}/%"))
                 )
             )
-        ).count()
+        ).scalar() or 0
         
         if case_count > 0:
             raise ValueError(f"该目录下有 {case_count} 个测试用例，请先移除或转移用例后再删除目录")
@@ -235,14 +235,14 @@ class CategoryService:
         if not category:
             return 0
         
-        return self.db.query(TestCase).filter(
+        return self.db.query(func.count(distinct(TestCase.id))).filter(
             TestCase.category_id.in_(
                 self.db.query(Category.id).filter(
                     (Category.id == cat_id) | (Category.path.like(f"{category.path}/%"))
                 )
             )
-        ).count()
+        ).scalar() or 0
     
     def get_total_case_count(self) -> int:
         """获取所有测试用例的总数"""
-        return self.db.query(TestCase).count()
+        return self.db.query(func.count(distinct(TestCase.id))).scalar() or 0

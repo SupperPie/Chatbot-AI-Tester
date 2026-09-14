@@ -87,6 +87,7 @@ CREATE TABLE IF NOT EXISTS test_results (
     case_id VARCHAR(50),
     input TEXT,
     actual_output TEXT,
+    actual_output_cn TEXT,
     expected_output TEXT,
     retrieval_context TEXT,
     score FLOAT,

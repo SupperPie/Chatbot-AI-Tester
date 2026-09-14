@@ -17,11 +17,11 @@ import streamlit_antd_components as sac
 def _load_all_counts(service: CategoryService) -> dict:
     """一次性加载所有目录的 case count，返回 {cat_id: count, '__total__': total}"""
     from app.models.test_case import TestCase
-    from sqlalchemy import func
+    from sqlalchemy import func, distinct
 
-    # 按 category_id 分组统计（包括多轮对话的每个 turn）
+    # 按 category_id 分组统计（统一按 testcase id 去重）
     rows = service.db.query(
-        TestCase.category_id, func.count(TestCase.id)
+        TestCase.category_id, func.count(distinct(TestCase.id))
     ).group_by(TestCase.category_id).all()
 
     counts = {}

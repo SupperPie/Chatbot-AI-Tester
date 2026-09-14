@@ -5,6 +5,7 @@ import datetime
 import time
 from typing import List, Dict, Any, Callable
 from app.test_engine import TestEngine
+from sqlalchemy import func, distinct
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 # Path to history file (absolute to avoid CWD issues on servers)
@@ -59,15 +60,17 @@ class JobManager:
                         job.status = 'interrupted'
                         job.error_message = "Job interrupted (process died or restarted)"
                         # Recalculate stats from already-completed results
-                        total_results = db.query(TestResult).filter(TestResult.history_id == job.id).count()
-                        passed_count = db.query(TestResult).filter(
+                        total_results = db.query(func.count(distinct(TestResult.case_id))).filter(
+                            TestResult.history_id == job.id
+                        ).scalar() or 0
+                        passed_count = db.query(func.count(distinct(TestResult.case_id))).filter(
                             TestResult.history_id == job.id,
                             TestResult.passed == True
-                        ).count()
-                        job.passed = passed_count
-                        job.failed = total_results - passed_count
-                        job.total = total_results
-                        job.started_count = total_results
+                        ).scalar() or 0
+                        job.passed = int(passed_count)
+                        job.failed = int(total_results - passed_count)
+                        job.total = int(total_results)
+                        job.started_count = int(total_results)
                         print(f"[stale-detect] Job {job.id} marked as interrupted ({total_results} results preserved)")
                 db.commit()
                 db.close()
@@ -329,6 +332,7 @@ class JobManager:
                     case_id=new_result.get('id') or new_result.get('case_id'),
                     input=new_result.get('input'),
                     actual_output=new_result.get('actual_output'),
+                    actual_output_cn=new_result.get('actual_output_cn'),
                     expected_output=new_result.get('expected_output'),
                     retrieval_context=new_result.get('retrieval_context'),
                     score=new_result.get('score'),
@@ -369,12 +373,12 @@ class JobManager:
                     # 心跳：报告每完成一条用例更新一次，跨进程判定 Job 存活
                     entry.heartbeat = datetime.datetime.utcnow()
                     # Recalculate passed from DB（刚插入的行会被 count 到）
-                    passed = db.query(TestResult).filter(
+                    passed = db.query(func.count(distinct(TestResult.case_id))).filter(
                         TestResult.history_id == report_id,
                         TestResult.passed == True
-                    ).count()
-                    entry.passed = passed
-                    entry.failed = current_count - passed
+                    ).scalar() or 0
+                    entry.passed = int(passed)
+                    entry.failed = max(int(current_count) - int(passed), 0)
 
                 db.commit()
                 db.close()
@@ -398,15 +402,17 @@ class JobManager:
                     else:
                         entry.error_message = None
                     # Final stats from DB rows（TestResult 行数 = 单轮数 + 多轮组数，与 run_batch 的 total_tasks 一致）
-                    total_results = db.query(TestResult).filter(TestResult.history_id == report_id).count()
-                    passed_count = db.query(TestResult).filter(
+                    total_results = db.query(func.count(distinct(TestResult.case_id))).filter(
+                        TestResult.history_id == report_id
+                    ).scalar() or 0
+                    passed_count = db.query(func.count(distinct(TestResult.case_id))).filter(
                         TestResult.history_id == report_id,
                         TestResult.passed == True
-                    ).count()
-                    entry.total = total_results
-                    entry.passed = passed_count
-                    entry.failed = total_results - passed_count
-                    entry.started_count = total_results
+                    ).scalar() or 0
+                    entry.total = int(total_results)
+                    entry.passed = int(passed_count)
+                    entry.failed = int(total_results - passed_count)
+                    entry.started_count = int(total_results)
 
                 db.commit()
                 db.close()

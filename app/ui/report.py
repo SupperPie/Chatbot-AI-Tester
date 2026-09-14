@@ -8,6 +8,28 @@ from app.utils import export_pdf, delete_reports, run_tests_sync, save_history, 
 from chat_client import get_available_apis
 
 
+def _count_unique_case_ids(df: pd.DataFrame) -> int:
+    if df is None or df.empty or 'case_id' not in df.columns:
+        return 0
+    ids = df['case_id'].dropna().astype(str).str.strip()
+    ids = ids[ids != ""]
+    return int(ids.nunique())
+
+
+def _count_unique_case_ids_in_records(records) -> int:
+    if not records:
+        return 0
+    ids = set()
+    for r in records:
+        cid = (r or {}).get('id') or (r or {}).get('case_id')
+        if cid is None:
+            continue
+        s = str(cid).strip()
+        if s:
+            ids.add(s)
+    return len(ids)
+
+
 def _read_max_workers(entry_id=None) -> int:
     """读取并发线程数并 clamp 到 1-10。
     优先读取当前 report 的 thread 设置（f"max_workers_{entry_id}"），
@@ -37,7 +59,7 @@ def _rerun_confirm_dialog(entry_id, cases, api_name, case_count):
     from datetime import datetime as _dt
     default_name = f"{api_name}_{_dt.now().strftime('%Y%m%d')}_{_dt.now().strftime('%H%M%S')}"
 
-    st.info(f"即将重新执行 **{case_count}** 条测试用例（API: **{api_name}**）")
+    st.info(f"即将重新执行 **{case_count}** 个测试用例（API: **{api_name}**）")
 
     report_name = st.text_input(
         "本次 Test Report 名称",
@@ -100,7 +122,8 @@ def _render_report_table_fragment(entry_id, full_display_df, tbl_key_suffix, all
             st.rerun(scope="fragment")
     with op_col3:
         if total_rows > TBL_PAGE_SIZE:
-            st.caption(f"共 {total_rows} 行")
+            total_cases = _count_unique_case_ids(full_display_df)
+            st.caption(f"共 {total_rows} 行 / {total_cases} 个用例")
     with pg_prev:
         if st.button("◀", key=f"pg_prev_{entry_id}", disabled=(tbl_page <= 1), use_container_width=True):
             st.session_state[pg_key] = max(1, tbl_page - 1)
@@ -135,7 +158,7 @@ def _render_report_table_fragment(entry_id, full_display_df, tbl_key_suffix, all
 
     # 对大文本列做显示截断（只影响表格展示，不修改 full_display_df 原始数据）
     _DISP_TRUNC = 200
-    _LONG_COLS = ("input", "expected_output", "actual_output", "retrieval_context",
+    _LONG_COLS = ("input", "expected_output", "actual_output", "actual_output_cn", "retrieval_context",
                   "reason", "assertion_result", "review_comment", "thinking",
                   "inform_base", "raw")
     for _lc in _LONG_COLS:
@@ -157,6 +180,7 @@ def _render_report_table_fragment(entry_id, full_display_df, tbl_key_suffix, all
             "input": st.column_config.TextColumn("Input", width="medium"),
             "expected_output": st.column_config.TextColumn("Expected", width="medium"),
             "actual_output": st.column_config.TextColumn("Actual Output", width="large"),
+            "actual_output_cn": st.column_config.TextColumn("Actual Output CN", width="large"),
             "retrieval_context": st.column_config.TextColumn("Retrieval Ctx", width="medium"),
             "thinking": st.column_config.TextColumn("Thinking", width="medium"),
             "inform_base": st.column_config.TextColumn("Inform Base", width="medium"),
@@ -587,6 +611,7 @@ def render_report_page():
                             new_row["input"] = t.get("user", "")
                             new_row["expected_output"] = t.get("expected", "")
                             new_row["actual_output"] = t.get("actual", "")
+                            new_row["actual_output_cn"] = t.get("actual_cn", "")
                             
                             is_manual = t.get("manual_review", False)
                             if is_manual:
@@ -678,7 +703,7 @@ def render_report_page():
 
                 # Configure standard columns order
                 target_cols = [
-                    "Select", "case_id", "priority", "module", "turn_index", "input", "expected_output", "actual_output", "retrieval_context",
+                    "Select", "case_id", "priority", "module", "turn_index", "input", "expected_output", "actual_output", "actual_output_cn", "retrieval_context",
                     "score", "passed", "assertion_result", "ttft", "latency", "reason",
                     "review_comment", "thinking", "inform_base", "raw"
                 ]
@@ -789,8 +814,9 @@ def render_report_page():
 
                             # 弹出 Report Name 确认框（默认 endpoint_日期_时间戳，可编辑）
                             target_api = st.session_state.get(f"api_sel_{entry_id}", "Bundle API")
+                            rerun_case_count = _count_unique_case_ids_in_records(unique_cases_to_rerun)
                             st.session_state.pop(f"rerun_report_name_{entry_id}", None)
-                            _rerun_confirm_dialog(entry_id, unique_cases_to_rerun, target_api, len(unique_cases_to_rerun))
+                            _rerun_confirm_dialog(entry_id, unique_cases_to_rerun, target_api, rerun_case_count)
 
 
                 # --------------------------

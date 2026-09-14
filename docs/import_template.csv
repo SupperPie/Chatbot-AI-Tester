@@ -1,5 +1,5 @@
-id,input,expected_output,description,priority,tags,module,type,turn_index,validation,overall_criteria,retrieval_context
-,"What is the capital of France?","Paris","验证模型能正确回答常识性问题",P1,"['Geography']","General","single",,"{'type': 'semantic', 'threshold': 0.7}",,"[]"
-,"2026年F1上海站什么时候举办？","2026年F1上海站将于3月13日至15日在上海国际赛车场举行","验证模型能基于知识库回答赛事时间地点",P2,"['Multi-turn', 'F1']","Sports","multi_turn",1,"{'type': 'semantic', 'threshold': 0.5}","{'min_success_rate': 1.0, 'must_complete_all_turns': true}","[]"
-,"正赛是几点开始？","正赛将于3月15日（周日）15:00开始","验证多轮对话中模型能保持上下文连贯性",P2,"['Multi-turn', 'F1']","Sports","multi_turn",2,"{'type': 'semantic', 'threshold': 0.5}",,"[]"
-,"冲刺赛怎么给积分的？","冲刺赛前8名获得积分，分值依次为：10-8-6-5-4-3-2-1","验证模型能准确回答积分规则",P2,"['Multi-turn', 'F1']","Sports","multi_turn",3,"{'type': 'contains', 'keywords': ['前8名', '积分'], 'threshold': 0.5}",,"[]"
+id,input,expected_output,description,priority,module,tags,type,turn_index,validation,overall_criteria,retrieval_context,assertions
+,"What is the capital of France?","Paris","验证模型能正确回答常识性问题",P1,"General","['Geography']","single",,"{'type': 'semantic', 'threshold': 0.7}",,"[]","[]"
+,"2026年F1上海站什么时候举办？","2026年F1上海站将于3月13日至15日在上海国际赛车场举行","验证模型能基于知识库回答赛事时间地点",P2,"Sports","['Multi-turn', 'F1']","multi_turn",1,"{'type': 'semantic', 'threshold': 0.5}","{'min_success_rate': 1.0, 'must_complete_all_turns': true}","[]","[]"
+,"正赛是几点开始？","正赛将于3月15日（周日）15:00开始","验证多轮对话中模型能保持上下文连贯性",P2,"Sports","['Multi-turn', 'F1']","multi_turn",2,"{'type': 'semantic', 'threshold': 0.5}",,"[]","[]"
+,"冲刺赛怎么给积分的？","冲刺赛前8名获得积分，分值依次为：10-8-6-5-4-3-2-1","验证模型能准确回答积分规则",P2,"Sports","['Multi-turn', 'F1']","multi_turn",3,"{'type': 'contains', 'keywords': ['前8名', '积分'], 'threshold': 0.5}",,"[]","[]"

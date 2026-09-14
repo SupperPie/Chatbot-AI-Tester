@@ -148,6 +148,13 @@ def _safe_str(v) -> str:
     return s
 
 
+def _contains_chinese(text: str) -> bool:
+    if not text:
+        return False
+    import re
+    return re.search(r"[\u4e00-\u9fff]", text) is not None
+
+
 class SynchronousEvalModel(DeepEvalBaseLLM):
     def __init__(self, model_name, base_url, api_key):
         self.model_name = model_name
@@ -356,6 +363,44 @@ class TestEngine:
         fallback = {"result": actual_output}
         fallback['__raw_lines__'] = [fallback]
         return fallback
+
+    def _translate_output_to_cn(self, text: str) -> str:
+        """将非中文输出翻译为中文；失败时返回空字符串（不阻断主流程）。"""
+        src = _safe_str(text)
+        if not src:
+            return ""
+        if _contains_chinese(src):
+            return src
+
+        enabled = str(os.getenv("ENABLE_ACTUAL_OUTPUT_CN", "1")).strip().lower()
+        if enabled in ("0", "false", "off", "no"):
+            return ""
+
+        try:
+            api_key = os.getenv("COMPATIBLE_API_KEY")
+            base_url = os.getenv("COMPATIBLE_BASE_URL")
+            model_name = os.getenv("COMPATIBLE_MODEL", "qwen3-max")
+            if not api_key:
+                return ""
+
+            client = openai.OpenAI(api_key=api_key, base_url=base_url)
+            prompt = (
+                "请将以下文本翻译为简体中文。仅返回翻译结果，不要添加解释。\n\n"
+                f"原文：{src}"
+            )
+            resp = client.chat.completions.create(
+                model=model_name,
+                messages=[
+                    {"role": "system", "content": "你是专业翻译助手。"},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0,
+            )
+            translated = _safe_str(resp.choices[0].message.content)
+            return translated
+        except Exception as e:
+            print(f"[actual_output_cn] translate failed: {e}")
+            return ""
 
     def run_case(self, case_data: Dict[str, Any], api_name: str = "Skills", execution_mode: str = "full", should_stop=None) -> Dict[str, Any]:
         """Runs a single test case and returns the result.
@@ -589,6 +634,7 @@ class TestEngine:
             "case_id": case_data.get("id"),
             "input": input_text,
             "actual_output": actual_output,
+            "actual_output_cn": actual_output_cn,
             "expected_output": expected_output,
             "retrieval_context": ", ".join(context) if isinstance(context, list) else str(context or ""),
             "score": score,
@@ -829,6 +875,8 @@ class TestEngine:
             
             # Check if this is an error response
             is_error = actual_output.startswith("Error") or actual_output.startswith("❌ SERVER DETAIL") or "Error calling API:" in actual_output
+            actual_output_cn = "" if is_error else self._translate_output_to_cn(actual_output)
+
             if is_error:
                 has_error = True
                 error_msg = actual_output
@@ -837,6 +885,7 @@ class TestEngine:
                     "user": user_message,
                     "expected": expected,
                     "actual": actual_output,
+                    "actual_cn": "",
                     "error": actual_output,
                     "retrieval_context": ", ".join(context) if isinstance(context, list) else str(context or ""),
                     "thinking": turn_thinking,
@@ -852,6 +901,7 @@ class TestEngine:
                 "user": user_message,
                 "expected": expected,
                 "actual": actual_output,
+                "actual_cn": self._translate_output_to_cn(actual_output),
                 "retrieval_context": ", ".join(context) if isinstance(context, list) else str(context or ""),
                 "thinking": turn_thinking,
                 "inform_base": turn_inform_base,
@@ -874,6 +924,7 @@ class TestEngine:
                 "success_rate": 0,
                 "score": 0,
                 "reason": f"API 调用失败，跳过评分: {error_msg[:100]}",
+                "actual_output_cn": "",
                 "overall_score": 0,
                 "passed": False,
                 "latency": sum(t.get("latency", 0) for t in turn_results),
@@ -945,6 +996,7 @@ class TestEngine:
             "success_rate": 1.0 if overall_passed else 0.0,
             "score": overall_score,
             "reason": overall_reason,
+            "actual_output_cn": "",
             "overall_score": overall_score,
             "passed": overall_passed,
             "latency": sum(t.get("latency", 0) for t in turn_results),

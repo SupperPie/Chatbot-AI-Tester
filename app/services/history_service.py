@@ -1,5 +1,6 @@
 from typing import List, Dict, Optional
 from datetime import datetime
+from sqlalchemy import func, distinct
 from app.database import SessionLocal
 import app.models  # noqa: F401 - ensure all models loaded for relationship resolution
 from app.models.test_history import TestHistory, TestResult
@@ -41,8 +42,17 @@ class HistoryService:
         else:
             raise RuntimeError("Failed to generate unique history id")
 
-        passed_count = sum(1 for r in results if r.get("passed", False))
-        total_count = len(results)
+        case_states = {}
+        for r in results:
+            cid = r.get('id') or r.get('case_id')
+            if cid is None:
+                continue
+            key = str(cid).strip()
+            if not key:
+                continue
+            case_states[key] = bool(r.get('passed', False))
+        passed_count = sum(1 for ok in case_states.values() if ok)
+        total_count = len(case_states)
 
         history = TestHistory(
             id=history_id,
@@ -64,6 +74,7 @@ class HistoryService:
                 case_id=r.get('id') or r.get('case_id'),
                 input=r.get('input'),
                 actual_output=r.get('actual_output'),
+                actual_output_cn=r.get('actual_output_cn'),
                 expected_output=r.get('expected_output'),
                 retrieval_context=r.get('retrieval_context'),
                 score=r.get('score'),
@@ -141,10 +152,16 @@ class HistoryService:
                     target.turns = updated['turns']
 
         # 重新计算 summary
-        all_results = self.db.query(TestResult).filter(TestResult.history_id == history_id).all()
-        passed_count = sum(1 for r in all_results if r.passed)
-        entry.passed = passed_count
-        entry.failed = entry.total - passed_count
+        total_cases = self.db.query(func.count(distinct(TestResult.case_id))).filter(
+            TestResult.history_id == history_id
+        ).scalar() or 0
+        passed_cases = self.db.query(func.count(distinct(TestResult.case_id))).filter(
+            TestResult.history_id == history_id,
+            TestResult.passed == True
+        ).scalar() or 0
+        entry.total = int(total_cases)
+        entry.passed = int(passed_cases)
+        entry.failed = int(total_cases - passed_cases)
 
         self.db.commit()
         return True
@@ -236,6 +253,7 @@ class HistoryService:
                     'case_id': r.case_id,
                     'input': r.input,
                     'actual_output': r.actual_output,
+                    'actual_output_cn': r.actual_output_cn,
                     'expected_output': r.expected_output,
                     'retrieval_context': r.retrieval_context,
                     'score': r.score,

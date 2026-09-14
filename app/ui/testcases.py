@@ -47,6 +47,30 @@ def render_category_widget_safe():
         st.warning(f"目录功能暂不可用: {e}")
         return '__all__'
 
+def _count_unique_case_ids(df: pd.DataFrame) -> int:
+    """按 testcase id 统计唯一用例数（统一统计口径）。"""
+    if df is None or df.empty or 'id' not in df.columns:
+        return 0
+    ids = df['id'].dropna().astype(str).str.strip()
+    ids = ids[ids != ""]
+    return int(ids.nunique())
+
+
+def _count_unique_case_ids_in_records(records) -> int:
+    """按 testcase id 统计记录列表中的唯一用例数。"""
+    if not records:
+        return 0
+    ids = set()
+    for r in records:
+        cid = (r or {}).get('id')
+        if cid is None:
+            continue
+        s = str(cid).strip()
+        if s:
+            ids.add(s)
+    return len(ids)
+
+
 def filter_test_cases(df, category_id=None, tags=None, id_from=None, id_to=None, keyword=None, priorities=None, modules=None):
     """多维度筛选测试用例
 
@@ -472,7 +496,7 @@ def render_testcases_page():
         from datetime import datetime as _dt
         default_name = f"{api_name}_{_dt.now().strftime('%Y%m%d')}_{_dt.now().strftime('%H%M%S')}"
 
-        st.info(f"即将执行 **{case_count}** 条测试用例（API: **{api_name}**）")
+        st.info(f"即将执行 **{case_count}** 个测试用例（API: **{api_name}**）")
 
         report_name = st.text_input(
             "本次 Test Report 名称",
@@ -485,6 +509,8 @@ def render_testcases_page():
         with col1:
             if st.button("取消", width="stretch"):
                 st.session_state.pop('confirmed_run', None)
+                st.session_state.pop('pending_run_dialog', None)
+                st.session_state.pop('run_report_name_input', None)
                 st.rerun()
         with col2:
             if st.button("▶ 开始执行", type="primary", width="stretch"):
@@ -493,6 +519,8 @@ def render_testcases_page():
                     'cases': cases,
                     'report_name': name,
                 }
+                st.session_state.pop('pending_run_dialog', None)
+                st.session_state.pop('run_report_name_input', None)
                 st.rerun()
 
     with top_right_col:
@@ -622,7 +650,7 @@ def render_testcases_page():
                  except Exception as e:
                      st.error(f"Template not found: {e}")
              
-                 st.info("Upload CSV/JSON with `input`, `expected_output`, `description`(optional), `priority`(optional), `module`(optional).")
+                 st.info("Upload CSV/JSON. Required: `input`, `expected_output`. Optional: `id`, `description`, `priority`, `module`, `tags`, `type`, `turn_index`, `validation`, `overall_criteria`, `retrieval_context`, `assertions`.")
                  uploaded_file = st.file_uploader("Upload File", type=["csv", "json"], key="popover_uploader")
              
                  if uploaded_file is not None:
@@ -680,6 +708,25 @@ def render_testcases_page():
                                     import_df["tags"] = import_df["tags"].apply(normalize_tags)
                                 else:
                                     import_df["tags"] = [[] for _ in range(len(import_df))]
+
+                                if "assertions" in import_df.columns:
+                                    def normalize_assertions(x):
+                                        if isinstance(x, list):
+                                            return x
+                                        if pd.isna(x) or x == "":
+                                            return []
+                                        if isinstance(x, str):
+                                            try:
+                                                import ast
+                                                parsed = ast.literal_eval(x)
+                                                if isinstance(parsed, list):
+                                                    return parsed
+                                            except Exception:
+                                                pass
+                                        return []
+                                    import_df["assertions"] = import_df["assertions"].apply(normalize_assertions)
+                                else:
+                                    import_df["assertions"] = [[] for _ in range(len(import_df))]
                                 
                                 # 设置 category_id（导入到指定目录）
                                 import_df["category_id"] = import_category
@@ -1037,9 +1084,9 @@ def render_testcases_page():
             unique_cats = st.session_state.df['category_id'].unique() if 'category_id' in st.session_state.df.columns else []
             logger.warning(f"筛选结果为空！现有 category_id: {unique_cats}")
     
-    # 统计信息（选择控制与分页将在同一行渲染）
-    total_count = len(st.session_state.df)
-    filtered_count = len(filtered_df)
+    # 统计信息（统一按 testcase id 口径）
+    total_count = _count_unique_case_ids(st.session_state.df)
+    filtered_count = _count_unique_case_ids(filtered_df)
 
     @st.fragment
     def render_paginated_table(display_df):
@@ -1064,12 +1111,21 @@ def render_testcases_page():
                 st.rerun()
 
         with ctrl_col2:
-            # 当前页全选（与 Cancel All 交换位置）
+            # 当前页全选（按 testcase id 选择：同一 case 的所有 turn 一并勾选）
             if st.button("☑️ Select page", key="btn_select_current_page", width="stretch"):
-                if '__row_key' in display_df.columns:
-                    start_idx = (st.session_state.testcases_current_page - 1) * st.session_state.testcases_page_size
-                    end_idx = start_idx + st.session_state.testcases_page_size
-                    page_keys = display_df.iloc[start_idx:end_idx]['__row_key'].tolist()
+                start_idx = (st.session_state.testcases_current_page - 1) * st.session_state.testcases_page_size
+                end_idx = start_idx + st.session_state.testcases_page_size
+                page_df_for_select = display_df.iloc[start_idx:end_idx]
+                if 'id' in page_df_for_select.columns:
+                    page_case_ids = page_df_for_select['id'].dropna().astype(str).str.strip()
+                    page_case_ids = page_case_ids[page_case_ids != ""].unique().tolist()
+                    if page_case_ids:
+                        st.session_state.df.loc[
+                            st.session_state.df['id'].astype(str).isin(page_case_ids),
+                            'Select'
+                        ] = True
+                elif '__row_key' in page_df_for_select.columns:
+                    page_keys = page_df_for_select['__row_key'].tolist()
                     st.session_state.df.loc[st.session_state.df['__row_key'].isin(page_keys), 'Select'] = True
                 st.rerun()
 
@@ -1080,9 +1136,10 @@ def render_testcases_page():
                 st.rerun()
 
         with ctrl_col4:
-            selected_count = st.session_state.df[st.session_state.df.get('Select', False) == True].shape[0] if 'Select' in st.session_state.df.columns else 0
-            filter_info = f"筛选: {filtered_count}/{total_count}" if filtered_count < total_count else f"共 {total_count} 条"
-            st.markdown('<div style="padding-top: 8px;">📊 {} | ✅ 已选: <b>{}</b> 条</div>'.format(filter_info, selected_count), unsafe_allow_html=True)
+            selected_rows = st.session_state.df[st.session_state.df.get('Select', False) == True] if 'Select' in st.session_state.df.columns else pd.DataFrame()
+            selected_count = _count_unique_case_ids(selected_rows)
+            filter_info = f"筛选: {filtered_count}/{total_count}" if filtered_count < total_count else f"共 {total_count} 个用例"
+            st.markdown('<div style="padding-top: 8px;">📊 {} | ✅ 已选: <b>{}</b> 个用例</div>'.format(filter_info, selected_count), unsafe_allow_html=True)
 
         with ctrl_col5:
             page_opts = [20, 30, 50, 100]
@@ -1190,11 +1247,20 @@ def render_testcases_page():
             key=f"main_data_editor_{filter_category}_{st.session_state.testcases_current_page}_{st.session_state.testcases_page_size}"
         )
 
-        # 同步选择状态（按 __row_key）
+        # 同步选择状态（按 testcase id：同一 case 的所有 turn 一并勾选/取消）
         if 'Select' in edited_page_df.columns and '__row_key' in edited_page_df.columns:
             for i in range(len(edited_page_df)):
-                rk = edited_page_df.iloc[i]['__row_key']
-                st.session_state.df.loc[st.session_state.df['__row_key'] == rk, 'Select'] = edited_page_df.iloc[i]['Select']
+                row = edited_page_df.iloc[i]
+                selected_val = bool(row.get('Select', False))
+                case_id = str(row.get('id', '')).strip()
+                if case_id:
+                    st.session_state.df.loc[
+                        st.session_state.df['id'].astype(str) == case_id,
+                        'Select'
+                    ] = selected_val
+                else:
+                    rk = row['__row_key']
+                    st.session_state.df.loc[st.session_state.df['__row_key'] == rk, 'Select'] = selected_val
 
         # 检测 data_editor 中被用户直接删除的行，同步到 DB 和 session state
         if '__row_key' in edited_page_df.columns and len(edited_page_df) < len(page_df):
@@ -1352,15 +1418,30 @@ def render_testcases_page():
         cases_to_run = _confirmed.get('cases') or []
         run_report_name = _confirmed.get('report_name')
 
+    # 对话框待处理请求（单次消费，避免确认后反复命中 dialog）
+    _pending_run_dialog = st.session_state.get('pending_run_dialog')
+    if _pending_run_dialog:
+        run_confirm_dialog(
+            _pending_run_dialog.get('cases') or [],
+            _pending_run_dialog.get('api_name') or selected_api,
+            _pending_run_dialog.get('case_count') or 0,
+        )
+
     if run_selected_clicked:
         selected_rows = all_selected
         if selected_rows.empty:
             execution_placeholder.warning("Please select cases to run.")
         else:
              _pending = selected_rows.drop(columns=["Select", "__row_key"], errors='ignore').to_dict(orient="records")
+             _pending_case_count = _count_unique_case_ids_in_records(_pending)
              # 清除上次弹窗的输入状态，确保默认名带最新时间戳
              st.session_state.pop("run_report_name_input", None)
-             run_confirm_dialog(_pending, selected_api, len(_pending))
+             st.session_state['pending_run_dialog'] = {
+                 'cases': _pending,
+                 'api_name': selected_api,
+                 'case_count': _pending_case_count,
+             }
+             st.rerun()
              
     elif delete_selected_clicked:
         selected_rows = all_selected
@@ -1463,8 +1544,14 @@ def render_testcases_page():
                 execution_placeholder.warning(f"No cases found in range {start_id or '*'} to {end_id or '*'}")
             else:
                 _pending = edited_df.drop(columns=["Select", "__row_key"], errors='ignore').to_dict(orient="records")
+                _pending_case_count = _count_unique_case_ids_in_records(_pending)
                 st.session_state.pop("run_report_name_input", None)
-                run_confirm_dialog(_pending, selected_api, len(_pending))
+                st.session_state['pending_run_dialog'] = {
+                    'cases': _pending,
+                    'api_name': selected_api,
+                    'case_count': _pending_case_count,
+                }
+                st.rerun()
             
     elif run_tags_clicked:
         if not filter_tags:
@@ -1482,8 +1569,14 @@ def render_testcases_page():
                 execution_placeholder.warning("No cases found with selected tags.")
             else:
                  _pending = tags_rows.drop(columns=["Select", "__row_key"], errors='ignore').to_dict(orient="records")
+                 _pending_case_count = _count_unique_case_ids_in_records(_pending)
                  st.session_state.pop("run_report_name_input", None)
-                 run_confirm_dialog(_pending, selected_api, len(_pending))
+                 st.session_state['pending_run_dialog'] = {
+                     'cases': _pending,
+                     'api_name': selected_api,
+                     'case_count': _pending_case_count,
+                 }
+                 st.rerun()
                  
     if cases_to_run:
         try:
@@ -1553,8 +1646,9 @@ def render_testcases_page():
                 
                 # Show results if completed
                 if job_data and job_data.get("status") == "completed":
-                    st.toast(f"Completed! Ran {len(cases_to_run)} tests.", icon="🏃")
-                    st.success(f"✅ Successfully ran {len(cases_to_run)} tests. View details in **Test Report**.")
+                    _ran_case_count = _count_unique_case_ids_in_records(cases_to_run)
+                    st.toast(f"Completed! Ran {_ran_case_count} test cases.", icon="🏃")
+                    st.success(f"✅ Successfully ran {_ran_case_count} test cases. View details in **Test Report**.")
                     
                 elif job_data and job_data.get("status") == "failed":
                     err_msg = job_data.get('error_message') or job_data.get('error') or 'Unknown error'

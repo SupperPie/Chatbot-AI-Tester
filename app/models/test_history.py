@@ -37,6 +37,7 @@ class TestResult(Base):
     case_id = Column(String(50))
     input = Column(Text)
     actual_output = Column(Text)
+    actual_output_cn = Column(Text)
     expected_output = Column(Text)
     retrieval_context = Column(Text)
     score = Column(Float)
