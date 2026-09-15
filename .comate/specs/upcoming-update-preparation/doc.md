@@ -183,6 +183,51 @@ if confirmed:
 
 ---
 
+## 新增变更需求（本次增补）
+
+### 需求 E：Refresh Dates 支持“多字段统一日期替换（input / retrieval_context / expected_output）”+“无年份日期处理”
+
+#### 现状问题
+- 当前在 `refresh_dates` 中，一条 input 里如果有多个日期，常出现只替换一个，后续日期不替换。
+- 不带年份的日期（例如 `4月18日` / `18 Sep`）在较远日期场景下无法刷新。
+
+#### 技术方案
+- 在 `app/utils.py` 的日期刷新核心逻辑中增加“无年份日期”匹配规则，覆盖中文/英文/葡语格式。
+- 无年份日期不补年份展示；统一刷新到未来3个月内，并保持原语言格式（中文/英文/葡语）。
+- 保持当前“先收集匹配后逆序替换”的机制，确保同一句多个日期均可替换。
+
+#### 影响文件
+- `/Users/duyufei/Documents/Workspace_Sophy/AI_Test/chatbot-ai-tester/app/utils.py`
+- `/Users/duyufei/Documents/Workspace_Sophy/AI_Test/chatbot-ai-tester/app/ui/testcases.py`（仅验证调用与提示文案，如需）
+
+#### 边界条件
+- 同句存在 check-in / check-out 时，仍需保持 check-out > check-in。
+- 无年份日期不能误匹配非日期数字。
+- 已在未来 90 天内的日期默认不替换（沿用现有策略）。
+
+---
+
+### 需求 F：修复 Testcases 保存时报错（save_records 闭包变量错误）
+
+#### 现状问题
+- 报错：`cannot access free variable 'save_records' where it is not associated with a value in enclosing scope`
+
+#### 根因
+- `render_testcases_page` 内部存在局部 `from app.utils import save_records`，遮蔽了顶部导入，导致内部嵌套函数在某些执行路径下访问到未绑定的闭包变量。
+
+#### 技术方案
+- 删除函数内部重复导入，统一使用文件顶部导入的 `save_records`。
+- 或改为局部别名（如 `_save_records`）避免变量遮蔽；本次优先采用“删除重复导入”的最小改动。
+
+#### 影响文件
+- `/Users/duyufei/Documents/Workspace_Sophy/AI_Test/chatbot-ai-tester/app/ui/testcases.py`
+
+#### 预期结果
+- 保存 testcase 不再触发 free variable 异常。
+- 不改变既有保存行为（仅修作用域问题）。
+
+---
+
 ## 待你确认
 
-如果这版需求理解正确，我下一步会基于它生成 `tasks.md`，把工作拆成可执行任务并逐条落地。
+如果这版增补需求理解正确，我下一步会生成新的 `tasks.md` 增补任务，并开始逐项执行。

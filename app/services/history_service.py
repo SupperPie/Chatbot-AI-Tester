@@ -142,7 +142,7 @@ class HistoryService:
                 if 'passed' in updated:
                     target.passed = updated['passed']
                 if 'review_comment' in updated:
-                    target.reason = updated.get('reason', target.reason)
+                    target.review_comment = str(updated.get('review_comment') or "")
                 if 'score' in updated:
                     target.score = updated['score']
                 # Update Expect Result：同步 expected 值到报告数据

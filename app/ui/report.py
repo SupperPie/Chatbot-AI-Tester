@@ -84,14 +84,24 @@ def _rerun_confirm_dialog(entry_id, cases, api_name, case_count):
 
 
 @st.fragment
-def _render_report_table_fragment(entry_id, full_display_df, tbl_key_suffix, all_cols, disabled_cols):
+def _render_report_table_fragment(entry_id, full_display_df, all_cols, disabled_cols):
     """表格片段：隔离勾选/编辑导致的重绘范围，避免勾选一行就刷新整个页面。
-    内部使用分页，大数据量时每次只渲染 TBL_PAGE_SIZE 行到 data_editor，
-    大幅减少前端 DOM 和数据传输量。
+    内部使用分页，大数据量时每次只渲染 TBL_PAGE_SIZE 行到 data_editor。
+
+    设计要点（解决勾选导致整表重绘/滚动回顶/连点丢选）：
+    - 传给 data_editor 的基础数据(page_df)在同一编辑器实例期间内容恒定：
+      勾选展示完全依赖编辑器内部 edited_rows 状态（按 key 持久化），
+      不把勾选结果写回基础数据，避免表格因数据变化而整体重绘。
+    - tbl_ver / 页码等在 fragment 内部从 session_state 读取，
+      确保 fragment-only rerun 时能看到最新值（fragment 不会重新接收参数）。
+    - "勾选基础快照"仅在编辑器实例新建（翻页/全选）时冻结一次，
+      用于跨页/跨实例恢复勾选。
+    - 返回值是 full_display_df 的副本 + 应用编辑状态，供父脚本
+      Rerun/Export/Save Changes 使用（不修改传入对象）。
     """
     TBL_PAGE_SIZE = 50  # 表格内部分页，每页 50 行
 
-    # 表格分页状态
+    # 表格分页状态（fragment 内读 session_state，翻页后即时生效）
     pg_key = f"_tbl_pg_{entry_id}"
     if pg_key not in st.session_state:
         st.session_state[pg_key] = 1
@@ -106,24 +116,36 @@ def _render_report_table_fragment(entry_id, full_display_df, tbl_key_suffix, all
     t_start = (tbl_page - 1) * TBL_PAGE_SIZE
     t_end = min(t_start + TBL_PAGE_SIZE, total_rows)
 
+    # 勾选状态（全局行号集合，跨页/跨编辑器实例持久化）
+    sel_key = f"rerun_select_{entry_id}"
+    if sel_key not in st.session_state:
+        st.session_state[sel_key] = set()
+    rerun_select = st.session_state[sel_key]
+
+    # 编辑器 key：页码或版本变化 → 新编辑器实例
+    # （tbl_ver 在 fragment 内读 session_state，全选按钮 bump 后 fragment-only rerun 也能看到）
+    ver_val = st.session_state.get(f"tbl_ver_{entry_id}", 0)
+    tbl_key = f"hist_tbl_{entry_id}_v{ver_val}_p{tbl_page}"
+
     # Action Row 2: Select Controls + Pagination
     op_col1, op_col2, op_col3, op_spacer, pg_prev, pg_info, pg_next = st.columns(
         [0.8, 0.8, 0.8, 2, 0.5, 1.2, 0.5]
     )
     with op_col1:
         if st.button("☑ 全选", key=f"btn_select_all_{entry_id}", use_container_width=True):
-            st.session_state[f"select_all_{entry_id}"] = True
-            st.session_state[f"tbl_ver_{entry_id}"] = st.session_state.get(f"tbl_ver_{entry_id}", 0) + 1
+            rerun_select.clear()
+            rerun_select.update(range(total_rows))
+            # bump 版本 → 新编辑器实例 + 新快照，一次性重绘
+            st.session_state[f"tbl_ver_{entry_id}"] = ver_val + 1
             st.rerun(scope="fragment")
     with op_col2:
         if st.button("☐ 取消", key=f"btn_deselect_all_{entry_id}", use_container_width=True):
-            st.session_state[f"select_all_{entry_id}"] = False
-            st.session_state[f"tbl_ver_{entry_id}"] = st.session_state.get(f"tbl_ver_{entry_id}", 0) + 1
+            rerun_select.clear()
+            st.session_state[f"tbl_ver_{entry_id}"] = ver_val + 1
             st.rerun(scope="fragment")
     with op_col3:
-        if total_rows > TBL_PAGE_SIZE:
-            total_cases = _count_unique_case_ids(full_display_df)
-            st.caption(f"共 {total_rows} 行 / {total_cases} 个用例")
+        total_cases = _count_unique_case_ids(full_display_df)
+        st.caption(f"共 {total_rows} 行 / {total_cases} 个用例")
     with pg_prev:
         if st.button("◀", key=f"pg_prev_{entry_id}", disabled=(tbl_page <= 1), use_container_width=True):
             st.session_state[pg_key] = max(1, tbl_page - 1)
@@ -135,32 +157,35 @@ def _render_report_table_fragment(entry_id, full_display_df, tbl_key_suffix, all
             st.session_state[pg_key] = min(total_tbl_pages, tbl_page + 1)
             st.rerun(scope="fragment")
 
-    # 消费 select_all 状态（应用到全量数据的 Select 列）
-    select_all_state = st.session_state.pop(f"select_all_{entry_id}", None)
-    if f"rerun_select_{entry_id}" not in st.session_state:
-        st.session_state[f"rerun_select_{entry_id}"] = set()
-    rerun_select = st.session_state[f"rerun_select_{entry_id}"]
-    if select_all_state is True:
-        full_display_df["Select"] = True
-        rerun_select.clear()
-        rerun_select.update(range(total_rows))
-    elif select_all_state is False:
-        full_display_df["Select"] = False
-        rerun_select.clear()
+    # 编辑器是否为新建实例（决定是否重新冻结"勾选基础快照"）
+    seen_key = f"_tbl_seen_{entry_id}"
+    is_new_editor = st.session_state.get(seen_key) != tbl_key
+    if is_new_editor:
+        st.session_state[seen_key] = tbl_key
 
-    # 恢复持久化的 Select 状态（跨 fragment rerun 保持勾选）
-    for ridx in list(rerun_select):
-        if ridx < total_rows:
-            full_display_df.at[ridx, "Select"] = True
-
-    # 只取当前页的数据传给 data_editor（大幅减少前端数据量）
+    # 基础数据切片（copy，不修改传入的 full_display_df）
     page_df = full_display_df.iloc[t_start:t_end].reset_index(drop=True).copy()
+    if "Select" not in page_df.columns:
+        page_df.insert(0, "Select", False)
+
+    # 勾选基础快照：新编辑器时从 rerun_select 冻结一次；同一编辑器期间沿用快照。
+    # 这样勾选操作不会改变基础数据内容 → data_editor 不整体重绘 →
+    # 滚动位置保持、快速连点不丢选中（勾选由编辑器内部 edited_rows 展示）。
+    snap_key = f"_tbl_snap_{entry_id}"
+    if is_new_editor:
+        st.session_state[snap_key] = [((t_start + li) in rerun_select) for li in range(len(page_df))]
+    snap = st.session_state.get(snap_key) or []
+    if len(snap) != len(page_df):
+        snap = [False] * len(page_df)  # 数据行数变化时兜底
+    page_df["Select"] = snap
 
     # 对大文本列做显示截断（只影响表格展示，不修改 full_display_df 原始数据）
     _DISP_TRUNC = 200
-    _LONG_COLS = ("input", "expected_output", "actual_output", "actual_output_cn", "retrieval_context",
-                  "reason", "assertion_result", "review_comment", "thinking",
-                  "inform_base", "raw")
+    _LONG_COLS = ("input", "input_cn", "expected_output", "expected_output_cn", "description",
+                  "actual_output", "actual_output_cn", "retrieval_context",
+                  "reason", "assertion_result", "validation", "overall_criteria",
+                  "review_comment", "review_reason",
+                  "thinking", "inform_base", "raw")
     for _lc in _LONG_COLS:
         if _lc in page_df.columns:
             page_df[_lc] = page_df[_lc].apply(
@@ -168,30 +193,37 @@ def _render_report_table_fragment(entry_id, full_display_df, tbl_key_suffix, all
                           else ("" if (v is None or (isinstance(v, float) and pd.isna(v))) else v)
             )
 
-    tbl_key = f"hist_tbl_{entry_id}_v{tbl_key_suffix}_p{tbl_page}"
     edited_page_df = st.data_editor(
         page_df,
         column_config={
             "Select": st.column_config.CheckboxColumn("✓", width="small", default=False),
             "case_id": st.column_config.TextColumn("ID", width="small"),
-            "priority": st.column_config.TextColumn("Priority", width="small"),
-            "module": st.column_config.TextColumn("Module", width="small"),
-            "turn_index": st.column_config.NumberColumn("Turn", width="small"),
             "input": st.column_config.TextColumn("Input", width="medium"),
-            "expected_output": st.column_config.TextColumn("Expected", width="medium"),
+            "input_cn": st.column_config.TextColumn("Input_CN", width="medium", help="Input的中文翻译"),
+            "expected_output": st.column_config.TextColumn("Expected Output", width="medium"),
+            "expected_output_cn": st.column_config.TextColumn("Expected_Output_CN", width="medium", help="Expected Output的中文翻译"),
+            "description": st.column_config.TextColumn("Description", width="medium"),
             "actual_output": st.column_config.TextColumn("Actual Output", width="large"),
-            "actual_output_cn": st.column_config.TextColumn("Actual Output CN", width="large"),
-            "retrieval_context": st.column_config.TextColumn("Retrieval Ctx", width="medium"),
-            "thinking": st.column_config.TextColumn("Thinking", width="medium"),
-            "inform_base": st.column_config.TextColumn("Inform Base", width="medium"),
-            "raw": st.column_config.TextColumn("Raw", width="medium"),
-            "score": st.column_config.NumberColumn("Score", format="%.2f", width="small"),
-            "passed": st.column_config.CheckboxColumn("Passed", width="small"),
-            "review_comment": st.column_config.TextColumn("Comment", width="medium"),
+            "actual_output_cn": st.column_config.TextColumn("Actual_Output_CN", width="large", help="Actual Output的中文翻译"),
+            "priority": st.column_config.TextColumn("Priority", width="small"),
+            "tags": st.column_config.TextColumn("Tags", width="small"),
+            "module": st.column_config.TextColumn("Module", width="small"),
+            "type": st.column_config.TextColumn("Type", width="small"),
+            "turn_index": st.column_config.NumberColumn("Turn_Index", width="small"),
             "ttft": st.column_config.NumberColumn("TTFT", format="%.1f", width="small"),
             "latency": st.column_config.NumberColumn("Latency", format="%.1f", width="small"),
+            "assertion_result": st.column_config.TextColumn("Assertions", width="medium"),
+            "validation": st.column_config.TextColumn("Validation", width="medium"),
+            "overall_criteria": st.column_config.TextColumn("Overall_Criteria", width="medium"),
+            "retrieval_context": st.column_config.TextColumn("Retrieval_Context", width="medium"),
+            "passed": st.column_config.CheckboxColumn("Passed", width="small"),
+            "score": st.column_config.NumberColumn("Score", format="%.2f", width="small"),
             "reason": st.column_config.TextColumn("Reason", width="medium"),
-            "assertion_result": st.column_config.TextColumn("Assertion", width="medium"),
+            "review_comment": st.column_config.TextColumn("Human Review Comment", width="medium"),
+            "review_reason": st.column_config.TextColumn("Human Review Reason", width="medium"),
+            "thinking": st.column_config.TextColumn("Thinking", width="medium"),
+            "inform_base": st.column_config.TextColumn("Inform Base", width="medium"),
+            "raw": st.column_config.TextColumn("RAW", width="medium"),
         },
         use_container_width=True,
         disabled=disabled_cols,
@@ -200,24 +232,35 @@ def _render_report_table_fragment(entry_id, full_display_df, tbl_key_suffix, all
         height=min(600, 35 * max(1, len(page_df)) + 40),
     )
 
-    # 将当前页的编辑（勾选/passed/comment）同步回全量 DataFrame
+    # 将编辑状态（勾选/passed/comment）同步到返回值副本 + rerun_select，
+    # 不修改传入的 full_display_df（保持基础数据稳定，避免表格重绘）。
+    result_df = full_display_df.copy()
+    if "Select" not in result_df.columns:
+        result_df.insert(0, "Select", False)
+
     editor_state = st.session_state.get(tbl_key, {})
     edited_rows = editor_state.get("edited_rows", {}) if isinstance(editor_state, dict) else {}
     if edited_rows:
         for page_ridx_str, patch in edited_rows.items():
-            page_ridx = int(page_ridx_str)
-            global_ridx = t_start + page_ridx
+            global_ridx = t_start + int(page_ridx_str)
+            if global_ridx >= total_rows:
+                continue
             for col, val in patch.items():
-                if global_ridx < total_rows:
-                    full_display_df.at[global_ridx, col] = val
+                if col in result_df.columns:
+                    result_df.at[global_ridx, col] = val
             if "Select" in patch:
                 if patch.get("Select"):
                     rerun_select.add(global_ridx)
                 else:
                     rerun_select.discard(global_ridx)
 
-    # 返回全量 DataFrame（带最新勾选状态），供外部 Rerun/Export 使用
-    return full_display_df
+    # 跨页勾选（其他页/历史编辑器实例的勾选）也写入返回值
+    for ridx in list(rerun_select):
+        if ridx < total_rows:
+            result_df.at[ridx, "Select"] = True
+
+    # 返回全量 DataFrame 副本（带最新勾选/编辑状态），供外部 Rerun/Export/Save 使用
+    return result_df
 
 
 def render_report_page():
@@ -682,6 +725,26 @@ def render_report_page():
                 else:
                     display_res_df["review_comment"] = display_res_df["review_comment"].fillna("").astype(str)
 
+                # Ensure new snapshot columns exist (兼容旧数据；tags 也先初始化为空串，
+                # 下方统一格式化为字符串展示)
+                for _col in ("input_cn", "expected_output_cn", "description", "tags", "type"):
+                    if _col not in display_res_df.columns:
+                        display_res_df[_col] = ""
+                    else:
+                        display_res_df[_col] = display_res_df[_col].where(
+                            display_res_df[_col].notna(), ""
+                        )
+
+                # tags 统一显示为字符串
+                if "tags" in display_res_df.columns:
+                    def _fmt_tags(v):
+                        if v is None or (isinstance(v, float) and pd.isna(v)):
+                            return ""
+                        if isinstance(v, list):
+                            return ", ".join(str(x) for x in v)
+                        return str(v) if v else ""
+                    display_res_df["tags"] = display_res_df["tags"].apply(_fmt_tags)
+
                 # 将 assertion_detail 展开为可读的列
                 if "assertion_detail" in display_res_df.columns:
                     def _format_assertion_detail(val):
@@ -701,11 +764,21 @@ def render_report_page():
                 else:
                     display_res_df["assertion_result"] = ""
 
-                # Configure standard columns order
+                # Configure standard columns order (与用户指定的 Test Report 列顺序对齐)
                 target_cols = [
-                    "Select", "case_id", "priority", "module", "turn_index", "input", "expected_output", "actual_output", "actual_output_cn", "retrieval_context",
-                    "score", "passed", "assertion_result", "ttft", "latency", "reason",
-                    "review_comment", "thinking", "inform_base", "raw"
+                    "Select", "case_id",
+                    "input", "input_cn",
+                    "expected_output", "expected_output_cn",
+                    "description",
+                    "actual_output", "actual_output_cn",
+                    "priority", "tags", "module",
+                    "type", "turn_index",
+                    "ttft", "latency",
+                    "assertion_result", "validation", "overall_criteria",
+                    "retrieval_context",
+                    "passed", "score", "reason",
+                    "review_comment", "review_reason",
+                    "thinking", "inform_base", "raw",
                 ]
                 # Ensure Select exists
                 if "Select" not in display_res_df.columns:
@@ -732,15 +805,14 @@ def render_report_page():
                 # --------------------------
                 # Table Fragment（隔离勾选/编辑导致的重绘，只刷新表格区域）
                 # 注意：大文本列截断在 fragment 内部的 page_df 上做（仅显示用），
-                # 返回的 full_display_df 保持原始完整文本，供 Rerun/Update 操作使用。
+                # 返回的 result_df 保持原始完整文本，供 Rerun/Update 操作使用。
                 # --------------------------
-                tbl_key_suffix = st.session_state.get(f"tbl_ver_{entry_id}", 0)
                 all_cols = display_res_df.columns.tolist()
                 editable_cols = ["Select", "passed", "review_comment"]
                 disabled_cols = [c for c in all_cols if c not in editable_cols]
 
                 edited_df = _render_report_table_fragment(
-                    entry_id, display_res_df, tbl_key_suffix, all_cols, disabled_cols
+                    entry_id, display_res_df, all_cols, disabled_cols
                 )
 
 

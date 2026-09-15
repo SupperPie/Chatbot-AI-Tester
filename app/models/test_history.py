@@ -36,9 +36,13 @@ class TestResult(Base):
     history_id = Column(String(50), ForeignKey(f'{SCHEMA}.test_history.id', ondelete='CASCADE'))
     case_id = Column(String(50))
     input = Column(Text)
+    input_cn = Column(Text)
     actual_output = Column(Text)
     actual_output_cn = Column(Text)
     expected_output = Column(Text)
+    expected_output_cn = Column(Text)
+    description = Column(Text)
+    tags = Column(JSONB)
     retrieval_context = Column(Text)
     score = Column(Float)
     reason = Column(Text)
@@ -63,6 +67,7 @@ class TestResult(Base):
     category = Column(String(200))    # 执行时用例所在分类
     priority = Column(String(2))      # 执行时用例优先级 P0/P1/P2
     module = Column(String(100))      # 执行时用例模块标签
+    review_comment = Column(Text)     # 人工评审备注
     created_at = Column(DateTime, default=datetime.utcnow)
 
     history = relationship('TestHistory', back_populates='results')

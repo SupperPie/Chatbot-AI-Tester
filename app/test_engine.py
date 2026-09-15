@@ -99,7 +99,14 @@ except ImportError:
         EXPECTED_OUTPUT = "expected_output"
         CONTEXT = "context"
         RETRIEVAL_CONTEXT = "retrieval_context"
-        
+
+# MultiTurnParams: deepeval >= 3.x 提供，ConversationalGEval 在部分版本（服务器容器）
+# 要求显式传 evaluation_params，否则 a_measure 报
+# "GEval requires evaluation_params. Provide them at initialization or call pull() before evaluate."
+try:
+    from deepeval.test_case import MultiTurnParams
+except ImportError:
+    MultiTurnParams = None
 
 try:
     from deepeval.models import GPTModel
@@ -278,11 +285,20 @@ class TestEngine:
         self.conversational_metric = None
         try:
             if ConversationalGEval is not None:
+                _convo_kwargs = {}
+                # 部分 deepeval 版本（服务器容器）要求显式传 evaluation_params；
+                # 新版本（4.x）显式传入 [CONTENT, ROLE] 与其默认值一致，无副作用。
+                if MultiTurnParams is not None:
+                    _convo_kwargs["evaluation_params"] = [
+                        MultiTurnParams.CONTENT,
+                        MultiTurnParams.ROLE,
+                    ]
                 self.conversational_metric = ConversationalGEval(
                     name="Correctness",
                     criteria="Determine if the assistant's responses throughout the conversation are correct, helpful, and contextually appropriate based on the user's queries and expected outcomes.",
                     threshold=0.5,
-                    model=self.custom_model
+                    model=self.custom_model,
+                    **_convo_kwargs
                 )
         except Exception as e:
             print(f"WARNING: ConversationalGEval initialization failed: {e}. Multi-turn will use fallback scoring.")
@@ -490,6 +506,9 @@ class TestEngine:
 
         is_error = actual_output.startswith("Error") or actual_output.startswith("❌ SERVER DETAIL") or "Error calling API:" in actual_output
 
+        # ─── 翻译 Actual Output 为中文（非中文时） ───
+        actual_output_cn = "" if is_error else self._translate_output_to_cn(actual_output)
+
         # ─── 准备断言和语义评分的数据 ───
         assertion_refs = case_data.get("assertions")  # JSONB list from DB
         # 兼容字符串格式（从 DataFrame to_dict 可能序列化为 str）
@@ -633,9 +652,13 @@ class TestEngine:
         return {
             "case_id": case_data.get("id"),
             "input": input_text,
+            "input_cn": case_data.get("input_cn") or "",
             "actual_output": actual_output,
             "actual_output_cn": actual_output_cn,
             "expected_output": expected_output,
+            "expected_output_cn": case_data.get("expected_output_cn") or "",
+            "description": case_data.get("description") or "",
+            "tags": case_data.get("tags") or [],
             "retrieval_context": ", ".join(context) if isinstance(context, list) else str(context or ""),
             "score": score,
             "reason": reason,
@@ -647,6 +670,7 @@ class TestEngine:
             "raw": raw_data,
             "latency": latency,
             "ttft": ttft,
+            "type": "single",
             "assertion_detail": assertion_detail,
             "category": case_data.get("category"),
             "priority": case_data.get("priority"),
@@ -692,8 +716,13 @@ class TestEngine:
                     "case_id": case.get("id"),
                     "turn_index": case.get("turn_index"),
                     "input": case.get("input", ""),
+                    "input_cn": case.get("input_cn", ""),
                     "expected_output": case.get("expected_output", ""),
+                    "expected_output_cn": case.get("expected_output_cn", ""),
+                    "description": case.get("description", ""),
+                    "tags": case.get("tags", []),
                     "actual_output": "",
+                    "actual_output_cn": "",
                     "retrieval_context": "",
                     "score": 0,
                     "reason": f"Exception in run_case: {e}",
@@ -703,6 +732,7 @@ class TestEngine:
                     "raw": "",
                     "latency": 0,
                     "ttft": 0,
+                    "type": "single",
                     "assertion_detail": None,
                     "category": case.get("category"),
                     "priority": case.get("priority"),
@@ -901,7 +931,7 @@ class TestEngine:
                 "user": user_message,
                 "expected": expected,
                 "actual": actual_output,
-                "actual_cn": self._translate_output_to_cn(actual_output),
+                "actual_cn": actual_output_cn,
                 "retrieval_context": ", ".join(context) if isinstance(context, list) else str(context or ""),
                 "thinking": turn_thinking,
                 "inform_base": turn_inform_base,
@@ -915,16 +945,27 @@ class TestEngine:
         
         # Phase 2: If error occurred, return error result without scoring
         if has_error:
+            # 拼接各turn的actual_cn作为整体actual_output_cn
+            _multi_actual_cn = "\n".join(
+                f"T{t.get('turn', i+1)}: {t.get('actual_cn', '')}"
+                for i, t in enumerate(turn_results) if t.get("actual_cn")
+            )
             return {
                 "case_id": case_data.get("id"),
                 "input": input_text,
+                "input_cn": case_data.get("input_cn") or "",
+                "actual_output": "",
+                "actual_output_cn": _multi_actual_cn,
+                "expected_output": case_data.get("expected_output") or "",
+                "expected_output_cn": case_data.get("expected_output_cn") or "",
+                "description": case_data.get("description") or "",
+                "tags": case_data.get("tags") or [],
                 "type": "multi_turn",
                 "total_turns": num_turns,
                 "passed_turns": 0,
                 "success_rate": 0,
                 "score": 0,
                 "reason": f"API 调用失败，跳过评分: {error_msg[:100]}",
-                "actual_output_cn": "",
                 "overall_score": 0,
                 "passed": False,
                 "latency": sum(t.get("latency", 0) for t in turn_results),
@@ -987,16 +1028,32 @@ class TestEngine:
             overall_reason = "ConversationalGEval not available, scoring skipped"
             overall_passed = False
         
+        # 拼接各turn的actual_cn作为整体actual_output_cn
+        _multi_actual_cn = "\n".join(
+            f"T{t.get('turn', i+1)}: {t.get('actual_cn', '')}"
+            for i, t in enumerate(turn_results) if t.get("actual_cn")
+        )
+        # 拼接各turn的actual_output作为整体actual_output
+        _multi_actual = "\n".join(
+            f"T{t.get('turn', i+1)}: {t.get('actual', '')}"
+            for i, t in enumerate(turn_results) if t.get("actual")
+        )
         return {
             "case_id": case_data.get("id"),
             "input": input_text,
+            "input_cn": case_data.get("input_cn") or "",
+            "actual_output": _multi_actual,
+            "actual_output_cn": _multi_actual_cn,
+            "expected_output": case_data.get("expected_output") or "",
+            "expected_output_cn": case_data.get("expected_output_cn") or "",
+            "description": case_data.get("description") or "",
+            "tags": case_data.get("tags") or [],
             "type": "multi_turn",
             "total_turns": num_turns,
             "passed_turns": num_turns if overall_passed else 0,
             "success_rate": 1.0 if overall_passed else 0.0,
             "score": overall_score,
             "reason": overall_reason,
-            "actual_output_cn": "",
             "overall_score": overall_score,
             "passed": overall_passed,
             "latency": sum(t.get("latency", 0) for t in turn_results),

@@ -898,7 +898,6 @@ def render_testcases_page():
                                         new_rows.append(d)
                                     
                                     # 增量写入 DB（只写新记录）
-                                    from app.utils import save_records
                                     save_records(new_rows)
                                     
                                     # 拼接到 current_df
@@ -1221,22 +1220,28 @@ def render_testcases_page():
             page_df['priority'] = None
         if 'module' not in page_df.columns:
             page_df['module'] = None
+        if 'input_cn' not in page_df.columns:
+            page_df['input_cn'] = ""
+        if 'expected_output_cn' not in page_df.columns:
+            page_df['expected_output_cn'] = ""
 
         edited_page_df = st.data_editor(
             page_df,
             column_config={
                 "Select": st.column_config.CheckboxColumn("✓", width="small", default=False),
                 "id": st.column_config.TextColumn("ID", width="small", disabled=False),
-                "input": st.column_config.TextColumn("Input Question", width="medium"),
+                "input": st.column_config.TextColumn("Input", width="medium"),
+                "input_cn": st.column_config.TextColumn("Input_CN", width="medium", help="Input 的中文翻译"),
                 "expected_output": st.column_config.TextColumn("Expected Output", width="medium"),
+                "expected_output_cn": st.column_config.TextColumn("Expected_Output_CN", width="medium", help="Expected Output 的中文翻译"),
                 "description": st.column_config.TextColumn("Description", width="medium", help="描述测试用例的目的，对应产品需求中的验收标准(AC)"),
                 "priority": st.column_config.SelectboxColumn("Priority", options=["", "P0", "P1", "P2"], width="small"),
                 "module": st.column_config.TextColumn("Module", width="small", help="模块/功能域标签（自由文本）"),
                 "tags": st.column_config.ListColumn("Tags"),
                 "retrieval_context": st.column_config.Column("Retrieval Context", help="为大模型提供的参考上下文文件。用于验证模型的回答是否基于给定的知识库 (Faithfulness)。"),
-                "overall_criteria": st.column_config.Column("Overall Criteria", help="用于评估打分的特殊判定要求或全局自定义标准。"),
+                "overall_criteria": st.column_config.Column("Overall_Criteria", help="用于评估打分的特殊判定要求或全局自定义标准。"),
                 "validation": st.column_config.Column("Validation", help="验证规则 (JSON格式)。例: {\"type\": \"contains\", \"keywords\": [\"正确\"]} 或 {\"type\": \"semantic\"}。"),
-                "turn_index": st.column_config.NumberColumn("Turn", width="small", help="多轮对话的顺序编号"),
+                "turn_index": st.column_config.NumberColumn("Turn_Index", width="small", help="多轮对话的顺序编号"),
                 "assertions": st.column_config.TextColumn("Assertions", help="已绑定的断言组件", width="small", disabled=True),
                 "category_id": None,
                 "__row_key": None,
@@ -1413,14 +1418,21 @@ def render_testcases_page():
     run_report_name = None
 
     # 弹窗确认后的执行请求（Run 确认弹窗设置）
+    # 两步rerun机制：确认 → 第一次rerun（让dialog消失） → 第二次rerun才开始同步polling
+    # 避免 Streamlit dialog 在同步polling阻塞期间无法正常关闭
     _confirmed = st.session_state.pop('confirmed_run', None)
     if _confirmed:
-        cases_to_run = _confirmed.get('cases') or []
-        run_report_name = _confirmed.get('report_name')
+        st.session_state['_executing_run'] = _confirmed
+        st.rerun()
+
+    _executing = st.session_state.pop('_executing_run', None)
+    if _executing:
+        cases_to_run = _executing.get('cases') or []
+        run_report_name = _executing.get('report_name')
 
     # 对话框待处理请求（单次消费，避免确认后反复命中 dialog）
     _pending_run_dialog = st.session_state.get('pending_run_dialog')
-    if _pending_run_dialog:
+    if _pending_run_dialog and not _executing:
         run_confirm_dialog(
             _pending_run_dialog.get('cases') or [],
             _pending_run_dialog.get('api_name') or selected_api,
@@ -1496,12 +1508,10 @@ def render_testcases_page():
                     execution_placeholder.info("选中用例中没有需要刷新的过去日期（或日期已是未来 90 天内）")
                 else:
                     # 持久化到 DB
-                    from app.utils import save_records
                     save_records(updated_records)
 
                     # 同步更新内存 st.session_state.df，避免用户看不到变化
                     df = st.session_state.df
-                    updated_map = {r['id']: r for r in updated_records if r.get('turn_index') is not None}
                     # 多轮用例相同 id 会有多条，用 (id, turn_index) 做 key
                     updated_map_multi = {}
                     for r in updated_records:
@@ -1512,6 +1522,9 @@ def render_testcases_page():
                             ti = 1
                         updated_map_multi[(r['id'], ti)] = r
 
+                    # 日期刷新涉及的所有字段（原文 + 中文翻译 + retrieval）
+                    _date_fields = ('input', 'input_cn', 'expected_output',
+                                    'expected_output_cn', 'retrieval_context')
                     changed_cases = 0
                     for idx, row in df.iterrows():
                         rid = row.get('id')
@@ -1521,14 +1534,21 @@ def render_testcases_page():
                         except (TypeError, ValueError):
                             rti = 1
                         new_r = updated_map_multi.get((rid, rti))
-                        if new_r and new_r.get('input') != row.get('input'):
-                            df.at[idx, 'input'] = new_r['input']
+                        if not new_r:
+                            continue
+                        row_changed = False
+                        for fld in _date_fields:
+                            new_val = new_r.get(fld)
+                            if new_val is not None and new_val != row.get(fld):
+                                df.at[idx, fld] = new_val
+                                row_changed = True
+                        if row_changed:
                             changed_cases += 1
 
                     # 清掉预处理标记，下次 render 重新做 schema 安全处理
                     st.session_state["df_preprocessed"] = False
                     st.session_state["edited_df_cached"] = None
-                    st.success(f"✅ 已刷新 {changed_cases} 条用例中的 {total_replaced} 个日期（未来 1 个月内）")
+                    st.success(f"✅ 已刷新 {changed_cases} 条用例中的 {total_replaced} 个日期（未来 90 天内，保持多日期先后顺序）")
                     st.rerun()
             except Exception as e:
                 execution_placeholder.error(f"刷新日期失败: {e}")

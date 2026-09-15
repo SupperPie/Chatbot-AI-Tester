@@ -2178,7 +2178,8 @@ def get_portal_im_response(message: str, url: str, token: str = None, user_id: s
 
         answer_parts = []
         thinking_parts = []
-        raw_chunks = []
+        content_raw_chunks = []  # type=content 的原始行（回复正文流），拼接时完整保留
+        other_raw_chunks = []    # 其他事件（done 大 JSON/session 等），拼接时共享剩余预算
         inform_base_data = None
         ttft = 0.0
         got_first_answer = False
@@ -2199,13 +2200,18 @@ def get_portal_im_response(message: str, url: str, token: str = None, user_id: s
                         data = json.loads(json_str)
                     except json.JSONDecodeError:
                         chunk = f"Decode Error: {json_str[:500]}"
-                        raw_chunks.append(chunk)
+                        other_raw_chunks.append(chunk)
                         continue
 
                     raw_s = json.dumps(data, ensure_ascii=False)
                     if len(raw_s) > MAX_CHUNK_LEN:
                         raw_s = raw_s[:MAX_CHUNK_LEN] + f'...[truncated, total {len(raw_s)} chars]'
-                    raw_chunks.append(raw_s)
+                    # 回复内容行单独收集：raw 总预算优先保留这部分，
+                    # 避免回复原文被 done 等大 JSON 挤出截断范围（调试时看不到完整回复）
+                    if data.get("type") == "content":
+                        content_raw_chunks.append(raw_s)
+                    else:
+                        other_raw_chunks.append(raw_s)
 
                     msg_type = data.get("type")
                     content = data.get("content") or ""
@@ -2234,15 +2240,27 @@ def get_portal_im_response(message: str, url: str, token: str = None, user_id: s
                         # done 事件就是 SSE 流结束信号，后面不会再发 [DONE]，直接退出
                         break
 
-        raw_full_str = "\n".join(raw_chunks)
-        if len(raw_full_str) > MAX_TOTAL_LEN:
-            raw_full_str = raw_full_str[:MAX_TOTAL_LEN] + f"\n...[truncated, total {len(raw_full_str)} chars]"
+        # 拼接 raw：回复内容(content 行)完整保留在前；其他事件共享剩余预算，
+        # 超出部分截断保留头部并标记。总量仍不超过 MAX_TOTAL_LEN。
+        # 行顺序变为 content 在前 / 其他在后，均为合法 NDJSON 行，
+        # _extract_assertion_response 逐行解析、顺序无关，不受影响。
+        content_str = "\n".join(content_raw_chunks)
+        other_str = "\n".join(other_raw_chunks)
+        if len(content_str) > MAX_TOTAL_LEN:
+            # 极端情况：回复内容本身超总预算，才截断回复原文
+            content_str = content_str[:MAX_TOTAL_LEN] + f"\n...[truncated, total {len(content_str)} chars]"
+            other_str = ""
+        else:
+            _remaining = MAX_TOTAL_LEN - len(content_str)
+            if len(other_str) > _remaining:
+                other_str = other_str[:max(0, _remaining)] + f"\n...[other events truncated, total {len(other_str)} chars]"
+        raw_full_str = content_str + ("\n" + other_str if other_str else "")
 
         final_answer = "".join(answer_parts)
         thinking_text = "".join(thinking_parts)
 
         if not final_answer:
-            if raw_chunks:
+            if content_raw_chunks or other_raw_chunks:
                 final_answer = "Raw data captured (no answer content). See Raw Data."
             else:
                 final_answer = "Error: No response content found."

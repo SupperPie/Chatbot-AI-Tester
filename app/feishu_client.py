@@ -16,23 +16,27 @@ FEISHU_CONFIG_FILE = os.path.join(
 
 
 def _load_feishu_config() -> Dict[str, str]:
-    """从配置文件读取飞书凭证，优先级：环境变量 > 配置文件"""
-    app_id = os.getenv("FEISHU_APP_ID", "")
-    app_secret = os.getenv("FEISHU_APP_SECRET", "")
-    if app_id and app_secret:
-        return {"app_id": app_id.strip().strip('"').strip("'"),
-                "app_secret": app_secret.strip().strip('"').strip("'")}
-    # 从配置文件读取
+    """读取飞书凭证，优先级：配置文件(页面可配) > 环境变量
+
+    配置文件优先是为了支持在 Settings 页面直接配置服务器凭证，
+    无需重启容器/修改环境变量。
+    """
+    # 1. 配置文件（Settings 页面保存的）
     if os.path.exists(FEISHU_CONFIG_FILE):
         try:
             with open(FEISHU_CONFIG_FILE, "r", encoding="utf-8") as f:
                 cfg = json.load(f)
-            return {
-                "app_id": (cfg.get("app_id") or "").strip().strip('"').strip("'"),
-                "app_secret": (cfg.get("app_secret") or "").strip().strip('"').strip("'"),
-            }
+            app_id = (cfg.get("app_id") or "").strip().strip('"').strip("'")
+            app_secret = (cfg.get("app_secret") or "").strip().strip('"').strip("'")
+            if app_id and app_secret:
+                return {"app_id": app_id, "app_secret": app_secret}
         except Exception:
             pass
+    # 2. 环境变量兜底
+    app_id = os.getenv("FEISHU_APP_ID", "").strip().strip('"').strip("'")
+    app_secret = os.getenv("FEISHU_APP_SECRET", "").strip().strip('"').strip("'")
+    if app_id and app_secret:
+        return {"app_id": app_id, "app_secret": app_secret}
     return {"app_id": "", "app_secret": ""}
 
 
@@ -363,6 +367,13 @@ def export_report_to_feishu(
                 hi = mid - 1
         return best if best else (val[:1] + suffix)
 
+    def _tags_str(tags_val):
+        if not tags_val:
+            return ""
+        if isinstance(tags_val, list):
+            return ", ".join(str(x) for x in tags_val)
+        return str(tags_val)
+
     rows = []
     for item in report_data:
         # 格式化 assertion_detail
@@ -385,20 +396,28 @@ def export_report_to_feishu(
                 score_val = turn.get("score") if turn.get("score") is not None else item.get("score", 0)
                 row = [
                     item.get("case_id", ""),
-                    item.get("priority", ""),
-                    item.get("module", ""),
-                    turn.get("turn", ""),
                     _truncate_cell(str(turn.get("user", ""))),
+                    _truncate_cell(str(item.get("input_cn", ""))),
                     _truncate_cell(str(turn.get("expected", ""))),
+                    _truncate_cell(str(item.get("expected_output_cn", ""))),
+                    _truncate_cell(str(item.get("description", ""))),
                     _truncate_cell(str(turn.get("actual", ""))),
-                    _truncate_cell(str(turn.get("retrieval_context", ""))),
-                    score_val,
-                    "Pass" if item.get("passed") else "Fail",
-                    _truncate_cell(assertion_result_str),
+                    _truncate_cell(str(turn.get("actual_cn", ""))),
+                    item.get("priority", ""),
+                    _tags_str(item.get("tags")),
+                    item.get("module", ""),
+                    item.get("type", ""),
+                    turn.get("turn", ""),
                     turn.get("ttft", 0),
                     turn.get("latency", 0),
+                    _truncate_cell(assertion_result_str),
+                    _truncate_cell(str(item.get("validation", ""))),
+                    _truncate_cell(str(item.get("overall_criteria", ""))),
+                    _truncate_cell(str(turn.get("retrieval_context", ""))),
+                    "Pass" if item.get("passed") else "Fail",
+                    score_val,
                     _truncate_cell(str(item.get("reason", ""))),
-                    "",  # review_comment
+                    _truncate_cell(str(item.get("review_comment", ""))),
                     _truncate_cell(str(turn.get("thinking", ""))),
                     _truncate_cell(str(turn.get("inform_base", ""))),
                     _truncate_cell(str(turn.get("raw", "")))
@@ -412,20 +431,28 @@ def export_report_to_feishu(
             
             row = [
                 item.get("case_id", ""),
-                item.get("priority", ""),
-                item.get("module", ""),
-                "",  # turn_index
                 _truncate_cell(str(item.get("input", ""))),
+                _truncate_cell(str(item.get("input_cn", ""))),
                 _truncate_cell(str(item.get("expected_output", ""))),
+                _truncate_cell(str(item.get("expected_output_cn", ""))),
+                _truncate_cell(str(item.get("description", ""))),
                 _truncate_cell(str(item.get("actual_output", ""))),
-                _truncate_cell(str(retrieval_context)),
-                item.get("score", 0),
-                "Pass" if item.get("passed") else "Fail",
-                _truncate_cell(assertion_result_str),
+                _truncate_cell(str(item.get("actual_output_cn", ""))),
+                item.get("priority", ""),
+                _tags_str(item.get("tags")),
+                item.get("module", ""),
+                item.get("type", ""),
+                "",  # turn_index
                 item.get("ttft", 0),
                 item.get("latency", 0),
+                _truncate_cell(assertion_result_str),
+                _truncate_cell(str(item.get("validation", ""))),
+                _truncate_cell(str(item.get("overall_criteria", ""))),
+                _truncate_cell(str(retrieval_context)),
+                "Pass" if item.get("passed") else "Fail",
+                item.get("score", 0),
                 _truncate_cell(str(item.get("reason", ""))),
-                "",  # review_comment
+                _truncate_cell(str(item.get("review_comment", ""))),
                 _truncate_cell(str(item.get("thinking", ""))),
                 _truncate_cell(str(item.get("inform_base", ""))),
                 _truncate_cell(str(item.get("raw", "")))
@@ -437,9 +464,13 @@ def export_report_to_feishu(
     
     # 先写入表头（与 report 页面一致）
     headers = [[
-        "Case ID", "Priority", "Module", "Turn", "Input", "Expected", "Actual Output", "Retrieval Context",
-        "Score", "Passed", "Assertion Result", "TTFT", "Latency", "Reason", 
-        "Review Comment", "Thinking", "Inform Base", "Raw"
+        "ID", "Input", "Input_CN", "Expected_Output", "Expected_Output_CN", "Description",
+        "Actual_Output", "Actual_Output_CN",
+        "Priority", "Tags", "Module", "Type", "Turn_Index",
+        "TTFT", "Latency",
+        "Assertions", "Validation", "Overall_Criteria", "Retrieval_Context",
+        "Passed", "Score", "Reason", "Human Review Comment",
+        "Thinking", "Inform Base", "RAW"
     ]]
 
     # 导出前预检：定位超出飞书单元格 50000 bytes（按 JSON 转义后计算）的具体列
@@ -447,7 +478,7 @@ def export_report_to_feishu(
     oversized_cells = []
     for row_idx, row in enumerate(rows):
         case_id = str(row[0]) if len(row) > 0 else ""
-        turn = str(row[3]) if len(row) > 3 else ""  # priority+module 插入后 turn 在 index 3
+        turn = str(row[12]) if len(row) > 12 else ""  # Turn_Index 在 index 12
         for col_idx, cell in enumerate(row):
             txt = "" if cell is None else str(cell)
             b = _json_escaped_bytes(txt)
