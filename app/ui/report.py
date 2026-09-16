@@ -30,6 +30,71 @@ def _count_unique_case_ids_in_records(records) -> int:
     return len(ids)
 
 
+def _backfill_entry_cn(entry: dict):
+    """从 test_cases 回填结果里缺失的快照字段：Input_CN / Expected_Output_CN /
+    Description / Tags（用例属性，取当前值）。
+
+    背景（两类缺失，都导致报告页/飞书导出这些列显示不对）：
+    1. 旧报告：DB 快照整列为空（当时还没写入快照列）
+    2. 旧格式多轮 turns：没有 turn 级中文键（user_cn/expected_cn），unroll 后
+       每个回退到 case 级值 = 第一轮的翻译，与该行 Input/Expected 对不上
+    统一从 test_cases 按 (case_id, turn_index) 回填：
+    - 单轮 → 回填 case 级 input_cn/expected_output_cn/description/tags
+    - 多轮 → 回填每个 turn 的 user_cn/expected_cn，case 级 description/tags
+    只在缺失时填（新报告已有正确的快照值，不覆盖）。
+    """
+    try:
+        results = entry.get('results') or []
+        if not results:
+            return
+        ids = set()
+        for r in results:
+            cid = str(r.get('case_id') or '').strip()
+            if cid:
+                ids.add(cid)
+        if not ids:
+            return
+        from app.services.test_case_service import TestCaseService
+        cn_map = TestCaseService().get_cn_map_by_ids(list(ids))
+        if not cn_map:
+            return
+        for r in results:
+            cid = str(r.get('case_id') or '').strip()
+            if not cid:
+                continue
+            # case 级字段：description/tags（多轮也只需回填一次，取第一轮的用例数据）
+            m0 = cn_map.get((cid, 1))
+            if m0:
+                if not (r.get('description') or '').strip():
+                    r['description'] = m0['description']
+                if not r.get('tags'):
+                    r['tags'] = m0['tags']
+
+            if not isinstance(r.get('turns'), list) or not r['turns']:
+                # 单轮：回填 case 级 input_cn/expected_output_cn
+                if m0:
+                    if not (r.get('input_cn') or '').strip():
+                        r['input_cn'] = m0['input_cn']
+                    if not (r.get('expected_output_cn') or '').strip():
+                        r['expected_output_cn'] = m0['expected_output_cn']
+                continue
+            # 多轮：回填 turn 级中文键
+            for i, t in enumerate(r['turns']):
+                try:
+                    ti = int(t.get('turn') or (i + 1))
+                except (TypeError, ValueError):
+                    ti = i + 1
+                m = cn_map.get((cid, ti))
+                if not m:
+                    continue
+                if not (t.get('user_cn') or '').strip():
+                    t['user_cn'] = m['input_cn']
+                if not (t.get('expected_cn') or '').strip():
+                    t['expected_cn'] = m['expected_output_cn']
+    except Exception as e:
+        print(f"[report] backfill CN failed: {e}")
+
+
 def _read_max_workers(entry_id=None) -> int:
     """读取并发线程数并 clamp 到 1-10。
     优先读取当前 report 的 thread 设置（f"max_workers_{entry_id}"），
@@ -72,6 +137,7 @@ def _rerun_confirm_dialog(entry_id, cases, api_name, case_count):
     with col1:
         if st.button("取消", width="stretch"):
             st.session_state.pop(f"confirmed_rerun_{entry_id}", None)
+            st.session_state.pop(f"pending_rerun_{entry_id}", None)
             st.rerun()
     with col2:
         if st.button("▶ 开始执行", type="primary", width="stretch"):
@@ -80,6 +146,8 @@ def _rerun_confirm_dialog(entry_id, cases, api_name, case_count):
                 'cases': cases,
                 'report_name': name,
             }
+            # 消费 pending：下一帧不再调用 dialog 函数 → 弹窗关闭
+            st.session_state.pop(f"pending_rerun_{entry_id}", None)
             st.rerun()
 
 
@@ -459,7 +527,13 @@ def render_report_page():
                         st.session_state[cache_key] = entry_detail
             else:
                 entry = st.session_state[cache_key]
-            
+
+            # 回填 Input_CN/Expected_Output_CN（旧报告无快照 / 旧格式 turns 无 turn 级中文键）；
+            # flag 保证同一会话内每个报告只回填一次（结果 dict 会写入下方缓存）
+            if not entry.get('_cn_backfilled'):
+                _backfill_entry_cn(entry)
+                entry['_cn_backfilled'] = True
+
             # SHOW PROGRESS BAR IF RUNNING
             if status == "running":
                 st.progress(progress, text=f"Processing {started}/{total_count} cases...")
@@ -492,6 +566,13 @@ def render_report_page():
             
             with mgmt_col1:
                 # API SELECTOR + 执行模式选择 + Thread并发数（Rerun/Continue 使用）
+                # 三者默认值都取「该报告运行时」的配置（history 中持久化），
+                # 旧报告无记录时回退到全局/默认值；用户在本页手动改过后保留其选择。
+                _MODE_LABELS = {
+                    "full": "full (语义+断言)",
+                    "semantic": "semantic (仅语义)",
+                    "assertion": "assertion (仅断言)",
+                }
                 api_col, mode_col, thread_col = st.columns([2.2, 1.3, 0.8])
                 with api_col:
                     stored_api = entry.get("api_name", "Bundle API")
@@ -502,8 +583,12 @@ def render_report_page():
                 with mode_col:
                     mode_key = f"exec_mode_{entry_id}"
                     if mode_key not in st.session_state:
-                        # 默认用上一次全局选择，否则用 full
-                        st.session_state[mode_key] = st.session_state.get("execution_mode_select", "full (语义+断言)")
+                        # 默认用该报告运行时的执行模式；旧报告无记录时回退全局选择/full
+                        saved_mode = (entry.get("execution_mode") or "").strip()
+                        st.session_state[mode_key] = (
+                            _MODE_LABELS.get(saved_mode)
+                            or st.session_state.get("execution_mode_select", "full (语义+断言)")
+                        )
                     st.selectbox(
                         "执行模式",
                         ["full (语义+断言)", "semantic (仅语义)", "assertion (仅断言)"],
@@ -513,8 +598,11 @@ def render_report_page():
                 with thread_col:
                     thread_key = f"max_workers_{entry_id}"
                     if thread_key not in st.session_state:
-                        # 默认继承 testcases 页的全局设置
-                        st.session_state[thread_key] = st.session_state.get("page_max_workers_input", "3")
+                        # 默认用该报告运行时的并发数；旧报告无记录时回退全局设置/3
+                        saved_workers = entry.get("max_workers")
+                        st.session_state[thread_key] = (
+                            str(saved_workers) if saved_workers else st.session_state.get("page_max_workers_input", "3")
+                        )
                     st.text_input(
                         "Thread",
                         key=thread_key,
@@ -581,8 +669,11 @@ def render_report_page():
                         rerun_clicked = st.button("▶ Rerun", key=f"btn_rerun_{entry_id}", use_container_width=True)
                     
                     if rerun_clicked:
-                        # 延迟到 data_editor 渲染后再消费，读取用户勾选
+                        # 延迟到 data_editor 渲染后再消费，读取用户勾选；
+                        # 先 rerun 再在下一帧弹窗（干净帧，避免与按钮点击帧的状态纠缠）
+                        st.session_state.pop(f"rerun_report_name_{entry_id}", None)
                         st.session_state[f"pending_rerun_{entry_id}"] = True
+                        st.rerun()
             with mgmt_col4:
                 # EXPORT TO FEISHU BUTTON
                 if status != "running":
@@ -652,7 +743,9 @@ def render_report_page():
                             new_row = row.copy().to_dict()
                             new_row["turn_index"] = t.get("turn", idx + 1)
                             new_row["input"] = t.get("user", "")
+                            new_row["input_cn"] = t.get("user_cn", "") or new_row.get("input_cn", "")
                             new_row["expected_output"] = t.get("expected", "")
+                            new_row["expected_output_cn"] = t.get("expected_cn", "") or new_row.get("expected_output_cn", "")
                             new_row["actual_output"] = t.get("actual", "")
                             new_row["actual_output_cn"] = t.get("actual_cn", "")
                             
@@ -773,10 +866,10 @@ def render_report_page():
                     "actual_output", "actual_output_cn",
                     "priority", "tags", "module",
                     "type", "turn_index",
-                    "ttft", "latency",
-                    "assertion_result", "validation", "overall_criteria",
                     "retrieval_context",
                     "passed", "score", "reason",
+                    "ttft", "latency",
+                    "assertion_result", "validation", "overall_criteria",
                     "review_comment", "review_reason",
                     "thinking", "inform_base", "raw",
                 ]
@@ -819,9 +912,21 @@ def render_report_page():
                 # --------------------------
                 # Consume pending Rerun (must run AFTER data_editor so we can read Select column)
                 # --------------------------
-                # 弹窗确认后的 Rerun 执行（_rerun_confirm_dialog 设置）
+                # 弹窗确认后的 Rerun 执行（_rerun_confirm_dialog 设置）。
+                # 三步 rerun（与 testcases 页一致的用户已验证模式）：
+                #   帧1（dialog内）: 点"开始执行" → set confirmed + pop pending → st.rerun()
+                #   帧2: pop confirmed → set _executing_rerun → st.rerun()（本帧不做任何事，
+                #        让 dialog 关闭指令完整 flush 到前端，避免被后续阻塞卡住）
+                #   帧3: pop _executing_rerun → 启动 job + success + sleep(1) + st.rerun()
+                # pending 用 get 不 pop：dialog 内按钮点击只触发 dialog 自身的 fragment rerun，
+                # 必须保证点击帧能重新调用 dialog 函数，按钮状态才会被处理（点击不丢失）。
                 _confirmed_rerun = st.session_state.pop(f"confirmed_rerun_{entry_id}", None)
                 if _confirmed_rerun:
+                    st.session_state[f"_executing_rerun_{entry_id}"] = _confirmed_rerun
+                    st.rerun()
+
+                _executing_rerun = st.session_state.pop(f"_executing_rerun_{entry_id}", None)
+                if _executing_rerun:
                     try:
                         from app.utils import get_job_manager
                         mgr = get_job_manager()
@@ -829,24 +934,27 @@ def render_report_page():
                         _mode_raw = st.session_state.get(f"exec_mode_{entry_id}", "full (语义+断言)")
                         _mode_val = _mode_raw.split(" ")[0]  # "full" / "semantic" / "assertion"
                         job_id = mgr.run_background_job(
-                            _confirmed_rerun['cases'],
+                            _executing_rerun['cases'],
                             api_name=target_api,
                             execution_mode=_mode_val,
                             max_workers=_read_max_workers(entry_id),
-                            report_name=_confirmed_rerun.get('report_name'),
+                            report_name=_executing_rerun.get('report_name'),
                         )
-                        st.success(f"Rerun started for {len(_confirmed_rerun['cases'])} case(s)! Job ID: {job_id}")
+                        st.success(f"Rerun started for {len(_executing_rerun['cases'])} case(s)! Job ID: {job_id}")
                         time.sleep(1)
                         st.rerun()
                     except Exception as e:
                         st.error(f"Rerun failed: {e}")
 
-                elif st.session_state.pop(f"pending_rerun_{entry_id}", False):
+                elif st.session_state.get(f"pending_rerun_{entry_id}"):
                     if edited_df is None or edited_df.empty:
+                        st.session_state.pop(f"pending_rerun_{entry_id}", None)
                         st.warning("No results to rerun.")
                     else:
                         selected_rerun = edited_df[edited_df["Select"] == True]
                         if selected_rerun.empty:
+                            # 未勾选用例：消费 pending，避免下次 rerun 反复弹警告
+                            st.session_state.pop(f"pending_rerun_{entry_id}", None)
                             st.warning("Please select at least one case to rerun (check the Select column).")
                         else:
                             from app.utils import load_data
@@ -867,12 +975,18 @@ def render_report_page():
                                     cases_to_rerun.append({
                                         "id": cid,
                                         "input": row.get("input", ""),
+                                        "input_cn": row.get("input_cn", ""),
                                         "expected_output": row.get("expected_output", ""),
+                                        "expected_output_cn": row.get("expected_output_cn", ""),
+                                        "description": row.get("description", ""),
+                                        "tags": row.get("tags", []),
                                         "type": row.get("type", "single_turn"),
                                         "turns": row.get("turns", []),
                                         "priority": row.get("priority"),
                                         "module": row.get("module"),
                                         "category": row.get("category"),
+                                        "validation": row.get("validation", ""),
+                                        "overall_criteria": row.get("overall_criteria", ""),
                                     })
 
                             seen = set()
@@ -885,9 +999,10 @@ def render_report_page():
                                     unique_cases_to_rerun.append(c)
 
                             # 弹出 Report Name 确认框（默认 endpoint_日期_时间戳，可编辑）
+                            # 注：rerun_report_name 键在 Rerun 按钮处理器里重置（不能在这里 pop，
+                            # 否则弹窗打开期间的任何全页 rerun 都会清掉用户已输入的名称）
                             target_api = st.session_state.get(f"api_sel_{entry_id}", "Bundle API")
                             rerun_case_count = _count_unique_case_ids_in_records(unique_cases_to_rerun)
-                            st.session_state.pop(f"rerun_report_name_{entry_id}", None)
                             _rerun_confirm_dialog(entry_id, unique_cases_to_rerun, target_api, rerun_case_count)
 
 

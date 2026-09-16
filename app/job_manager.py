@@ -102,7 +102,7 @@ class JobManager:
         # 1. Create initial entry in DB with status=running
         # 同一秒内启动两次会生成相同 report_id（主键冲突），重试加后缀保证唯一
         for attempt in range(5):
-            if self._create_history_entry(report_id, api_name, total_tasks, case_ids=case_ids_snapshot, report_name=report_name):
+            if self._create_history_entry(report_id, api_name, total_tasks, case_ids=case_ids_snapshot, report_name=report_name, execution_mode=execution_mode, max_workers=max_workers):
                 break
             report_id = f"{report_id_base}-{attempt + 1}"
         else:
@@ -209,6 +209,8 @@ class JobManager:
                     return {"ok": False, "message": "Job was just picked up elsewhere (or state changed), please refresh", "remaining": 0}
 
                 api_name = entry.api_name
+                # Continue 沿用原报告的执行模式；旧报告无该字段时回退 full
+                execution_mode = entry.execution_mode or "full"
                 db.close()
             except Exception as e:
                 print(f"Error preparing continue_job {report_id}: {e}")
@@ -222,7 +224,7 @@ class JobManager:
         
         thread = threading.Thread(
             target=self._worker,
-            args=(report_id, remaining_cases, api_name, "full", max_workers)
+            args=(report_id, remaining_cases, api_name, execution_mode, max_workers)
         )
         thread.daemon = True
         self.active_jobs[report_id] = {
@@ -280,7 +282,7 @@ class JobManager:
             if report_id in self.active_jobs:
                 del self.active_jobs[report_id]
 
-    def _create_history_entry(self, report_id: str, api_name: str, total: int, case_ids=None, report_name: str = None) -> bool:
+    def _create_history_entry(self, report_id: str, api_name: str, total: int, case_ids=None, report_name: str = None, execution_mode: str = "full", max_workers: int = 3) -> bool:
         """Create initial history entry in DB with status=running. Returns False on PK collision."""
         with self._db_lock:
             db = None
@@ -294,6 +296,8 @@ class JobManager:
                     timestamp=now,
                     api_name=api_name,
                     report_name=report_name,
+                    execution_mode=execution_mode,
+                    max_workers=max_workers,
                     total=total,
                     passed=0,
                     failed=0,
@@ -362,6 +366,8 @@ class JobManager:
                     category=new_result.get('category'),
                     priority=new_result.get('priority'),
                     module=new_result.get('module'),
+                    validation=new_result.get('validation'),
+                    overall_criteria=new_result.get('overall_criteria'),
                     created_at=datetime.datetime.utcnow()
                 )
                 stmt = pg_insert(TestResult).values(**values)\

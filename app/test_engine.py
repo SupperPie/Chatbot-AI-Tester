@@ -162,6 +162,19 @@ def _contains_chinese(text: str) -> bool:
     return re.search(r"[\u4e00-\u9fff]", text) is not None
 
 
+def _stringify_field(v) -> str:
+    """把 validation/overall_criteria 等字段安全转为字符串（dict → JSON），存 Text 列用。"""
+    if v is None:
+        return ""
+    if isinstance(v, str):
+        return v
+    try:
+        import json as _json
+        return _json.dumps(v, ensure_ascii=False)
+    except Exception:
+        return str(v)
+
+
 class SynchronousEvalModel(DeepEvalBaseLLM):
     def __init__(self, model_name, base_url, api_key):
         self.model_name = model_name
@@ -262,7 +275,7 @@ class TestEngine:
             if GEval is not None:
                 self.correctness_metric = GEval(
                     name="Correctness",
-                    criteria="Determine if the 'actual output' is correct based on the 'expected output'.",
+                    criteria="请判断「实际输出」是否与「期望输出」一致/正确。要求：1) 关键信息（数字、日期、地点、实体）必须正确；2) 语义等价即可，表述方式可不同；3) 不要因为无关细节遗漏就扣分。请用简体中文输出理由，简洁说明通过或不通过的原因。",
                     evaluation_params=[LLMTestCaseParams.ACTUAL_OUTPUT, LLMTestCaseParams.EXPECTED_OUTPUT],
                     threshold=0.5,
                     model=self.custom_model
@@ -295,7 +308,7 @@ class TestEngine:
                     ]
                 self.conversational_metric = ConversationalGEval(
                     name="Correctness",
-                    criteria="Determine if the assistant's responses throughout the conversation are correct, helpful, and contextually appropriate based on the user's queries and expected outcomes.",
+                    criteria="请判断对话中助手的回复是否正确、有帮助且上下文连贯，符合用户的查询与期望结果。请用简体中文输出理由，简洁说明通过或不通过的原因。",
                     threshold=0.5,
                     model=self.custom_model,
                     **_convo_kwargs
@@ -417,6 +430,16 @@ class TestEngine:
         except Exception as e:
             print(f"[actual_output_cn] translate failed: {e}")
             return ""
+
+    def _ensure_cn_reason(self, reason: str) -> str:
+        """确保评分理由是中文；若是英文则翻译一次，失败则返回原文。"""
+        src = _safe_str(reason)
+        if not src:
+            return src
+        if _contains_chinese(src):
+            return src
+        translated = self._translate_output_to_cn(src)
+        return translated if translated else src
 
     def run_case(self, case_data: Dict[str, Any], api_name: str = "Skills", execution_mode: str = "full", should_stop=None) -> Dict[str, Any]:
         """Runs a single test case and returns the result.
@@ -566,15 +589,15 @@ class TestEngine:
             async def _run_semantic_async(tc, has_context, correctness_m, faithfulness_m):
                 """运行语义评分（async）"""
                 if correctness_m is None:
-                    return (0.0, "DeepEval GEval metric not available on this server.", None, None, False)
+                    return (0.0, "服务器未加载 DeepEval GEval 指标，评分已跳过。", None, None, False)
 
                 await correctness_m.a_measure(tc)
                 correctness_score = correctness_m.score
-                correctness_reason = correctness_m.reason
+                correctness_reason = self._ensure_cn_reason(correctness_m.reason)
 
                 # 在两个 metric 之间检查 stop：若已请求停止，跳过 faithfulness
                 if should_stop and should_stop():
-                    return (correctness_score, correctness_reason, None, "Cancelled before faithfulness", (correctness_score >= 0.5))
+                    return (correctness_score, correctness_reason, None, "已在忠实度检查前取消。", (correctness_score >= 0.5))
 
                 faith_score = None
                 faith_reason = None
@@ -582,10 +605,10 @@ class TestEngine:
                     try:
                         await faithfulness_m.a_measure(tc)
                         faith_score = faithfulness_m.score
-                        faith_reason = faithfulness_m.reason
+                        faith_reason = self._ensure_cn_reason(faithfulness_m.reason)
                     except Exception as e:
-                        faith_reason = f"Faithfulness check failed: {str(e)}"
-                
+                        faith_reason = f"忠实度检查失败：{str(e)}"
+
                 if faith_score is not None:
                     combined_score = (correctness_score + faith_score) / 2
                 else:
@@ -604,11 +627,11 @@ class TestEngine:
                     test_case, bool(context), self.correctness_metric, self.faithfulness_metric
                 ))
             except Exception as e:
-                return (0.0, f"Metric calculation failed: {str(e)}", None, None, False)
+                return (0.0, f"评分计算失败：{str(e)}", None, None, False)
 
         # 并行执行
         assertion_detail = None
-        score, reason, faith_score, faith_reason, passed = 0.0, "Error occurred, evaluation skipped.", None, None, False
+        score, reason, faith_score, faith_reason, passed = 0.0, "发生错误，评分已跳过。", None, None, False
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
             futures = {}
@@ -634,13 +657,13 @@ class TestEngine:
                         assertion_detail = {"passed": False, "score": 0, "total": 0, "passed_count": 0, 
                                           "results": [{"id": "?", "name": "timeout", "passed": False, "message": "Assertion engine timeout"}]}
                     else:
-                        score, reason, passed = 0.0, "Semantic evaluation timeout", False
+                        score, reason, passed = 0.0, "语义评分超时", False
                 except Exception as e:
                     if name == 'assertion':
                         assertion_detail = {"passed": False, "score": 0, "total": 0, "passed_count": 0,
                                           "results": [{"id": "?", "name": "error", "passed": False, "message": str(e)}]}
                     else:
-                        score, reason, passed = 0.0, f"Semantic evaluation error: {e}", False
+                        score, reason, passed = 0.0, f"语义评分错误：{e}", False
 
         # ─── 综合 passed 判定 ───
         if execution_mode == "assertion":
@@ -675,6 +698,8 @@ class TestEngine:
             "category": case_data.get("category"),
             "priority": case_data.get("priority"),
             "module": case_data.get("module"),
+            "validation": self._stringify_field(case_data.get("validation")),
+            "overall_criteria": self._stringify_field(case_data.get("overall_criteria")),
         }
 
     def run_batch(self, cases: List[Dict[str, Any]], api_name: str = "Skills", on_step_complete=None, should_stop=None, execution_mode: str = "full", max_workers: int = 1) -> List[Dict[str, Any]]:
@@ -725,7 +750,7 @@ class TestEngine:
                     "actual_output_cn": "",
                     "retrieval_context": "",
                     "score": 0,
-                    "reason": f"Exception in run_case: {e}",
+                    "reason": f"执行异常：{e}",
                     "passed": False,
                     "thinking": "",
                     "inform_base": "",
@@ -737,6 +762,8 @@ class TestEngine:
                     "category": case.get("category"),
                     "priority": case.get("priority"),
                     "module": case.get("module"),
+                    "validation": _stringify_field(case.get("validation")),
+                    "overall_criteria": _stringify_field(case.get("overall_criteria")),
                 }
 
         # Run single turn cases (并发或串行)
@@ -799,13 +826,15 @@ class TestEngine:
             conversation_turns = []
             for i, row in enumerate(group):
                 conversation_turns.append({
-                    "turn": row.get("turn_index", i + 1),
-                    "user": row.get("input", ""),
-                    "expected": row.get("expected_output", ""),
-                    "validation": row.get("validation", {"type": "semantic", "threshold": 0.5}),
-                    "retrieval_context": row.get("retrieval_context", []),
-                    "case_id": case_id # pass along case id for report rendering matching
-                })
+                "turn": row.get("turn_index", i + 1),
+                "user": row.get("input", ""),
+                "user_cn": row.get("input_cn", ""),
+                "expected": row.get("expected_output", ""),
+                "expected_cn": row.get("expected_output_cn", ""),
+                "validation": row.get("validation", {"type": "semantic", "threshold": 0.5}),
+                "retrieval_context": row.get("retrieval_context", []),
+                "case_id": case_id # pass along case id for report rendering matching
+            })
             
             base_case["conversation"] = conversation_turns
             
@@ -854,14 +883,18 @@ class TestEngine:
                 break
             turn_num = turn.get("turn", len(turn_results) + 1)
             user_message = turn.get("user", "")
+            user_cn = _safe_str(turn.get("user_cn", ""))
             expected = turn.get("expected", "")
+            expected_cn = _safe_str(turn.get("expected_cn", ""))
             context = turn.get("retrieval_context", case_data.get("retrieval_context", []))
-            
+
             if not user_message:
                 turn_results.append({
                     "turn": turn_num,
                     "user": "",
+                    "user_cn": user_cn,
                     "expected": expected,
+                    "expected_cn": expected_cn,
                     "actual": "",
                     "error": "Empty user message",
                     "retrieval_context": "",
@@ -913,7 +946,9 @@ class TestEngine:
                 turn_results.append({
                     "turn": turn_num,
                     "user": user_message,
+                    "user_cn": user_cn,
                     "expected": expected,
+                    "expected_cn": expected_cn,
                     "actual": actual_output,
                     "actual_cn": "",
                     "error": actual_output,
@@ -925,11 +960,13 @@ class TestEngine:
                     "ttft": ttft
                 })
                 break  # Stop on error
-            
+
             turn_results.append({
                 "turn": turn_num,
                 "user": user_message,
+                "user_cn": user_cn,
                 "expected": expected,
+                "expected_cn": expected_cn,
                 "actual": actual_output,
                 "actual_cn": actual_output_cn,
                 "retrieval_context": ", ".join(context) if isinstance(context, list) else str(context or ""),
@@ -977,6 +1014,8 @@ class TestEngine:
                 "category": case_data.get("category"),
                 "priority": case_data.get("priority"),
                 "module": case_data.get("module"),
+                "validation": _stringify_field(case_data.get("validation")),
+                "overall_criteria": _stringify_field(case_data.get("overall_criteria")),
             }
         
         # Phase 3: Build ConversationalTestCase and evaluate with ConversationalGEval
@@ -1002,8 +1041,8 @@ class TestEngine:
                         expected_outcomes.append(expected_msg)
                 
                 # Create ConversationalTestCase
-                scenario = _safe_str(case_data.get("description")) or "Multi-turn conversation test"
-                expected_outcome = "; ".join(expected_outcomes) if expected_outcomes else "Assistant should provide correct responses"
+                scenario = _safe_str(case_data.get("description")) or "多轮对话测试"
+                expected_outcome = "; ".join(expected_outcomes) if expected_outcomes else "助手应给出正确回复"
                 
                 convo_test_case = ConversationalTestCase(
                     scenario=scenario,
@@ -1014,18 +1053,18 @@ class TestEngine:
                 # Evaluate with ConversationalGEval (single LLM call for entire conversation)
                 async def eval_conversation():
                     await self.conversational_metric.a_measure(convo_test_case)
-                    return self.conversational_metric.score, self.conversational_metric.reason
+                    return self.conversational_metric.score, self._ensure_cn_reason(self.conversational_metric.reason)
                 
                 overall_score, overall_reason = asyncio.run(eval_conversation())
                 overall_passed = overall_score >= 0.5
                 
             except Exception as e:
                 overall_score = 0.0
-                overall_reason = f"ConversationalGEval evaluation failed: {str(e)}"
+                overall_reason = f"多轮评分失败：{str(e)}"
                 overall_passed = False
         else:
             # Fallback: ConversationalGEval not available
-            overall_reason = "ConversationalGEval not available, scoring skipped"
+            overall_reason = "服务器未加载 ConversationalGEval，多轮评分已跳过。"
             overall_passed = False
         
         # 拼接各turn的actual_cn作为整体actual_output_cn
@@ -1064,4 +1103,6 @@ class TestEngine:
             "category": case_data.get("category"),
             "priority": case_data.get("priority"),
             "module": case_data.get("module"),
+            "validation": _stringify_field(case_data.get("validation")),
+            "overall_criteria": _stringify_field(case_data.get("overall_criteria")),
         }

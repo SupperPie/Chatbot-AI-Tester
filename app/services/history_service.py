@@ -73,9 +73,13 @@ class HistoryService:
                 history_id=history_id,
                 case_id=r.get('id') or r.get('case_id'),
                 input=r.get('input'),
+                input_cn=r.get('input_cn'),
                 actual_output=r.get('actual_output'),
                 actual_output_cn=r.get('actual_output_cn'),
                 expected_output=r.get('expected_output'),
+                expected_output_cn=r.get('expected_output_cn'),
+                description=r.get('description'),
+                tags=r.get('tags'),
                 retrieval_context=r.get('retrieval_context'),
                 score=r.get('score'),
                 reason=r.get('reason'),
@@ -100,6 +104,8 @@ class HistoryService:
                 category=r.get('category'),
                 priority=r.get('priority'),
                 module=r.get('module'),
+                validation=r.get('validation'),
+                overall_criteria=r.get('overall_criteria'),
                 created_at=now
             )
             self.db.add(test_result)
@@ -235,6 +241,8 @@ class HistoryService:
             'duration': duration_str,
             'api_name': entry.api_name,
             'report_name': entry.report_name,
+            'execution_mode': entry.execution_mode,
+            'max_workers': entry.max_workers,
             'total': entry.total,
             'passed': entry.passed,
             'failed': entry.failed,
@@ -252,9 +260,13 @@ class HistoryService:
                     'id': r.case_id,
                     'case_id': r.case_id,
                     'input': r.input,
+                    'input_cn': r.input_cn,
                     'actual_output': r.actual_output,
                     'actual_output_cn': r.actual_output_cn,
                     'expected_output': r.expected_output,
+                    'expected_output_cn': r.expected_output_cn,
+                    'description': r.description,
+                    'tags': r.tags,
                     'retrieval_context': r.retrieval_context,
                     'score': r.score,
                     'reason': r.reason,
@@ -279,6 +291,9 @@ class HistoryService:
                     'category': r.category,
                     'priority': r.priority,
                     'module': r.module,
+                    'validation': r.validation,
+                    'overall_criteria': r.overall_criteria,
+                    'review_comment': r.review_comment,
                 }
                 results.append(result_dict)
             base_dict['results'] = results

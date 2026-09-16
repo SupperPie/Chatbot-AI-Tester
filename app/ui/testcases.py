@@ -650,7 +650,7 @@ def render_testcases_page():
                  except Exception as e:
                      st.error(f"Template not found: {e}")
              
-                 st.info("Upload CSV/JSON. Required: `input`, `expected_output`. Optional: `id`, `description`, `priority`, `module`, `tags`, `type`, `turn_index`, `validation`, `overall_criteria`, `retrieval_context`, `assertions`.")
+                 st.info("Upload CSV/JSON. Required: `input`, `expected_output`. Optional: `id`, `input_cn`, `expected_output_cn`, `description`, `priority`, `module`, `tags`, `type`, `turn_index`, `validation`, `overall_criteria`, `retrieval_context`, `assertions`.")
                  uploaded_file = st.file_uploader("Upload File", type=["csv", "json"], key="popover_uploader")
              
                  if uploaded_file is not None:
@@ -1097,7 +1097,7 @@ def render_testcases_page():
         total_items = len(display_df)
 
         # 选择控制 + 统计 + 每页 + 分页（同一行）
-        ctrl_col1, ctrl_col2, ctrl_col3, ctrl_col4, ctrl_col5, ctrl_col6 = st.columns([1.35, 1.35, 1.15, 1.95, 1.0, 5.2])
+        ctrl_col1, ctrl_col2, ctrl_col3, ctrl_col4, ctrl_col5, ctrl_col6 = st.columns([1.35, 1.35, 1.15, 2.7, 1.0, 4.45])
 
         with ctrl_col1:
             # 全表（跨页）全选：以当前表格数据（display_df）为准
@@ -1138,7 +1138,7 @@ def render_testcases_page():
             selected_rows = st.session_state.df[st.session_state.df.get('Select', False) == True] if 'Select' in st.session_state.df.columns else pd.DataFrame()
             selected_count = _count_unique_case_ids(selected_rows)
             filter_info = f"筛选: {filtered_count}/{total_count}" if filtered_count < total_count else f"共 {total_count} 个用例"
-            st.markdown('<div style="padding-top: 8px;">📊 {} | ✅ 已选: <b>{}</b> 个用例</div>'.format(filter_info, selected_count), unsafe_allow_html=True)
+            st.markdown('<div style="padding-top: 8px; white-space: nowrap;">📊 {} | ✅ 已选: <b>{}</b> 个用例</div>'.format(filter_info, selected_count), unsafe_allow_html=True)
 
         with ctrl_col5:
             page_opts = [20, 30, 50, 100]
@@ -1418,8 +1418,11 @@ def render_testcases_page():
     run_report_name = None
 
     # 弹窗确认后的执行请求（Run 确认弹窗设置）
-    # 两步rerun机制：确认 → 第一次rerun（让dialog消失） → 第二次rerun才开始同步polling
-    # 避免 Streamlit dialog 在同步polling阻塞期间无法正常关闭
+    # 三步rerun机制：
+    #   帧1（dialog内）: 点"开始执行" → set confirmed_run + pop pending → rerun
+    #   帧2: pop confirmed_run → set _executing_run → rerun（dialog 已不被调用，但需要一帧让DOM关闭）
+    #   帧3: pop _executing_run → set _run_starting → rerun（再给一帧，彻底让dialog关闭flush到前端）
+    #   帧4: pop _run_starting → 进入polling（此时dialog已完全关闭，不会出现截图里的半透明遮挡）
     _confirmed = st.session_state.pop('confirmed_run', None)
     if _confirmed:
         st.session_state['_executing_run'] = _confirmed
@@ -1427,12 +1430,17 @@ def render_testcases_page():
 
     _executing = st.session_state.pop('_executing_run', None)
     if _executing:
-        cases_to_run = _executing.get('cases') or []
-        run_report_name = _executing.get('report_name')
+        st.session_state['_run_starting'] = _executing
+        st.rerun()
+
+    _starting = st.session_state.pop('_run_starting', None)
+    if _starting:
+        cases_to_run = _starting.get('cases') or []
+        run_report_name = _starting.get('report_name')
 
     # 对话框待处理请求（单次消费，避免确认后反复命中 dialog）
     _pending_run_dialog = st.session_state.get('pending_run_dialog')
-    if _pending_run_dialog and not _executing:
+    if _pending_run_dialog and not _executing and not _starting:
         run_confirm_dialog(
             _pending_run_dialog.get('cases') or [],
             _pending_run_dialog.get('api_name') or selected_api,

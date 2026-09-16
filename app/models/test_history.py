@@ -13,6 +13,8 @@ class TestHistory(Base):
     timestamp = Column(DateTime, nullable=False)
     api_name = Column(String(100))
     report_name = Column(String(200))  # 用户自定义的报告名称（Test Report 页显示）
+    execution_mode = Column(String(20), default='full')  # 运行时执行模式：full/semantic/assertion（Report 页默认值用）
+    max_workers = Column(Integer, default=3)  # 运行时并发线程数（Report 页默认值用）
     total = Column(Integer, default=0)
     passed = Column(Integer, default=0)
     failed = Column(Integer, default=0)
@@ -68,6 +70,8 @@ class TestResult(Base):
     priority = Column(String(2))      # 执行时用例优先级 P0/P1/P2
     module = Column(String(100))      # 执行时用例模块标签
     review_comment = Column(Text)     # 人工评审备注
+    validation = Column(Text)         # 执行时用例的验证规则（JSON 字符串）
+    overall_criteria = Column(Text)   # 执行时用例的全局判定标准
     created_at = Column(DateTime, default=datetime.utcnow)
 
     history = relationship('TestHistory', back_populates='results')

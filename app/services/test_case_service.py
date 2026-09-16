@@ -83,7 +83,31 @@ class TestCaseService:
     def get_by_category(self, category_id: str) -> List[TestCase]:
         """获取指定目录下的测试用例"""
         return self.db.query(TestCase).filter(TestCase.category_id == category_id).all()
-    
+
+    def get_cn_map_by_ids(self, case_ids: List[str]) -> Dict[tuple, Dict[str, str]]:
+        """按 id 批量查询用例快照字段，返回 (id, turn_index) → 映射。
+        包含 input_cn/expected_output_cn/description/tags，用于报告页回填缺失的快照列。"""
+        if not case_ids:
+            return {}
+        cn_map: Dict[tuple, Dict[str, str]] = {}
+        for i in range(0, len(case_ids), 500):
+            chunk = [str(c).strip() for c in case_ids[i:i + 500] if str(c).strip()]
+            if not chunk:
+                continue
+            rows = self.db.query(TestCase).filter(TestCase.id.in_(chunk)).all()
+            for r in rows:
+                try:
+                    ti = int(r.turn_index or 1)
+                except (TypeError, ValueError):
+                    ti = 1
+                cn_map[(str(r.id), ti)] = {
+                    'input_cn': (r.input_cn or '').strip(),
+                    'expected_output_cn': (r.expected_output_cn or '').strip(),
+                    'description': (r.description or '').strip(),
+                    'tags': r.tags if r.tags else [],
+                }
+        return cn_map
+
     def update_category(self, test_case_ids: List[str], category_id: str) -> int:
         """批量更新测试用例的目录"""
         count = self.db.query(TestCase).filter(TestCase.id.in_(test_case_ids)).update(
