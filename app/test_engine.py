@@ -698,8 +698,8 @@ class TestEngine:
             "category": case_data.get("category"),
             "priority": case_data.get("priority"),
             "module": case_data.get("module"),
-            "validation": self._stringify_field(case_data.get("validation")),
-            "overall_criteria": self._stringify_field(case_data.get("overall_criteria")),
+            "validation": _stringify_field(case_data.get("validation")),
+            "overall_criteria": _stringify_field(case_data.get("overall_criteria")),
         }
 
     def run_batch(self, cases: List[Dict[str, Any]], api_name: str = "Skills", on_step_complete=None, should_stop=None, execution_mode: str = "full", max_workers: int = 1) -> List[Dict[str, Any]]:
