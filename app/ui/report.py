@@ -951,7 +951,28 @@ def render_report_page():
                         st.session_state.pop(f"pending_rerun_{entry_id}", None)
                         st.warning("No results to rerun.")
                     else:
-                        selected_rerun = edited_df[edited_df["Select"] == True]
+                        # 白名单：Rerun 只允许重跑「当前报告自身结果」里存在的用例。
+                        # 以 DB 中该 history 的 results 为准（权威来源），
+                        # 防止多报告展开时 data_editor/fragment 勾选状态跨报告串扰，
+                        # 把别的报告（如正在并发运行的 Job）的用例误带进本次 Rerun。
+                        report_case_ids = set()
+                        for _r in (entry.get('results') or []):
+                            _cid = _r.get('case_id') or _r.get('id')
+                            if _cid is not None:
+                                report_case_ids.add(str(_cid).strip())
+
+                        _all_selected = edited_df[edited_df["Select"] == True]
+                        if "case_id" in _all_selected.columns:
+                            _sel_ids = _all_selected["case_id"].astype(str).str.strip()
+                            _in_scope = _sel_ids.isin(report_case_ids)
+                            _foreign = _sel_ids[~_in_scope].dropna().unique().tolist()
+                            if _foreign:
+                                # 越界勾选：只可能来自跨报告 fragment/widget 状态串扰，记录便于追踪
+                                print(f"[rerun-guard] report {entry_id}: dropped {len(_foreign)} "
+                                      f"out-of-scope selected case(s): {_foreign[:20]}")
+                            selected_rerun = _all_selected[_in_scope]
+                        else:
+                            selected_rerun = _all_selected
                         if selected_rerun.empty:
                             # 未勾选用例：消费 pending，避免下次 rerun 反复弹警告
                             st.session_state.pop(f"pending_rerun_{entry_id}", None)
