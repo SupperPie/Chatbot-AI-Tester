@@ -1461,6 +1461,10 @@ def render_testcases_page():
                  'api_name': selected_api,
                  'case_count': _pending_case_count,
              }
+             # 清空勾选标记：cases 已捕获到 pending_run_dialog，
+             # 防止上一次 Run 的 Select=True 残留在全局 df 中，
+             # 被下一次 Run 的 all_selected 误带入（跨目录/跨报告串用例）
+             st.session_state.df.loc[st.session_state.df["Select"] == True, "Select"] = False
              st.rerun()
              
     elif delete_selected_clicked:
