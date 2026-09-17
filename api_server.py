@@ -16,7 +16,7 @@ load_dotenv(override=True)
 app = FastAPI(
     title="Chatbot AI Tester API",
     description="测试报告导出及管理接口",
-    version="1.0.0"
+    version="4.2"
 )
 
 
