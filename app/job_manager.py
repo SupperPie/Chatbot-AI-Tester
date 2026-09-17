@@ -69,8 +69,10 @@ class JobManager:
                         ).scalar() or 0
                         job.passed = int(passed_count)
                         job.failed = int(total_results - passed_count)
-                        job.total = int(total_results)
                         job.started_count = int(total_results)
+                        # total 保留计划总数（Continue 依赖 total-started>0 显示按钮），仅在缺失/偏小时兜底
+                        if not job.total or job.total < total_results:
+                            job.total = int(total_results)
                         print(f"[stale-detect] Job {job.id} marked as interrupted ({total_results} results preserved)")
                 db.commit()
                 db.close()
@@ -176,6 +178,12 @@ class JobManager:
                 for r in db.query(TestResult).filter(TestResult.history_id == report_id).all():
                     completed_keys.add(r.case_id)  # 用 case_id 标识；多轮以 id 为整体单位
 
+                # 续跑前已完成的用例数（计划内 ∩ 已落库），作为进度计数偏移：
+                # 让续跑期间 total/started_count 以整份报告为口径（如 13/63），
+                # 而不是被剩余批的局部计数（1/50）覆盖
+                planned_ids = {c["id"] for c in entry.case_ids}
+                base_done = len(planned_ids & completed_keys)
+
                 remaining_ids = []
                 for c in entry.case_ids:
                     if c["id"] not in completed_keys:
@@ -224,7 +232,7 @@ class JobManager:
         
         thread = threading.Thread(
             target=self._worker,
-            args=(report_id, remaining_cases, api_name, execution_mode, max_workers)
+            args=(report_id, remaining_cases, api_name, execution_mode, max_workers, base_done)
         )
         thread.daemon = True
         self.active_jobs[report_id] = {
@@ -255,10 +263,12 @@ class JobManager:
             print(f"Error reloading cases: {e}")
             return []
 
-    def _worker(self, report_id: str, cases: List[Dict], api_name: str, execution_mode: str = "full", max_workers: int = 1):
+    def _worker(self, report_id: str, cases: List[Dict], api_name: str, execution_mode: str = "full", max_workers: int = 1, count_offset: int = 0):
         # Callback for incremental updates
+        # count_offset：Continue 续跑时传「续跑前已完成的用例数」，让 current/total
+        # 以整份报告为口径（如 13/63）而不是剩余批口径（1/50），避免覆盖 history 的 total/started_count
         def on_step_complete(case_result: Dict, current_count: int, total_count: int):
-            self._update_job_progress(report_id, case_result, current_count, total_count)
+            self._update_job_progress(report_id, case_result, current_count + count_offset, total_count + count_offset)
         
         # Check cancellation
         def should_stop():
@@ -419,10 +429,15 @@ class JobManager:
                         TestResult.history_id == report_id,
                         TestResult.passed == True
                     ).scalar() or 0
-                    entry.total = int(total_results)
                     entry.passed = int(passed_count)
                     entry.failed = int(total_results - passed_count)
                     entry.started_count = int(total_results)
+                    # total 保留「计划总数」（创建时写入的 case 数），不要重置为已完成数：
+                    # Continue 按钮依赖 total - started_count > 0 判断是否还有剩余用例，
+                    # 重置成已完成数会让 remaining 恒为 0，Continue 按钮消失。
+                    # 仅在 completed（二者相等）或旧数据 total 缺失/偏小时兜底修正。
+                    if status == 'completed' or not entry.total or entry.total < total_results:
+                        entry.total = int(total_results)
 
                 db.commit()
                 db.close()
