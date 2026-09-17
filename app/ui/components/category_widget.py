@@ -172,11 +172,18 @@ def _render_tree(tree: list, service: CategoryService):
     id_to_index['__all__'] = current_index
     current_index += 1
 
+    def _subtree_count(node) -> int:
+        """节点显示数 = 自身用例数 + 所有子孙节点用例数（自底向上累加）"""
+        cnt = counts_cache.get(node['id'], 0)
+        for child in node.get('children') or []:
+            cnt += _subtree_count(child)
+        return cnt
+
     def build_sac_tree(nodes):
         nonlocal current_index
         items = []
         for node in nodes:
-            case_count = counts_cache.get(node['id'], 0)
+            case_count = _subtree_count(node)
             icon = "folder-fill" if node.get('children') else "folder"
             label = f"{node['name']} ({case_count})"
 
