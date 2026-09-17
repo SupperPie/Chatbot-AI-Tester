@@ -14,13 +14,14 @@ def get_category_options():
         
         options = []
         
-        def flatten_tree(nodes, prefix=""):
+        def flatten_tree(nodes):
             for node in nodes:
-                indent = "　" * (node['level'] - 1)
-                display_name = f"{indent}{node['name']}"
+                # 用完整 path 显示，避免同名不同父节点（如 subagent/Q&A 与 中信/Q&A）
+                # 在下拉框中显示完全相同、无法区分导致选错目录
+                display_name = f"📁 {node['path']}"
                 options.append((node['id'], display_name))
                 if node.get('children'):
-                    flatten_tree(node['children'], prefix + "  ")
+                    flatten_tree(node['children'])
 
         flatten_tree(tree)
         db.close()
@@ -45,25 +46,23 @@ def get_category_ids_with_children(category_id: str) -> list:
 def render_category_selector():
     """渲染目录选择下拉框，返回选中的目录 ID"""
     options = get_category_options()
-    
-    # 构建选项
+
+    # 直接以 ID 作为 options，通过 format_func 显示名称。
+    # 避免通过 label 反查 index（同名 label 时 .index() 只会命中第一个，导致选错）
     option_ids = [opt[0] for opt in options]
-    option_names = [opt[1] for opt in options]
-    
+    id_to_label = {opt[0]: opt[1] for opt in options}
+
     # 获取当前选中的目录
     current_id = st.session_state.get('selected_category', 'root')
     current_index = option_ids.index(current_id) if current_id in option_ids else 0
-    
-    selected_name = st.selectbox(
+
+    selected_id = st.selectbox(
         "📁 目录筛选",
-        options=option_names,
+        options=option_ids,
         index=current_index,
+        format_func=lambda x: id_to_label.get(x, x),
         key="category_selector"
     )
-    
-    # 根据名称找到 ID
-    selected_index = option_names.index(selected_name)
-    selected_id = option_ids[selected_index]
-    
+
     st.session_state.selected_category = selected_id
     return selected_id
