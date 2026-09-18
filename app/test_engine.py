@@ -14,12 +14,41 @@ from dotenv import load_dotenv
 # ---------- API call retry helper (Task: job-resilience-and-continue) ----------
 # 对瞬时网络异常做 3 次指数退避重试；业务返回的错误字符串（"Error: ..."）不重试，
 # 因为那是被测系统的业务错误，重试无意义。
+#
+# 瞬时网络错误的两类形态（都要重试）：
+#   1. 抛出的 requests 异常（ConnectionError/Timeout/ChunkedEncodingError 等）
+#   2. chat_client 各 client 内部 except 兜底后返回的 "Error: {异常}" 字符串
+#      （如 SSE 流被服务端提前断开时的 "Error: Response ended prematurely"）。
+#      这类字符串若不识别会绕过重试直接判失败，所以按特征匹配后同样走重试。
+#      业务错误（"❌ SERVER DETAIL"、配置缺失/token 过期等）不含这些特征，仍不重试。
+_TRANSIENT_NET_ERROR_PATTERNS = (
+    "response ended prematurely",   # ChunkedEncodingError / ProtocolError：SSE 流未正常结束连接即断
+    "connection broken",
+    "connection reset",
+    "connection aborted",
+    "connection refused",
+    "remote end closed connection",  # RemoteDisconnected
+    "max retries exceeded",          # requests 连接失败重试耗尽
+    "read timed out",
+    "timed out",                     # 兜底：各类 timeout 字符串（含 Portal IM 600s / init 60s）
+)
+
+
+def _is_transient_net_error_str(resp) -> bool:
+    """判断 chat_client 返回的字符串是否为瞬时网络错误（可重试）。"""
+    if not isinstance(resp, str) or not resp.lstrip().startswith("Error"):
+        return False
+    low = resp.lower()
+    return any(p in low for p in _TRANSIENT_NET_ERROR_PATTERNS)
+
+
 def _call_chat_with_retry(*args, max_retries: int = 3, base_delay: float = 1.0, **kwargs):
     """Wrap get_chat_response with retry on transient network exceptions.
 
     Retries on requests-level exceptions (ConnectionError/Timeout) and bare
     ConnectionError/TimeoutError. Other exceptions (e.g. value errors, business
-    logic) propagate immediately.
+    logic) propagate immediately. Also retries on transient network error
+    strings returned by chat_client (e.g. "Error: Response ended prematurely").
     """
     try:
         import requests as _requests
@@ -34,17 +63,24 @@ def _call_chat_with_retry(*args, max_retries: int = 3, base_delay: float = 1.0, 
         retry_excs = (ConnectionError, TimeoutError)
 
     last_exc = None
+    resp = None
     for attempt in range(max_retries):
         try:
-            return get_chat_response(*args, **kwargs)
+            resp = get_chat_response(*args, **kwargs)
+            if _is_transient_net_error_str(resp):
+                last_exc = resp
+            else:
+                return resp
         except retry_excs as e:
             last_exc = e
-            if attempt < max_retries - 1:
-                sleep_s = base_delay * (2 ** attempt)
-                print(f"[retry] API call failed ({type(e).__name__}: {e}), retry {attempt + 1}/{max_retries - 1} after {sleep_s}s")
-                time.sleep(sleep_s)
-            continue
-    raise RuntimeError(f"API call failed after {max_retries} retries: {last_exc}")
+        if attempt < max_retries - 1:
+            sleep_s = base_delay * (2 ** attempt)
+            print(f"[retry] API call failed ({last_exc}), retry {attempt + 1}/{max_retries - 1} after {sleep_s}s")
+            time.sleep(sleep_s)
+    # 重试耗尽：异常按原语义 raise；错误字符串原样返回（保持原有错误展示与判分逻辑）
+    if isinstance(last_exc, BaseException):
+        raise RuntimeError(f"API call failed after {max_retries} retries: {last_exc}")
+    return resp
 # -------------------------------------------------------------------------------
 
 load_dotenv(override=True)
