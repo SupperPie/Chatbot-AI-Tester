@@ -281,16 +281,17 @@ class FeishuClient:
 
 
 def export_report_to_feishu(
-    report_data: List[Dict[str, Any]], 
+    report_data: List[Dict[str, Any]],
     spreadsheet_token: str = None,
     sheet_id: str = None,
     wiki_token: str = None,
     api_name: str = "Test",
     create_new_sheet: bool = True,
     progress_callback = None,
+    sheet_title: str = None,
 ) -> Dict[str, Any]:
     """导出测试报告到飞书表格
-    
+
     Args:
         report_data: 测试报告数据列表
         spreadsheet_token: 电子表格 token（如果是独立表格）
@@ -299,7 +300,9 @@ def export_report_to_feishu(
         api_name: API 名称，用于生成新 sheet 名称
         create_new_sheet: 是否创建新的工作表（默认 True）
         progress_callback: 可选回调 fn(stage: str, current: int, total: int, detail: str)
-    
+        sheet_title: 新工作表名称；默认用跑 Report 时设定的名称，
+                     未提供时回退为 "API名称_日期时间"
+
     Returns:
         导出结果
     """
@@ -311,7 +314,7 @@ def export_report_to_feishu(
                 pass
 
     client = FeishuClient()
-    
+
     # 如果是 wiki 中的表格，需要先获取实际的 spreadsheet token
     if wiki_token:
         _report("wiki", 0, 1, "解析 wiki 链接...")
@@ -319,12 +322,18 @@ def export_report_to_feishu(
         spreadsheet_token = node_info.get("obj_token")
         if not spreadsheet_token:
             raise Exception("无法获取 wiki 中表格的 token")
-    
-    # 创建新的工作表，名称为 "API名称_日期"
+
+    # 创建新的工作表：优先用调用方指定的名称（跑 Report 时设定的名称）
     if create_new_sheet:
         _report("create_sheet", 0, 1, "创建新 sheet...")
-        sheet_title = f"{api_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-        sheet_id = client.create_sheet(spreadsheet_token, sheet_title)
+        import re as _re
+        # 清理飞书 title 不允许的字符（控制字符与常见非法字符），并截断到 100 字符
+        cleaned_title = _re.sub(r"[\x00-\x1f\\/:*?\"'\[\]]", " ", str(sheet_title or "")).strip()
+        if cleaned_title:
+            final_title = cleaned_title[:100]
+        else:
+            final_title = f"{api_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        sheet_id = client.create_sheet(spreadsheet_token, final_title)
     elif not sheet_id:
         # 如果不创建新 sheet 且没有指定 sheet_id，获取第一个工作表
         _report("meta", 0, 1, "读取表格元信息...")
@@ -394,32 +403,35 @@ def export_report_to_feishu(
         if item.get("type") == "multi_turn" and item.get("turns"):
             for turn in item["turns"]:
                 score_val = turn.get("score") if turn.get("score") is not None else item.get("score", 0)
+                # 列顺序与 report 页面一致：
+                # ID, Type, Turn_Index, Input, Input_CN, Expected_Output, Expected_Output_CN,
+                # Actual_Output, Actual_Output_CN, Passed, Reason, Description, Tags,
+                # Retrieval_Context, Score, Priority, Module, TTFT, Latency, Assertions,
+                # Validation, Overall_Criteria, Human Review Reason, RAW
                 row = [
                     item.get("case_id", ""),
+                    item.get("type", ""),
+                    turn.get("turn", ""),
                     _truncate_cell(str(turn.get("user", ""))),
                     _truncate_cell(str(turn.get("user_cn", "") or item.get("input_cn", ""))),
                     _truncate_cell(str(turn.get("expected", ""))),
                     _truncate_cell(str(turn.get("expected_cn", "") or item.get("expected_output_cn", ""))),
-                    _truncate_cell(str(item.get("description", ""))),
                     _truncate_cell(str(turn.get("actual", ""))),
                     _truncate_cell(str(turn.get("actual_cn", ""))),
-                    item.get("priority", ""),
-                    _tags_str(item.get("tags")),
-                    item.get("module", ""),
-                    item.get("type", ""),
-                    turn.get("turn", ""),
-                    _truncate_cell(str(turn.get("retrieval_context", ""))),
                     "Pass" if item.get("passed") else "Fail",
-                    score_val,
                     _truncate_cell(str(item.get("reason", ""))),
+                    _truncate_cell(str(item.get("description", ""))),
+                    _tags_str(item.get("tags")),
+                    _truncate_cell(str(turn.get("retrieval_context", ""))),
+                    score_val,
+                    item.get("priority", ""),
+                    item.get("module", ""),
                     turn.get("ttft", 0),
                     turn.get("latency", 0),
                     _truncate_cell(assertion_result_str),
                     _truncate_cell(str(item.get("validation", ""))),
                     _truncate_cell(str(item.get("overall_criteria", ""))),
-                    _truncate_cell(str(item.get("review_comment", ""))),
-                    _truncate_cell(str(turn.get("thinking", ""))),
-                    _truncate_cell(str(turn.get("inform_base", ""))),
+                    _truncate_cell(str(item.get("review_reason", ""))),
                     _truncate_cell(str(turn.get("raw", "")))
                 ]
                 rows.append(row)
@@ -431,30 +443,28 @@ def export_report_to_feishu(
             
             row = [
                 item.get("case_id", ""),
+                item.get("type", ""),
+                "",  # turn_index
                 _truncate_cell(str(item.get("input", ""))),
                 _truncate_cell(str(item.get("input_cn", ""))),
                 _truncate_cell(str(item.get("expected_output", ""))),
                 _truncate_cell(str(item.get("expected_output_cn", ""))),
-                _truncate_cell(str(item.get("description", ""))),
                 _truncate_cell(str(item.get("actual_output", ""))),
                 _truncate_cell(str(item.get("actual_output_cn", ""))),
-                item.get("priority", ""),
-                _tags_str(item.get("tags")),
-                item.get("module", ""),
-                item.get("type", ""),
-                "",  # turn_index
-                _truncate_cell(str(retrieval_context)),
                 "Pass" if item.get("passed") else "Fail",
-                item.get("score", 0),
                 _truncate_cell(str(item.get("reason", ""))),
+                _truncate_cell(str(item.get("description", ""))),
+                _tags_str(item.get("tags")),
+                _truncate_cell(str(retrieval_context)),
+                item.get("score", 0),
+                item.get("priority", ""),
+                item.get("module", ""),
                 item.get("ttft", 0),
                 item.get("latency", 0),
                 _truncate_cell(assertion_result_str),
                 _truncate_cell(str(item.get("validation", ""))),
                 _truncate_cell(str(item.get("overall_criteria", ""))),
-                _truncate_cell(str(item.get("review_comment", ""))),
-                _truncate_cell(str(item.get("thinking", ""))),
-                _truncate_cell(str(item.get("inform_base", ""))),
+                _truncate_cell(str(item.get("review_reason", ""))),
                 _truncate_cell(str(item.get("raw", "")))
             ]
             rows.append(row)
@@ -462,15 +472,15 @@ def export_report_to_feishu(
     if not rows:
         return {"success": False, "message": "没有数据可导出"}
     
-    # 先写入表头（与 report 页面一致）
+    # 先写入表头（与 report 页面列顺序一致）
     headers = [[
-        "ID", "Input", "Input_CN", "Expected_Output", "Expected_Output_CN", "Description",
+        "ID", "Type", "Turn_Index",
+        "Input", "Input_CN", "Expected_Output", "Expected_Output_CN",
         "Actual_Output", "Actual_Output_CN",
-        "Priority", "Tags", "Module", "Type", "Turn_Index",
-        "Retrieval_Context", "Passed", "Score", "Reason",
+        "Passed", "Reason", "Description", "Tags", "Retrieval_Context",
+        "Score", "Priority", "Module",
         "TTFT", "Latency",
-        "Assertions", "Validation", "Overall_Criteria", "Human Review Comment",
-        "Thinking", "Inform Base", "RAW"
+        "Assertions", "Validation", "Overall_Criteria", "Human Review Reason", "RAW"
     ]]
 
     # 导出前预检：定位超出飞书单元格 50000 bytes（按 JSON 转义后计算）的具体列
@@ -478,7 +488,7 @@ def export_report_to_feishu(
     oversized_cells = []
     for row_idx, row in enumerate(rows):
         case_id = str(row[0]) if len(row) > 0 else ""
-        turn = str(row[12]) if len(row) > 12 else ""  # Turn_Index 在 index 12
+        turn = str(row[2]) if len(row) > 2 else ""  # Turn_Index 在 index 2
         for col_idx, cell in enumerate(row):
             txt = "" if cell is None else str(cell)
             b = _json_escaped_bytes(txt)

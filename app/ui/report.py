@@ -287,10 +287,7 @@ def _render_report_table_fragment(entry_id, full_display_df, all_cols, disabled_
             "passed": st.column_config.CheckboxColumn("Passed", width="small"),
             "score": st.column_config.NumberColumn("Score", format="%.2f", width="small"),
             "reason": st.column_config.TextColumn("Reason", width="medium"),
-            "review_comment": st.column_config.TextColumn("Human Review Comment", width="medium"),
             "review_reason": st.column_config.TextColumn("Human Review Reason", width="medium"),
-            "thinking": st.column_config.TextColumn("Thinking", width="medium"),
-            "inform_base": st.column_config.TextColumn("Inform Base", width="medium"),
             "raw": st.column_config.TextColumn("RAW", width="medium"),
         },
         use_container_width=True,
@@ -689,6 +686,13 @@ def render_report_page():
                                 value="https://dragonpass.feishu.cn/wiki/QKLQwwM0BixcMjkTZWVc4Wvmnoh?sheet=eRNryN",
                                 help="粘贴飞书表格链接"
                             )
+                            # Sheet 名默认 = 跑 Report 时设定的名称，可编辑
+                            default_sheet_title = (entry.get('report_name') or '').strip()
+                            sheet_title_input = st.text_input(
+                                "Sheet 名称",
+                                value=default_sheet_title,
+                                help="默认为本次 Report 的名称，可编辑；留空则自动用 API名_时间戳"
+                            )
                             submitted = st.form_submit_button("确认导出")
                             if submitted:
                                 try:
@@ -706,7 +710,8 @@ def render_report_page():
                                                 sheet_id=parsed.get("sheet_id"),
                                                 wiki_token=parsed.get("wiki_token"),
                                                 api_name=report_api_name,
-                                                create_new_sheet=True
+                                                create_new_sheet=True,
+                                                sheet_title=(sheet_title_input or "").strip() or None
                                             )
                                         if export_result.get("success"):
                                             st.success(f"✅ {export_result.get('message')}")
@@ -812,12 +817,6 @@ def render_report_page():
                         lambda x: ", ".join(x) if isinstance(x, list) else str(x)
                     )
 
-                # Ensure review_comment exists
-                if "review_comment" not in display_res_df.columns:
-                    display_res_df["review_comment"] = ""
-                else:
-                    display_res_df["review_comment"] = display_res_df["review_comment"].fillna("").astype(str)
-
                 # Ensure new snapshot columns exist (兼容旧数据；tags 也先初始化为空串，
                 # 下方统一格式化为字符串展示)
                 for _col in ("input_cn", "expected_output_cn", "description", "tags", "type"):
@@ -857,21 +856,20 @@ def render_report_page():
                 else:
                     display_res_df["assertion_result"] = ""
 
-                # Configure standard columns order (与用户指定的 Test Report 列顺序对齐)
+                # Configure standard columns order (与用户指定的 Test Report 列顺序对齐，
+                # 与飞书导出列一致；Select 为 Rerun 勾选用，仅页面显示不导出)
                 target_cols = [
-                    "Select", "case_id",
+                    "Select",
+                    "case_id", "type", "turn_index",
                     "input", "input_cn",
                     "expected_output", "expected_output_cn",
-                    "description",
                     "actual_output", "actual_output_cn",
-                    "priority", "tags", "module",
-                    "type", "turn_index",
-                    "retrieval_context",
-                    "passed", "score", "reason",
+                    "passed", "reason",
+                    "description", "tags", "retrieval_context",
+                    "score", "priority", "module",
                     "ttft", "latency",
                     "assertion_result", "validation", "overall_criteria",
-                    "review_comment", "review_reason",
-                    "thinking", "inform_base", "raw",
+                    "review_reason", "raw",
                 ]
                 # Ensure Select exists
                 if "Select" not in display_res_df.columns:
@@ -879,19 +877,7 @@ def render_report_page():
 
                 # Only keep columns that exist in the dataframe to prevent KeyError
                 display_cols = [c for c in target_cols if c in display_res_df.columns]
-                
-                # 优化: 当 thinking / inform_base 列全为空时，自动隐藏整列
-                def _col_all_empty(df, col):
-                    if col not in df.columns:
-                        return True
-                    s = df[col]
-                    # 视为空: NaN / None / 空字符串 / 仅空白
-                    return s.fillna("").astype(str).str.strip().eq("").all()
-                
-                for _hide_col in ("thinking", "inform_base"):
-                    if _hide_col in display_cols and _col_all_empty(display_res_df, _hide_col):
-                        display_cols.remove(_hide_col)
-                
+
                 # Keep Select if we need it, but we don't use Select in history table right now.
                 display_res_df = display_res_df[display_cols]
                 
@@ -901,7 +887,7 @@ def render_report_page():
                 # 返回的 result_df 保持原始完整文本，供 Rerun/Update 操作使用。
                 # --------------------------
                 all_cols = display_res_df.columns.tolist()
-                editable_cols = ["Select", "passed", "review_comment"]
+                editable_cols = ["Select", "passed"]
                 disabled_cols = [c for c in all_cols if c not in editable_cols]
 
                 edited_df = _render_report_table_fragment(
@@ -1191,19 +1177,23 @@ def render_report_page():
                         try:
                             current_results = entry.get('results', [])
                             updates = {}
+                            # review_comment 列已从表格移除；仅当 edited_df 仍带该列
+                            # （旧缓存帧）时才同步它，避免 str(None) 覆盖成 "None"
+                            has_comment_col = (not edited_df.empty) and ('review_comment' in edited_df.columns)
                             if not edited_df.empty:
                                 for _, row in edited_df.iterrows():
                                     updates[row['case_id']] = {
                                         'passed': row.get('passed'),
-                                        'review_comment': row.get('review_comment')
+                                        'review_comment': row.get('review_comment') if has_comment_col else None,
                                     }
-                            
+
                             updated_count = 0
                             for res in current_results:
                                 cid = res.get('case_id')
                                 if cid in updates:
                                     res['passed'] = bool(updates[cid].get('passed', False))
-                                    res['review_comment'] = str(updates[cid].get('review_comment', ""))
+                                    if has_comment_col:
+                                        res['review_comment'] = str(updates[cid].get('review_comment', "") or "")
                                     res['manual_review'] = True
                                     
                                     if "turns" in res and isinstance(res["turns"], list):
