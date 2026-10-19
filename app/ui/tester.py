@@ -9,7 +9,6 @@ from app.ui.prompts.intent_prompts import (
     INTENT_DEFAULT,
     build_prompt,
     get_requirement_template,
-    get_tags_for_intent,
 )
 
 def render_tester_page():
@@ -18,7 +17,7 @@ def render_tester_page():
     
     # Initialize session state for generated cases
     if "generated_cases" not in st.session_state:
-        st.session_state.generated_cases = pd.DataFrame(columns=["id", "input", "expected_output", "retrieval_context", "description", "tags", "conversation", "priority", "module"])
+        st.session_state.generated_cases = pd.DataFrame(columns=["id", "type", "turn_index", "input", "input_cn", "expected_output", "expected_output_cn", "retrieval_context", "description", "tags", "overall_criteria", "priority", "module"])
         
     if "saved_req" not in st.session_state:
         st.session_state.saved_req = ""
@@ -147,8 +146,6 @@ def render_tester_page():
                             current_id_counter = 0
                             last_description = None
                             current_id = None
-                            intent_tags = get_tags_for_intent(st.session_state.selected_intent)
-                            
                             for case in cases_json:
                                 case_type = case.get("type", "single")
                                 turn_idx = case.get("turn_index", 1)
@@ -158,34 +155,35 @@ def render_tester_page():
                                     current_id_counter += 1
                                     current_id = f"GEN_{str(current_id_counter).zfill(3)}"
 
+                                # 金标上下文：list 序列化为 JSON 字符串存入 retrieval_context（原文）
+                                rc = case.get("retrieval_context", case.get("context", ""))
+                                if isinstance(rc, list):
+                                    rc = json.dumps(rc, ensure_ascii=False)
+                                elif rc is None:
+                                    rc = ""
+
+                                tags = case.get("tags", []) or []
+
                                 flat_cases.append({
                                     "id": current_id,
                                     "type": case.get("type", "single"),
                                     "turn_index": case.get("turn_index", 1),
-                                    "input": case.get("input", "N/A"),
-                                    "expected_output": "",
-                                    "retrieval_context": case.get("expected_output", "N/A"),
+                                    "input": case.get("input", ""),
+                                    "input_cn": case.get("input_cn", ""),
+                                    "expected_output": case.get("expected_output", ""),
+                                    "expected_output_cn": case.get("expected_output_cn", ""),
+                                    "retrieval_context": rc,
                                     "description": case.get("description", ""),
-                                    "tags": list(intent_tags),
+                                    "tags": tags,
                                     "overall_criteria": json.dumps(case.get("overall_criteria", {"must_complete_all_turns": True, "min_success_rate": 0.8}), ensure_ascii=False),
-                                    "priority": "P2",
-                                    "module": "",
+                                    "priority": case.get("priority", "P2") or "P2",
+                                    "module": case.get("module", ""),
                                 })
 
                             generated_df = pd.DataFrame(flat_cases)
-
-                            # Priority 分配：同次 PRD 生成结果按 P1:P2 = 1:3（跨 AC 汇总）
-                            n = len(generated_df)
-                            if n > 0:
-                                p1_count = max(1, round(n * 0.25))
-                                generated_df.loc[:, "priority"] = "P2"
-                                generated_df.iloc[:p1_count, generated_df.columns.get_loc("priority")] = "P1"
-
                             st.session_state.generated_cases = generated_df
-                            p1_total = int((generated_df["priority"] == "P1").sum()) if not generated_df.empty else 0
-                            p2_total = int((generated_df["priority"] == "P2").sum()) if not generated_df.empty else 0
                             generated_case_count = _count_unique_case_ids(generated_df)
-                            st.success(f"✅ Generated {generated_case_count} test cases! Priority 分配：P1={p1_total}, P2={p2_total}")
+                            st.success(f"✅ Generated {generated_case_count} test cases!")
                     else:
                         st.error("Failed to parse AI response. Please try again.")
                         st.text("AI Response:")
@@ -206,8 +204,10 @@ def render_tester_page():
                 "id": st.column_config.TextColumn("ID", width="small", disabled=True),
                 "type": st.column_config.TextColumn("Type", disabled=True),
                 "turn_index": st.column_config.NumberColumn("Turn", width="small", disabled=True),
-                "input": st.column_config.TextColumn("Input Goal", width="medium"),
-                "expected_output": st.column_config.TextColumn("Expected Goal", width="medium"),
+                "input": st.column_config.TextColumn("Input", width="medium"),
+                "input_cn": st.column_config.TextColumn("Input_CN", width="medium", help="Input 的中文翻译（非中文时为翻译，中文留空）"),
+                "expected_output": st.column_config.TextColumn("Expected Output", width="medium"),
+                "expected_output_cn": st.column_config.TextColumn("Expected_Output_CN", width="medium", help="Expected Output 的中文翻译"),
                 "retrieval_context": st.column_config.TextColumn("Retrieval Context", width="large"),
                 "description": st.column_config.TextColumn("Description", width="medium"),
                 "tags": st.column_config.ListColumn("Tags"),
@@ -381,7 +381,7 @@ def render_tester_page():
             saved_count = len({str(c.get('id')).strip() for c in clean_new_cases if c.get('id')})
             
             # Clear generated cases
-            st.session_state.generated_cases = pd.DataFrame(columns=["id", "type", "turn_index", "input", "expected_output", "retrieval_context", "description", "tags", "priority", "module"])
+            st.session_state.generated_cases = pd.DataFrame(columns=["id", "type", "turn_index", "input", "input_cn", "expected_output", "expected_output_cn", "retrieval_context", "description", "tags", "overall_criteria", "priority", "module"])
             
             # Update main df in session state
             if "df" in st.session_state:

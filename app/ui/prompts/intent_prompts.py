@@ -3,7 +3,6 @@
 集中管理 Tester 页面三种意图（默认/咨询意图/购买意图）所对应的：
 - Test Requirements 自动填充模板
 - Prompt 子片段
-- 生成用例时注入的 Tag
 """
 
 # ============================================================
@@ -32,14 +31,7 @@ REQUIREMENT_TEMPLATES = {
 }
 
 
-# ============================================================
-# 意图 -> Tag 映射
-# ============================================================
-TAG_MAPPING = {
-    INTENT_DEFAULT: [],
-    INTENT_CONSULT: ["咨询意图"],
-    INTENT_PURCHASE: ["购买意图"],
-}
+
 
 
 # ============================================================
@@ -48,7 +40,8 @@ TAG_MAPPING = {
 # 插入一个 {intent_fragment} 插槽，用于注入子 prompt。
 # ============================================================
 BASE_PROMPT_TEMPLATE = """You are a testcase generator. Generate test cases based on the requirements and knowledge.
-CRITICAL: You MUST output ONLY a valid JSON array of test case objects. Unless requested otherwise, all "input", "expected_output", "description", and messages MUST be generated in Chinese (中文).
+
+CRITICAL: You MUST output ONLY a valid JSON array of test case objects. Do not include markdown code fences or any text outside the JSON array.
 
 Requirements:
 {requirements}
@@ -56,30 +49,57 @@ Requirements:
 Knowledge Base:
 {knowledge_base}
 {intent_fragment}
-The JSON format MUST strictly follow this flat schema. If generating a multi-turn conversation, DO NOT use a nested "conversation" array. Instead, output one distinct object per turn. Each turn object for the same conversation MUST have the exact same "description" and "type", but an incrementing "turn_index" starting at 1.
+## 语言规则（多语言支持）
+- 用例内容使用 Requirements 中指定的语言作为「原文」。若 Requirements 未明确指定语言，默认使用中文，必要时先向执行方确认。
+- `input` / `expected_output` / `retrieval_context` 一律用**原文**（该指定语言）。
+- 若原文语言**不是中文**：`input_cn` / `expected_output_cn` 必须填入对应 `input` / `expected_output` 的**中文翻译**。
+- 若原文语言**就是中文**：`input_cn` / `expected_output_cn` 必须留空字符串 `""`。
 
-IMPORTANT - "description" field: This field describes the purpose of the test case, corresponding to the Acceptance Criteria (AC) from the product requirements. For each test case, write a concise sentence in Chinese describing which AC this test case is designed to verify. Example: "验证用户在未登录状态下访问个人中心时跳转到登录页" or "验证模型能基于知识库正确回答退改签政策".
+## 字段与 Schema
+每「一轮」输出一个扁平 JSON 对象（禁止嵌套 conversation 数组）。同一段多轮对话的多个对象通过相同 `description` / `module` 连续排列，且 `turn_index` 从 1 递增。
+
+- `type`: `single` 或 `multi_turn`。多轮为主，至少 2 轮。
+- `turn_index`: 从 1 开始的轮次。`multi_turn` 时 turn 1 = 建立上下文（把对话推进到 AC 的 Given 状态，不得用固定问候），turn >= 2 = AC 测试轮（执行 When/Then）。
+- `input` / `expected_output`: 原文（字符串）。
+- `input_cn` / `expected_output_cn`: 中文翻译（见语言规则）。
+- `description`: 一句中文，描述本条用例要验证的验收标准(AC)，例如「验证模型能基于知识库正确回答退改签政策」。
+- `tags`: 恰好两项的列表 `["测试点", "语言"]`。测试点必须取自：参数提取、参数更新、记忆、放宽策略、转人工、语言处理、时间处理、内容咨询、路由、安全拒答、知识问答。语言如：中文、英语、巴西葡萄牙语。
+- `priority`: `P0`（核心路径/冒烟）、`P1`（主要功能）、`P2`（边界/异常）。
+- `module`: 品类/领域（如 flight / hotel / qa），从 Requirements 推断。
+- `retrieval_context`: 金标上下文的**原文**，JSON 字符串数组（list[str]），写出该输入可能命中的关键检索场景/内容；无则 `[]`。
+
+示例（巴西葡萄牙语原文 + 中文翻译列）：
 
 [
   {{
-    "type": "multi_turn", // Use "multi_turn" if testing a sequence, else "single"
-    "turn_index": 1, // Only use turn_index if multi_turn. 1 for first turn, 2 for second, etc.
-    "tags": [], // CRITICAL: This MUST ALWAYS be an empty list []. Do not generate tags.
-    "input": "User's first message (in Chinese)",
-    "expected_output": "Expected assistant response (in Chinese)",
-    "description": "用中文描述本条用例要验证的验收标准(AC)，例如：验证模型能正确回答退款政策"
+    "type": "multi_turn",
+    "turn_index": 1,
+    "input": "Quero reservar um voo para amanhã.",
+    "input_cn": "我想预订明天的航班。",
+    "expected_output": "Claro! Para qual cidade você deseja viajar?",
+    "expected_output_cn": "当然！您想前往哪个城市？",
+    "description": "验证机票预订的出发地/目的地参数提取",
+    "tags": ["参数提取", "巴西葡萄牙语"],
+    "priority": "P0",
+    "module": "flight",
+    "retrieval_context": ["busca de voos", "partida amanhã"]
   }},
   {{
     "type": "multi_turn",
-    "turn_index": 2, // Second turn continues the same conversation
-    "tags": [],
-    "input": "User's follow up message (in Chinese)",
-    "expected_output": "Expected follow up response (in Chinese)",
-    "description": "同上，描述本条用例要验证的验收标准(AC)"
+    "turn_index": 2,
+    "input": "De São Paulo para Lisboa.",
+    "input_cn": "从圣保罗到里斯本。",
+    "expected_output": "Encontrei voos de São Paulo para Lisboa. Posso confirmar a data?",
+    "expected_output_cn": "我找到了从圣保罗到里斯本的航班，可以确认日期吗？",
+    "description": "验证机票预订的出发地/目的地参数提取",
+    "tags": ["参数提取", "巴西葡萄牙语"],
+    "priority": "P0",
+    "module": "flight",
+    "retrieval_context": ["voos São Paulo - Lisboa"]
   }}
 ]
 
-ONLY return the highly-structured JSON array. Do not include markdown blocks like ```json or trailing text."""
+ONLY return the JSON array. No markdown fences, no trailing text."""
 
 
 # ============================================================
@@ -186,6 +206,4 @@ def get_requirement_template(intent: str) -> str:
     return REQUIREMENT_TEMPLATES.get(intent, "")
 
 
-def get_tags_for_intent(intent: str) -> list:
-    """获取指定意图对应的 tag 列表（返回新副本，避免外部修改污染映射）。"""
-    return list(TAG_MAPPING.get(intent, []))
+

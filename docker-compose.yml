@@ -1,7 +1,6 @@
 services:
   chatbot-ai-tester:
     build: .
-    image: chatbot-ai-tester:latest
     container_name: chatbot-ai-tester
     ports:
       - "0.0.0.0:${HOST_PORT:-54321}:${STREAMLIT_PORT:-54321}"
@@ -23,21 +22,3 @@ services:
       # 可选：挂载数据目录持久化
       - ./data:/app/data
 
-  chatbot-ai-tester-api:
-    image: chatbot-ai-tester:latest
-    build: .
-    container_name: chatbot-ai-tester-api
-    # 执行接口服务，独立于 Streamlit 前端，监听 8000
-    command: python -m uvicorn api_server:app --host 0.0.0.0 --port 8000
-    ports:
-      - "0.0.0.0:${API_PORT:-8000}:8000"
-    environment:
-      - DATABASE_URL=${DATABASE_URL:-}
-      - DATABASE_SCHEMA=${DATABASE_SCHEMA:-ai_chatbot_tester}
-      - API_KEY=${API_KEY:-}
-    env_file:
-      - path: .env
-        required: false
-    restart: unless-stopped
-    volumes:
-      - ./data:/app/data
