@@ -2138,6 +2138,10 @@ def get_portal_im_response(message: str, url: str, token: str = None, user_id: s
     coords = extra_params.get("coordinates")
     if coords:
         extra_args["coordinates"] = coords
+    # extra_args_custom：注入任意自定义键（如 app_name / timezone），sessionId 不允许被覆盖
+    for k, v in (extra_params.get("extra_args_custom") or {}).items():
+        if k != "sessionId":
+            extra_args[k] = v
 
     payload = {
         "sessionId": portal_sid,

@@ -21,7 +21,7 @@ from app.routers import cases, jobs, reports, meta
 app = FastAPI(
     title="Chatbot AI Tester Open API",
     description="对外接口：测试用例 / 执行 / 报告 / 导出飞书",
-    version="5.0"
+    version="5.1"
 )
 
 API_KEY = os.getenv("API_KEY", "")
@@ -42,7 +42,7 @@ async def api_key_auth(request: Request, call_next):
 @app.get("/")
 def root():
     """健康检查（开放，无需鉴权）。"""
-    return {"message": "Chatbot AI Tester API", "version": "5.0"}
+    return {"message": "Chatbot AI Tester API", "version": "5.1"}
 
 
 app.include_router(cases.router, prefix="/api/v1/cases", tags=["cases"])

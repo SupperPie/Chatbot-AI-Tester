@@ -47,7 +47,7 @@
         "url": "https://digital-concierge.dragonpass.com",
         "description": "生产环境 - 公网 IM 门户统一接口（所有 agent 自动路由）",
         "type": "portal_im",
-        "token": "eyJhbGciOiJIUzI1NiJ9.eyJpYXQiOjE3OTIxMzMzODEsInN1YiI6ImI3ZWU1ODVkLTlhYWItNDQyOS04MTkxLTNmZDQ3ZjM5ZDdjMCIsImp0aSI6ImI3ZWU1ODVkLTlhYWItNDQyOS04MTkxLTNmZDQ3ZjM5ZDdjMCIsImV4cCI6MTc5MzM0Mjk4MX0.YsPNe89b4VRA9NRanSVyMQ3RkWoxEziMzXH8Ww4ZFXU",
+        "token": "eyJhbGciOiJIUzI1NiJ9.eyJpYXQiOjE3OTI0ODQ0NjgsInN1YiI6ImVjZGM5MTljLTRjMzUtNDMwZC04MmVjLTVmNDMwYWJmMmRmZCIsImp0aSI6ImVjZGM5MTljLTRjMzUtNDMwZC04MmVjLTVmNDMwYWJmMmRmZCIsImV4cCI6MTc5MzY5NDA2OH0.QyV7vtsWB0otoOa3YSINWNWEWLIPDJ5TAdnx0GdZyUo",
         "request_params": {
             "lang": "en-US",
             "source": "",
