@@ -47,24 +47,32 @@
         "url": "https://digital-concierge.dragonpass.com",
         "description": "生产环境 - 公网 IM 门户统一接口（所有 agent 自动路由）",
         "type": "portal_im",
-        "token": "eyJhbGciOiJIUzI1NiJ9.eyJpYXQiOjE3OTI0ODQ0NjgsInN1YiI6ImVjZGM5MTljLTRjMzUtNDMwZC04MmVjLTVmNDMwYWJmMmRmZCIsImp0aSI6ImVjZGM5MTljLTRjMzUtNDMwZC04MmVjLTVmNDMwYWJmMmRmZCIsImV4cCI6MTc5MzY5NDA2OH0.QyV7vtsWB0otoOa3YSINWNWEWLIPDJ5TAdnx0GdZyUo",
+        "token": "eyJhbGciOiJIUzI1NiJ9.eyJpYXQiOjE3OTUwNjc1NjgsInN1YiI6ImUyNzI3MmRmLTA4OTQtNDc3OC1iMmU4LWY4MDA5OWEwNzgxMSIsImp0aSI6ImUyNzI3MmRmLTA4OTQtNDc3OC1iMmU4LWY4MDA5OWEwNzgxMSIsImV4cCI6MTc5NjI3NzE2OH0.7dTsbuugOH6gGsuHoib74I0ev5KkUKPhpa2JENylfmY",
         "request_params": {
             "lang": "en-US",
             "source": "",
             "channel": "JUPITA",
-            "currency": "BRL"
+            "currency": "BRL",
+            "extra_args": {
+                "app_name": "Eleva Beyond"
+            },
+            "session_id": "121591345675296"
         }
     },
     "Portal IM (UAT)": {
         "url": "https://dc-portal-api-uk-uat.dragonpass.com",
         "description": "UAT 环境 - 公网 IM 门户统一接口（测试用）",
         "type": "portal_im",
-        "token": "eyJhbGciOiJIUzI1NiJ9.eyJpYXQiOjE3OTE4ODcxOTEsInN1YiI6ImVkYWFlMTc2LWVlODktNGIxMi04YTQxLTI5ZWY2MjVjZDgyNCIsImp0aSI6ImVkYWFlMTc2LWVlODktNGIxMi04YTQxLTI5ZWY2MjVjZDgyNCIsImV4cCI6MTc5MjA1OTk5MX0.CVoFdq5tEOFV5vxvh-n25UQu0AoXfj0h-vVoO1nt0O8",
+        "token": "eyJhbGciOiJIUzI1NiJ9.eyJpYXQiOjE3OTU0MjEwMTYsInN1YiI6IjYzZDllYjllLTAwYTgtNDkyMS04ZDIxLTI2Y2MwYzVmMGM4YSIsImp0aSI6IjYzZDllYjllLTAwYTgtNDkyMS04ZDIxLTI2Y2MwYzVmMGM4YSIsImV4cCI6MTc5NTU5MzgxNn0.KAmWDmhxdvxpScTTKDs3oaANa0UEaY7sDXDvshBr_jw",
         "request_params": {
             "lang": "en-US",
             "source": "",
             "channel": "JUPITA",
-            "currency": "BRL"
+            "currency": "BRL",
+            "extra_args": {
+                "app_name": "Eleva Beyond"
+            },
+            "session_id": "118963535096224"
         }
     },
     "Supervisor Agent": {
@@ -93,7 +101,13 @@
     "【UAT】Fitness": {
         "url": "http://agent-fitness--platform-ai--80--aws-uk-uat.gz-debug.dp-svc.com/stream",
         "description": "",
-        "type": "fitness"
+        "type": "fitness",
+        "request_params": {
+            "extra_args": {
+                "app_name": "Eleva Beyond"
+            },
+            "session_id": "119847575919296"
+        }
     },
     "【UAT】Flight": {
         "url": "http://agent-flight--platform-ai--80--aws-uk-uat.gz-debug.dp-svc.com/stream",
@@ -115,8 +129,6 @@
         "description": "",
         "type": "agent_qa",
         "request_params": {
-            "query": "How do I search for a flight from London to Tokyo for 2 adults?",
-            "user_id": "4b5006af-2503-4ef5-b9af-f091ce2d7c61",
             "extra_args": {
                 "app_name": "Eleva Beyond"
             },

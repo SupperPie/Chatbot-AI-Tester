@@ -1418,11 +1418,12 @@ def render_testcases_page():
     run_report_name = None
 
     # 弹窗确认后的执行请求（Run 确认弹窗设置）
-    # 三步rerun机制：
+    # 三步rerun机制（与 report.py Rerun 弹窗一致的用户已验证模式）：
     #   帧1（dialog内）: 点"开始执行" → set confirmed_run + pop pending → rerun
-    #   帧2: pop confirmed_run → set _executing_run → rerun（dialog 已不被调用，但需要一帧让DOM关闭）
-    #   帧3: pop _executing_run → set _run_starting → rerun（再给一帧，彻底让dialog关闭flush到前端）
-    #   帧4: pop _run_starting → 进入polling（此时dialog已完全关闭，不会出现截图里的半透明遮挡）
+    #   帧2: pop confirmed_run → set _executing_run → rerun（本帧不做任何事，
+    #        让 dialog 关闭指令完整 flush 到前端，避免被后续阻塞卡住）
+    #   帧3: pop _executing_run → 启动 job + success + sleep(1) + rerun（彻底关闭dialog）
+    #   帧4: pop _active_run_job → 进入polling（此时dialog已完全关闭，不会出现半透明遮挡）
     _confirmed = st.session_state.pop('confirmed_run', None)
     if _confirmed:
         st.session_state['_executing_run'] = _confirmed
@@ -1430,17 +1431,35 @@ def render_testcases_page():
 
     _executing = st.session_state.pop('_executing_run', None)
     if _executing:
-        st.session_state['_run_starting'] = _executing
-        st.rerun()
+        try:
+            from app.job_manager import get_job_manager
+            mgr = get_job_manager()
+            cases_to_run = _executing.get('cases') or []
+            run_report_name = _executing.get('report_name')
+            job_id = mgr.run_background_job(
+                cases_to_run,
+                api_name=selected_api,
+                execution_mode=execution_mode_val,
+                max_workers=_get_max_workers(),
+                report_name=run_report_name,
+            )
+            st.success(f"Started {len(cases_to_run)} case(s)! Job ID: {job_id}")
+            st.session_state['_active_run_job'] = {
+                'job_id': job_id,
+                'cases': cases_to_run,
+                'report_name': run_report_name,
+            }
+            import time
+            time.sleep(1)
+            st.rerun()
+        except Exception as e:
+            st.error(f"Failed to run tests: {e}")
 
-    _starting = st.session_state.pop('_run_starting', None)
-    if _starting:
-        cases_to_run = _starting.get('cases') or []
-        run_report_name = _starting.get('report_name')
+    _active_job = st.session_state.pop('_active_run_job', None)
 
     # 对话框待处理请求（单次消费，避免确认后反复命中 dialog）
     _pending_run_dialog = st.session_state.get('pending_run_dialog')
-    if _pending_run_dialog and not _executing and not _starting:
+    if _pending_run_dialog and not _executing and not _active_job:
         run_confirm_dialog(
             _pending_run_dialog.get('cases') or [],
             _pending_run_dialog.get('api_name') or selected_api,
@@ -1606,21 +1625,12 @@ def render_testcases_page():
                  }
                  st.rerun()
                  
-    if cases_to_run:
+    if _active_job:
+        job_id = _active_job['job_id']
+        cases_to_run = _active_job['cases']
+        run_report_name = _active_job.get('report_name')
         try:
-             # Use JobManager (Async) but simulate sync experience with progress bar
-            from app.job_manager import get_job_manager
-            mgr = get_job_manager()
-            
-            # Start Job
-            job_id = mgr.run_background_job(
-                cases_to_run,
-                api_name=selected_api,
-                execution_mode=execution_mode_val,
-                max_workers=_get_max_workers(),
-                report_name=run_report_name,
-            )
-            
+            # Job 已在确认弹窗 flush 帧启动，这里仅负责轮询进度（模拟同步体验）
             with execution_placeholder.container():
                 # Progress UI
                 progress_bar = st.progress(0, text="Initializing...")

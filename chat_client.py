@@ -4,6 +4,8 @@ import uuid
 import os
 import time
 import logging
+import re
+import threading
 
 # 获取 logger（配置在 streamlit_app.py 入口统一处理）
 logger = logging.getLogger(__name__)
@@ -2049,8 +2051,63 @@ def get_dify_workflow_response(message: str, url: str, token: str = None, user_i
 #   coordinates 可选：附近健身 / eSIM 定位场景传 "lat, lng"，由 request_params.coordinates 配置。
 # ──────────────────────────────────────────────────────────────
 
-# 本地 session_id → 门户 sessionId 的映射缓存（多轮 case 依赖此缓存复用同一个门户会话）
+# 本地 session_id → 门户会话缓存（多轮 case 依赖此缓存复用同一个门户会话，并锁定所用 token）
+#  value: {"portal_sid": str, "token": str}
 _PORTAL_SESSION_CACHE = {}
+# token 池轮转游标 + 锁（并发下线程安全地给每个新会话分配不同 token，避免单 token 被限流）
+_PORTAL_TOKEN_LOCK = threading.Lock()
+_PORTAL_TOKEN_RR = 0
+
+# token 池分隔符：竖线（兼容换行/逗号/分号）。JWT 为 base64url 编码，仅含 [A-Za-z0-9_-.]，
+# 不会出现这些分隔字符，故可安全拆分。
+_TOKEN_SPLIT_RE = re.compile(r"[|\n,;]+")
+
+
+def _split_portal_tokens(token: str) -> list:
+    """把 token 字段拆成 token 池（去空白、去重、保持顺序）。"""
+    if not token:
+        return []
+    result = []
+    for part in _TOKEN_SPLIT_RE.split(token.strip()):
+        part = part.strip()
+        if part and part not in result:
+            result.append(part)
+    return result
+
+
+def _jwt_expiry_ts(token: str):
+    """解析 JWT 的 exp 字段，返回 epoch 秒；解析失败或缺失返回 None。"""
+    try:
+        payload = token.split(".")[1]
+        payload += "=" * (4 - len(payload) % 4)
+        import base64 as _b64
+        claims = json.loads(_b64.urlsafe_b64decode(payload))
+        return claims.get("exp")
+    except Exception:
+        return None
+
+
+def _drop_expired_tokens(tokens: list) -> list:
+    """过滤掉已过期的 token；exp 解析不出来的保留（交给服务端校验）。"""
+    now = time.time()
+    out = []
+    for t in tokens:
+        exp = _jwt_expiry_ts(t)
+        if exp is None or exp >= now:
+            out.append(t)
+    return out
+
+
+def _assign_token_for_session(session_id: str, tokens: list) -> str:
+    """为某个本地会话选定 token：多轮复用已分配的 token；新会话按轮转取下一个。"""
+    global _PORTAL_TOKEN_RR
+    with _PORTAL_TOKEN_LOCK:
+        cached = _PORTAL_SESSION_CACHE.get(session_id)
+        if cached and cached.get("token"):
+            return cached["token"]
+        chosen = tokens[_PORTAL_TOKEN_RR % len(tokens)]
+        _PORTAL_TOKEN_RR += 1
+        return chosen
 
 
 def _portal_init_session(base_url: str, headers_base: dict, extra_params: dict) -> str:
@@ -2088,7 +2145,7 @@ def get_portal_im_response(message: str, url: str, token: str = None, user_id: s
     Args:
         message: 用户消息
         url: 门户 base URL（如 https://dc-portal-api-uk-uat.dragonpass.com）
-        token: JWT token（header: token）
+        token: JWT token（header: token）；支持多个用 `|` 分隔（兼容换行/逗号/分号）构成 token 池
         session_id: 本地会话 ID；同一 ID 的多次调用复用同一门户会话（多轮上下文）
         extra_params: request_params（channel/source/lang/currency/payload_format）
     """
@@ -2096,40 +2153,41 @@ def get_portal_im_response(message: str, url: str, token: str = None, user_id: s
     if session_id is None:
         session_id = str(uuid.uuid4())
 
-    if not token or not token.strip():
-        return ("Error: Portal IM token 未配置。请在 Settings 页面找到对应 API 配置，"
-                "在 Token 列填入登录后的 JWT token（从 App 抓包获取 header 中的 token 字段）。"
-                "token 有效期 48 小时，过期需重新获取。")
+    # —— Token 池 ——
+    # 支持在 Settings 的 Token 列填多个 token（`|` 分隔），并发执行时不同会话轮转使用不同 token，
+    # 避免单个账号/单 token 被限流或排队。dify_workflow 等其它类型不受影响（逻辑只在 portal_im 生效）。
+    tokens = _drop_expired_tokens(_split_portal_tokens(token))
+    if not tokens:
+        return ("Error: Portal IM token 未配置或已全部过期。请在 Settings 页面找到对应 API 配置，"
+                "在 Token 列填入登录后的 JWT token（多个用 `|` 分隔，如 token1|token2，也可换行分隔）。"
+                "token 有效期约 48 小时，过期需重新获取。")
 
-    # 提前解析 JWT exp，过期直接提示，避免白跑一轮网络请求
-    try:
-        import base64 as _b64
-        _payload = token.split(".")[1]
-        _payload += "=" * (4 - len(_payload) % 4)
-        import json as _json
-        _claims = _json.loads(_b64.urlsafe_b64decode(_payload))
-        if _claims.get("exp") and _claims["exp"] < time.time():
-            import datetime as _dt
-            _exp_str = _dt.datetime.fromtimestamp(_claims["exp"]).strftime("%Y-%m-%d %H:%M")
-            return (f"Error: Portal IM token 已于 {_exp_str} 过期。"
-                    "请重新登录 App 抓包获取新 token，并在 Settings 页面更新。")
-    except Exception:
-        pass  # 解析失败就直接发请求，由服务端校验
+    # 选定本会话使用的 token：多轮复用同一个 token（与门户 sessionId 一起缓存）
+    token = _assign_token_for_session(session_id, tokens)
+
+    # 提前解析 JWT exp（池已在上一步过滤，这里仅作兜底，避免白跑一轮网络请求）
+    _exp = _jwt_expiry_ts(token)
+    if _exp and _exp < time.time():
+        import datetime as _dt
+        _exp_str = _dt.datetime.fromtimestamp(_exp).strftime("%Y-%m-%d %H:%M")
+        return (f"Error: Portal IM token 已于 {_exp_str} 过期。"
+                "请重新获取新 token，并在 Settings 页面更新。")
 
     headers_base = {
         "Content-Type": "application/json",
-        "token": token or "",
+        "token": token,
         "lang": extra_params.get("lang", "en-US"),
         "currency": extra_params.get("currency", "BRL"),
     }
 
-    # 获取/复用门户 sessionId
-    portal_sid = _PORTAL_SESSION_CACHE.get(session_id)
+    # 获取/复用门户 sessionId（与分配到的 token 一起缓存，保证多轮上下文一致）
+    cached = _PORTAL_SESSION_CACHE.get(session_id)
+    portal_sid = cached.get("portal_sid") if cached else None
     if portal_sid is None:
         portal_sid = _portal_init_session(url, headers_base, extra_params)
         if portal_sid.startswith("❌") or portal_sid.startswith("Error"):
             return portal_sid  # init 失败，直接返回错误
-        _PORTAL_SESSION_CACHE[session_id] = portal_sid
+        _PORTAL_SESSION_CACHE[session_id] = {"portal_sid": portal_sid, "token": token}
 
     random_id = f"tester_{uuid.uuid4().hex[:16]}"
 

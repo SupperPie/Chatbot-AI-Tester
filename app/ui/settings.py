@@ -51,7 +51,7 @@ def render_settings_page():
          
     df_config = pd.DataFrame(data_list)
     
-    st.caption("💡 **Token**: `dify` 类型填 Bearer token (app-xxx)；`dify_workflow` 填 x-app-code|x-app-passport。**Request Params**: JSON 格式自定义请求参数，留空使用 Type 默认值。")
+    st.caption("💡 **Token**: `dify` 类型填 Bearer token (app-xxx)；`dify_workflow` 填 x-app-code|x-app-passport；`portal_im` 可填多个 JWT 用 `|` 分隔（如 token1|token2），构成 token 池供并发轮转使用。**Request Params**: JSON 格式自定义请求参数，留空使用 Type 默认值。")
     
     edited_df = st.data_editor(
         df_config,
@@ -66,7 +66,7 @@ def render_settings_page():
                 default="bundle",
                 help="portal_im = 公网 IM 门户接口 (conversation/init + sendStreamMsg，Supervisor 自动路由所有 agent，token 为用户登录 JWT); dify = Dify /v1/chat-messages; dify_workflow = Dify Workflow API; ai_engineering = AI Engineering 流式接口; entitlements = 权益查询; trip_planner = 行程规划 (data.summary_state.details); fitness = 健身场馆查询; esim_agent = eSIM Agent 查询; faq_zzairport = FAQ郑州机场; dc_qa = DC问答; flight_agent = Flight Agent 航班查询; skills/bundle/limo/flight/agent_qa/hotel = internal APIs"
             ),
-            "Token": st.column_config.TextColumn("Token (Dify/Workflow/Portal)", help="Dify: Bearer token (app-xxx); Workflow: x-app-code|x-app-passport; portal_im: JWT token（header: token，有效期短需定期更新）"),
+            "Token": st.column_config.TextColumn("Token (Dify/Workflow/Portal)", help="Dify: Bearer token (app-xxx); Workflow: x-app-code|x-app-passport; portal_im: JWT token（header: token，有效期约48h）。portal_im 支持多个 token 用 `|` 分隔组成 token 池，并发执行时轮转使用不同 token。"),
             "Request Params": st.column_config.TextColumn("Request Params (JSON)", help="自定义请求参数，JSON 格式。留空则使用 Type 默认值。", width="large"),
         },
         use_container_width=True,

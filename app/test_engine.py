@@ -31,6 +31,8 @@ _TRANSIENT_NET_ERROR_PATTERNS = (
     "max retries exceeded",          # requests 连接失败重试耗尽
     "read timed out",
     "timed out",                     # 兜底：各类 timeout 字符串（含 Portal IM 600s / init 60s）
+    "sslerror",                      # requests.exceptions.SSLError：TLS 层瞬时错误
+    "eof occurred",                  # 'EOF occurred in violation of protocol'：TLS 握手被对端提前断开
 )
 
 
