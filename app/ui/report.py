@@ -200,14 +200,14 @@ def _render_report_table_fragment(entry_id, full_display_df, all_cols, disabled_
         [0.8, 0.8, 0.8, 2, 0.5, 1.2, 0.5]
     )
     with op_col1:
-        if st.button("☑ 全选", key=f"btn_select_all_{entry_id}", use_container_width=True):
+        if st.button("☑ 全选", key=f"btn_select_all_{entry_id}", width="stretch"):
             rerun_select.clear()
             rerun_select.update(range(total_rows))
             # bump 版本 → 新编辑器实例 + 新快照，一次性重绘
             st.session_state[f"tbl_ver_{entry_id}"] = ver_val + 1
             st.rerun(scope="fragment")
     with op_col2:
-        if st.button("☐ 取消", key=f"btn_deselect_all_{entry_id}", use_container_width=True):
+        if st.button("☐ 取消", key=f"btn_deselect_all_{entry_id}", width="stretch"):
             rerun_select.clear()
             st.session_state[f"tbl_ver_{entry_id}"] = ver_val + 1
             st.rerun(scope="fragment")
@@ -215,13 +215,13 @@ def _render_report_table_fragment(entry_id, full_display_df, all_cols, disabled_
         total_cases = _count_unique_case_ids(full_display_df)
         st.caption(f"共 {total_rows} 行 / {total_cases} 个用例")
     with pg_prev:
-        if st.button("◀", key=f"pg_prev_{entry_id}", disabled=(tbl_page <= 1), use_container_width=True):
+        if st.button("◀", key=f"pg_prev_{entry_id}", disabled=(tbl_page <= 1), width="stretch"):
             st.session_state[pg_key] = max(1, tbl_page - 1)
             st.rerun(scope="fragment")
     with pg_info:
         st.caption(f"第 {tbl_page}/{total_tbl_pages} 页")
     with pg_next:
-        if st.button("▶", key=f"pg_next_{entry_id}", disabled=(tbl_page >= total_tbl_pages), use_container_width=True):
+        if st.button("▶", key=f"pg_next_{entry_id}", disabled=(tbl_page >= total_tbl_pages), width="stretch"):
             st.session_state[pg_key] = min(total_tbl_pages, tbl_page + 1)
             st.rerun(scope="fragment")
 
@@ -280,6 +280,7 @@ def _render_report_table_fragment(entry_id, full_display_df, all_cols, disabled_
             "turn_index": st.column_config.NumberColumn("Turn_Index", width="small"),
             "ttft": st.column_config.NumberColumn("TTFT", format="%.1f", width="small"),
             "latency": st.column_config.NumberColumn("Latency", format="%.1f", width="small"),
+            "eval_latency": st.column_config.NumberColumn("Eval_Latency", format="%.2f", width="small"),
             "assertion_result": st.column_config.TextColumn("Assertions", width="medium"),
             "validation": st.column_config.TextColumn("Validation", width="medium"),
             "overall_criteria": st.column_config.TextColumn("Overall_Criteria", width="medium"),
@@ -290,7 +291,7 @@ def _render_report_table_fragment(entry_id, full_display_df, all_cols, disabled_
             "review_reason": st.column_config.TextColumn("Human Review Reason", width="medium"),
             "raw": st.column_config.TextColumn("RAW", width="medium"),
         },
-        use_container_width=True,
+        width="stretch",
         disabled=disabled_cols,
         hide_index=True,
         key=tbl_key,
@@ -408,7 +409,7 @@ def render_report_page():
             key="rpt_clear_filters_btn",
             help="清除所有筛选条件",
             type="primary" if _has_filter else "secondary",
-            use_container_width=True,
+            width="stretch",
             disabled=not _has_filter,
         ):
             for _k in ['rpt_filter_date', 'rpt_filter_api']:
@@ -615,7 +616,7 @@ def render_report_page():
                     st.session_state[confirm_key] = False
                 
                 if not st.session_state[confirm_key]:
-                    if st.button("🗑️ Delete", key=f"btn_del_{entry_id}", use_container_width=True):
+                    if st.button("🗑️ Delete", key=f"btn_del_{entry_id}", width="stretch"):
                         st.session_state[confirm_key] = True
                         st.rerun()
                 else:
@@ -633,7 +634,7 @@ def render_report_page():
                 # RERUN / CONTINUE / STOP BUTTON
                 if status == "running":
                     # STOP BUTTON
-                    if st.button("🛑 Stop Job", key=f"btn_stop_{entry_id}", use_container_width=True):
+                    if st.button("🛑 Stop Job", key=f"btn_stop_{entry_id}", width="stretch"):
                         from app.utils import get_job_manager
                         mgr = get_job_manager()
                         mgr.cancel_job(entry_id)
@@ -650,7 +651,7 @@ def render_report_page():
                     if can_continue:
                         btn_col_a, btn_col_b = st.columns([1, 1])
                         with btn_col_a:
-                            if st.button("▶ Continue", key=f"btn_cont_{entry_id}", use_container_width=True, help="从断点续跑，结果合并到当前 report"):
+                            if st.button("▶ Continue", key=f"btn_cont_{entry_id}", width="stretch", help="从断点续跑，结果合并到当前 report"):
                                 from app.utils import get_job_manager
                                 mgr = get_job_manager()
                                 result = mgr.continue_job(entry_id, max_workers=_read_max_workers(entry_id))
@@ -661,9 +662,9 @@ def render_report_page():
                                 time.sleep(1)
                                 st.rerun()
                         with btn_col_b:
-                            rerun_clicked = st.button("⟳ Rerun", key=f"btn_rerun_{entry_id}", use_container_width=True)
+                            rerun_clicked = st.button("⟳ Rerun", key=f"btn_rerun_{entry_id}", width="stretch")
                     else:
-                        rerun_clicked = st.button("▶ Rerun", key=f"btn_rerun_{entry_id}", use_container_width=True)
+                        rerun_clicked = st.button("▶ Rerun", key=f"btn_rerun_{entry_id}", width="stretch")
                     
                     if rerun_clicked:
                         # 延迟到 data_editor 渲染后再消费，读取用户勾选；
@@ -675,7 +676,7 @@ def render_report_page():
                 # EXPORT TO FEISHU BUTTON
                 if status != "running":
                     feishu_key = f"feishu_export_{entry_id}"
-                    if st.button("📤 飞书", key=f"btn_feishu_{entry_id}", help="导出到飞书表格", use_container_width=True):
+                    if st.button("📤 飞书", key=f"btn_feishu_{entry_id}", help="导出到飞书表格", width="stretch"):
                         st.session_state[feishu_key] = True
                         st.rerun()
                     
@@ -776,6 +777,7 @@ def render_report_page():
                                         new_row["score"] = outer_score
                             
                             new_row["latency"] = t.get("latency", 0)
+                            new_row["eval_latency"] = t.get("eval_latency", 0)
                             new_row["ttft"] = t.get("ttft", 0)
                             new_row["thinking"] = t.get("thinking", "")
                             new_row["inform_base"] = t.get("inform_base", "")
@@ -869,7 +871,7 @@ def render_report_page():
                     "score", "priority", "module",
                     "ttft", "latency",
                     "assertion_result", "validation", "overall_criteria",
-                    "review_reason", "raw",
+                    "review_reason", "eval_latency", "raw",
                 ]
                 # Ensure Select exists
                 if "Select" not in display_res_df.columns:
@@ -877,6 +879,30 @@ def render_report_page():
 
                 # Only keep columns that exist in the dataframe to prevent KeyError
                 display_cols = [c for c in target_cols if c in display_res_df.columns]
+
+                # 动态隐藏 Assertions/Validation/Overall_Criteria 三列：
+                # 1) 仅语义执行（不跑断言引擎）时三列全部省略；2) 非语义执行时逐列判断，值为空/NaN 的列省略。
+                _criteria_cols = ["assertion_result", "validation", "overall_criteria"]
+                _exec_mode = (entry.get("execution_mode") or "").strip().lower()
+
+                def _blank_cell(v):
+                    if v is None:
+                        return True
+                    if isinstance(v, float) and pd.isna(v):
+                        return True
+                    s = str(v).strip()
+                    return s == "" or s.lower() in ("nan", "none")
+
+                _remove_cols = set()
+                if _exec_mode == "semantic":
+                    _remove_cols.update(_criteria_cols)
+                else:
+                    for _c in _criteria_cols:
+                        if _c in display_res_df.columns and display_res_df[_c].map(_blank_cell).all():
+                            _remove_cols.add(_c)
+
+                if _remove_cols:
+                    display_cols = [c for c in display_cols if c not in _remove_cols]
 
                 # Keep Select if we need it, but we don't use Select in history table right now.
                 display_res_df = display_res_df[display_cols]
@@ -1019,7 +1045,7 @@ def render_report_page():
                 act_col1, act_col2, act_col3 = st.columns([2, 2, 2])
                 with act_col1:
                     # BLIND REVIEW EXPORT
-                    with st.popover("🙈 Export to Blind Review", use_container_width=True):
+                    with st.popover("🙈 Export to Blind Review", width="stretch"):
                         st.markdown("### Export Config")
                         export_mode = st.radio("Mode", ["Create New Session", "Add to Existing Session"], key=f"br_mode_{entry_id}")
                         
@@ -1098,7 +1124,7 @@ def render_report_page():
                                     st.success(f"Exported! Added {added_count} new, Updated {updated_count} existing.")
 
                 with act_col2:
-                    if st.button("🔄 Update Expect Result", use_container_width=True, key=f"btn_upd_exp_{entry_id}"):
+                    if st.button("🔄 Update Expect Result", width="stretch", key=f"btn_upd_exp_{entry_id}"):
                         selected_rows = edited_df[edited_df["Select"] == True]
                         if selected_rows.empty:
                             st.warning("Please select at least one test case to update.")
@@ -1173,7 +1199,7 @@ def render_report_page():
                                 st.warning("No matching test cases found in reality to update.")
 
                 with act_col3:
-                    if st.button("💾 Save Changes", key=f"btn_save_{entry_id}", use_container_width=True):
+                    if st.button("💾 Save Changes", key=f"btn_save_{entry_id}", width="stretch"):
                         try:
                             current_results = entry.get('results', [])
                             updates = {}
@@ -1229,7 +1255,7 @@ def render_report_page():
         st.divider()
         p_col1, p_col2, p_col3 = st.columns([1, 2, 1])
         with p_col1:
-            if st.button("← Prev", disabled=(page <= 1), use_container_width=True):
+            if st.button("← Prev", disabled=(page <= 1), width="stretch"):
                 st.session_state.report_page -= 1
                 st.rerun()
         with p_col2:
@@ -1238,7 +1264,7 @@ def render_report_page():
                 unsafe_allow_html=True
             )
         with p_col3:
-            if st.button("Next →", disabled=(page >= total_pages), use_container_width=True):
+            if st.button("Next →", disabled=(page >= total_pages), width="stretch"):
                 st.session_state.report_page += 1
                 st.rerun()
 

@@ -85,22 +85,22 @@ def render_category_widget():
 
             with col_action:
                 st.markdown('<div class="gear-popover-container">', unsafe_allow_html=True)
-                with st.popover("⚙️", use_container_width=True):
+                with st.popover("⚙️", width="stretch"):
                     selected_cat_id = st.session_state.get('selected_category')
                     selected_cat_obj = service.db.query(Category).filter(Category.id == selected_cat_id).first() if selected_cat_id not in (None, '__all__', 'root') else None
 
-                    if st.button("➕ 新建", key="btn_add_cat", use_container_width=True):
+                    if st.button("➕ 新建", key="btn_add_cat", width="stretch"):
                         st.session_state.show_add_category_dialog = True
                         st.session_state.add_category_parent_id = None if st.session_state.get('selected_category') == 'root' else st.session_state.get('selected_category')
                         st.rerun()
 
-                    if st.button("✏️ 重命名", disabled=(selected_cat_obj is None), key="btn_rename_cat", use_container_width=True):
+                    if st.button("✏️ 重命名", disabled=(selected_cat_obj is None), key="btn_rename_cat", width="stretch"):
                         st.session_state.show_rename_dialog = True
                         st.session_state.rename_category_id = selected_cat_id
                         st.session_state.rename_category_name = selected_cat_obj.name if selected_cat_obj else ""
                         st.rerun()
 
-                    if st.button("⬆️ 上移", disabled=(selected_cat_obj is None), key="btn_move_up_cat", use_container_width=True):
+                    if st.button("⬆️ 上移", disabled=(selected_cat_obj is None), key="btn_move_up_cat", width="stretch"):
                         try:
                             siblings = service.db.query(Category).filter(Category.parent_id == selected_cat_obj.parent_id).order_by(Category.sort_order, Category.id).all()
                             ids = [c.id for c in siblings]
@@ -114,7 +114,7 @@ def render_category_widget():
                         except Exception as e:
                             st.error(f"上移失败: {e}")
 
-                    if st.button("⬇️ 下移", disabled=(selected_cat_obj is None), key="btn_move_down_cat", use_container_width=True):
+                    if st.button("⬇️ 下移", disabled=(selected_cat_obj is None), key="btn_move_down_cat", width="stretch"):
                         try:
                             siblings = service.db.query(Category).filter(Category.parent_id == selected_cat_obj.parent_id).order_by(Category.sort_order, Category.id).all()
                             ids = [c.id for c in siblings]
@@ -128,12 +128,12 @@ def render_category_widget():
                         except Exception as e:
                             st.error(f"下移失败: {e}")
 
-                    if st.button("↪️ 换父目录", disabled=(selected_cat_obj is None), key="btn_reparent_cat", use_container_width=True):
+                    if st.button("↪️ 换父目录", disabled=(selected_cat_obj is None), key="btn_reparent_cat", width="stretch"):
                         st.session_state.show_reparent_dialog = True
                         st.session_state.reparent_category_id = selected_cat_id
                         st.rerun()
 
-                    if st.button("🗑️ 删除", disabled=(selected_cat_obj is None), key="btn_del_cat", use_container_width=True):
+                    if st.button("🗑️ 删除", disabled=(selected_cat_obj is None), key="btn_del_cat", width="stretch"):
                         st.session_state.show_delete_dialog = True
                         st.session_state.delete_category_id = selected_cat_id
                         st.session_state.delete_category_name = selected_cat_obj.name if selected_cat_obj else ""
@@ -293,7 +293,7 @@ def _add_category_dialog(service: CategoryService):
             st.info(f"父目录: {parent.path}")
             if parent.level >= 3:
                 st.error("已达到最大层级（3级），无法创建子目录")
-                if st.button("关闭", use_container_width=True):
+                if st.button("关闭", width="stretch"):
                     st.session_state.show_add_category_dialog = False
                     st.rerun()
                 return
@@ -304,11 +304,11 @@ def _add_category_dialog(service: CategoryService):
     
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("取消", use_container_width=True):
+        if st.button("取消", width="stretch"):
             st.session_state.show_add_category_dialog = False
             st.rerun()
     with col2:
-        if st.button("创建", type="primary", use_container_width=True):
+        if st.button("创建", type="primary", width="stretch"):
             if name and name.strip():
                 try:
                     service.create(name.strip(), parent_id)
@@ -330,11 +330,11 @@ def _rename_category_dialog(service: CategoryService):
     
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("取消", use_container_width=True):
+        if st.button("取消", width="stretch"):
             st.session_state.show_rename_dialog = False
             st.rerun()
     with col2:
-        if st.button("保存", type="primary", use_container_width=True):
+        if st.button("保存", type="primary", width="stretch"):
             if new_name and new_name.strip():
                 if new_name.strip() != old_name:
                     try:
@@ -362,18 +362,18 @@ def _delete_category_dialog(service: CategoryService):
     
     if case_count > 0:
         st.error(f"⚠️ 该目录下有 **{case_count}** 个测试用例，无法删除！请先移除或转移用例。")
-        if st.button("关闭", use_container_width=True):
+        if st.button("关闭", width="stretch"):
             st.session_state.show_delete_dialog = False
             st.rerun()
         return
     
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("取消", use_container_width=True):
+        if st.button("取消", width="stretch"):
             st.session_state.show_delete_dialog = False
             st.rerun()
     with col2:
-        if st.button("🗑️ 确认删除", type="primary", use_container_width=True):
+        if st.button("🗑️ 确认删除", type="primary", width="stretch"):
             try:
                 service.delete(cat_id)
                 st.toast(f"✅ 目录 '{cat_name}' 已删除")
@@ -396,7 +396,7 @@ def _reparent_category_dialog(service: CategoryService):
 
     if not cat:
         st.error("目录不存在")
-        if st.button("关闭", use_container_width=True):
+        if st.button("关闭", width="stretch"):
             st.session_state.show_reparent_dialog = False
             st.rerun()
         return
@@ -424,11 +424,11 @@ def _reparent_category_dialog(service: CategoryService):
 
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("取消", use_container_width=True):
+        if st.button("取消", width="stretch"):
             st.session_state.show_reparent_dialog = False
             st.rerun()
     with col2:
-        if st.button("✅ 确认移动", type="primary", use_container_width=True):
+        if st.button("✅ 确认移动", type="primary", width="stretch"):
             try:
                 service.move_node(cat_id, selected_parent)
                 st.session_state.show_reparent_dialog = False

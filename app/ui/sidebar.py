@@ -27,7 +27,7 @@ def render_sidebar():
         # Tester button (first option)
         if st.button(
             "🔧 Tester", 
-            use_container_width=True, 
+            width="stretch", 
             type="primary" if st.session_state.current_page == "Tester" else "secondary",
             key="nav_tester"
         ):
@@ -37,7 +37,7 @@ def render_sidebar():
         # Testcases button
         if st.button(
             "📋 Testcases", 
-            use_container_width=True, 
+            width="stretch", 
             type="primary" if st.session_state.current_page == "Testcases" else "secondary",
             key="nav_testcases"
         ):
@@ -47,7 +47,7 @@ def render_sidebar():
         # Test Report button
         if st.button(
             "📊 Test Report", 
-            use_container_width=True,
+            width="stretch",
             type="primary" if st.session_state.current_page == "Test Report" else "secondary",
             key="nav_report"
         ):
@@ -57,7 +57,7 @@ def render_sidebar():
         # Assertions button
         if st.button(
             "🧩 Assertions",
-            use_container_width=True,
+            width="stretch",
             type="primary" if st.session_state.current_page == "Assertions" else "secondary",
             key="nav_assertions"
         ):
@@ -67,7 +67,7 @@ def render_sidebar():
         # Settings button
         if st.button(
             "⚙️ Settings", 
-            use_container_width=True,
+            width="stretch",
             type="primary" if st.session_state.current_page == "Settings" else "secondary",
             key="nav_settings"
         ):
@@ -77,7 +77,7 @@ def render_sidebar():
         # Blind Review button
         if st.button(
             "🙈 Blind Review", 
-            use_container_width=True,
+            width="stretch",
             type="primary" if st.session_state.current_page == "Blind Review" else "secondary",
             key="nav_blind_review"
         ):

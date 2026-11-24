@@ -1790,7 +1790,7 @@ def _assertion_binding_dialog(ids):
 
     # 完成按钮 - 关闭弹窗
     st.markdown("---")
-    if st.button("✔ 完成", key="btn_finish_binding", type="primary", use_container_width=True):
+    if st.button("✔ 完成", key="btn_finish_binding", type="primary", width="stretch"):
         st.rerun()
 
 

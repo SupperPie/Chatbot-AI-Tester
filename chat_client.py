@@ -256,7 +256,11 @@ def get_bundle_response(message: str, url: str, user_id: str = None, session_id:
         "Content-Type": "application/json"
     }
 
-    print(f"Sending request to {url} with message: {message}")
+    print("=" * 60, flush=True)
+    print(f"[Bundle] URL: {url}", flush=True)
+    print(f"[Bundle] Request Payload:\n{json.dumps(payload, ensure_ascii=False, indent=2)}", flush=True)
+    print(f"[Bundle] Request Headers: {headers}", flush=True)
+    print("=" * 60, flush=True)
     
     try:
         start_time = time.time()
@@ -357,7 +361,11 @@ def get_skills_response(message: str, url: str, user_id: str = None, session_id:
         "accept": "application/json"
     }
 
-    print(f"Sending request to {url} with message: {message}")
+    print("=" * 60, flush=True)
+    print(f"[Skills] URL: {url}", flush=True)
+    print(f"[Skills] Request Payload:\n{json.dumps(payload, ensure_ascii=False, indent=2)}", flush=True)
+    print(f"[Skills] Request Headers: {headers}", flush=True)
+    print("=" * 60, flush=True)
     
     try:
         start_time = time.time()
@@ -481,7 +489,11 @@ def get_flight_response(message: str, url: str, user_id: str = None, session_id:
         "accept": "application/json"
     }
 
-    print(f"Sending request to {url} with message: {message}")
+    print("=" * 60, flush=True)
+    print(f"[Flight] URL: {url}", flush=True)
+    print(f"[Flight] Request Payload:\n{json.dumps(payload, ensure_ascii=False, indent=2)}", flush=True)
+    print(f"[Flight] Request Headers: {headers}", flush=True)
+    print("=" * 60, flush=True)
     
     try:
         start_time = time.time()
@@ -534,7 +546,11 @@ def get_limo_response(message: str, url: str, user_id: str = None, session_id: s
         "accept": "application/json"
     }
 
-    print(f"Sending request to {url} with message: {message}")
+    print("=" * 60, flush=True)
+    print(f"[Limo] URL: {url}", flush=True)
+    print(f"[Limo] Request Payload:\n{json.dumps(payload, ensure_ascii=False, indent=2)}", flush=True)
+    print(f"[Limo] Request Headers: {headers}", flush=True)
+    print("=" * 60, flush=True)
     
     try:
         start_time = time.time()
@@ -619,7 +635,11 @@ def get_dify_response(message: str, url: str, token: str = None, user_id: str = 
         "Authorization": f"Bearer {token}" if token else "",
     }
 
-    print(f"[Dify] Sending request to {url} with message: {message}")
+    print("=" * 60, flush=True)
+    print(f"[Dify] URL: {url}", flush=True)
+    print(f"[Dify] Request Payload:\n{json.dumps(payload, ensure_ascii=False, indent=2)}", flush=True)
+    print(f"[Dify] Request Headers: {headers}", flush=True)
+    print("=" * 60, flush=True)
 
     try:
         start_time = time.time()
@@ -1150,6 +1170,7 @@ def get_trip_planner_response(message: str, url: str, user_id: str = None, sessi
     print("=" * 60, flush=True)
     print(f"[TripPlanner] URL: {url}", flush=True)
     print(f"[TripPlanner] Request Payload:\n{json.dumps(payload, ensure_ascii=False, indent=2)}", flush=True)
+    print(f"[TripPlanner] Request Headers: {headers}", flush=True)
     print("=" * 60, flush=True)
 
     def _extract_result(data: dict):
@@ -1237,7 +1258,7 @@ def get_trip_planner_response(message: str, url: str, user_id: str = None, sessi
             "result": final_answer,
             "thinking": "",
             "inform_base": "",
-            "raw": raw_str[:5000],   # 防止 raw 过大
+            "raw": raw_str[:40000],   # 防止 raw 过大，飞书推荐每单元格不超 40000 字符
             "ttft": ttft
         }, ensure_ascii=False)
 
@@ -1269,7 +1290,11 @@ def get_agent_qa_response(message: str, url: str, user_id: str = None, session_i
         "Accept": "text/event-stream"
     }
 
-    print(f"Sending request to {url} with query: {message}")
+    print("=" * 60, flush=True)
+    print(f"[Agent QA] URL: {url}", flush=True)
+    print(f"[Agent QA] Request Payload:\n{json.dumps(payload, ensure_ascii=False, indent=2)}", flush=True)
+    print(f"[Agent QA] Request Headers: {headers}", flush=True)
+    print("=" * 60, flush=True)
     
     try:
         start_time = time.time()
@@ -1387,7 +1412,11 @@ def get_fitness_response(message: str, url: str, user_id: str = None, session_id
         "Accept": "*/*"
     }
 
-    print(f"[Fitness] Sending request to {url} with query: {message}")
+    print("=" * 60, flush=True)
+    print(f"[Fitness] URL: {url}", flush=True)
+    print(f"[Fitness] Request Payload:\n{json.dumps(payload, ensure_ascii=False, indent=2)}", flush=True)
+    print(f"[Fitness] Request Headers: {headers}", flush=True)
+    print("=" * 60, flush=True)
 
     try:
         start_time = time.time()
@@ -1482,7 +1511,11 @@ def get_flight_agent_response(message: str, url: str, user_id: str = None, sessi
         "Accept": "application/json"
     }
 
-    print(f"[Flight Agent] Sending request to {url} with query: {message}")
+    print("=" * 60, flush=True)
+    print(f"[Flight Agent] URL: {url}", flush=True)
+    print(f"[Flight Agent] Request Payload:\n{json.dumps(payload, ensure_ascii=False, indent=2)}", flush=True)
+    print(f"[Flight Agent] Request Headers: {headers}", flush=True)
+    print("=" * 60, flush=True)
 
     try:
         start_time = time.time()
@@ -1583,7 +1616,11 @@ def get_esim_agent_response(message: str, url: str, user_id: str = None, session
         "Accept": "*/*"
     }
 
-    print(f"[eSIM Agent] Sending request to {url} with query: {message}")
+    print("=" * 60, flush=True)
+    print(f"[eSIM Agent] URL: {url}", flush=True)
+    print(f"[eSIM Agent] Request Payload:\n{json.dumps(payload, ensure_ascii=False, indent=2)}", flush=True)
+    print(f"[eSIM Agent] Request Headers: {headers}", flush=True)
+    print("=" * 60, flush=True)
 
     try:
         start_time = time.time()
@@ -1681,7 +1718,11 @@ def get_faq_zzairport_response(message: str, url: str, user_id: str = None, sess
         "Accept": "application/json"
     }
 
-    print(f"[FAQ_郑州机场] Sending request to {url} with message: {message}")
+    print("=" * 60, flush=True)
+    print(f"[FAQ_郑州机场] URL: {url}", flush=True)
+    print(f"[FAQ_郑州机场] Request Payload:\n{json.dumps(payload, ensure_ascii=False, indent=2)}", flush=True)
+    print(f"[FAQ_郑州机场] Request Headers: {headers}", flush=True)
+    print("=" * 60, flush=True)
 
     try:
         start_time = time.time()
@@ -1740,7 +1781,11 @@ def get_dc_qa_response(message: str, url: str, user_id: str = None, session_id: 
         "Accept": "application/json"
     }
 
-    print(f"[DC_QA] Sending request to {url} with query: {message}")
+    print("=" * 60, flush=True)
+    print(f"[DC_QA] URL: {url}", flush=True)
+    print(f"[DC_QA] Request Payload:\n{json.dumps(payload, ensure_ascii=False, indent=2)}", flush=True)
+    print(f"[DC_QA] Request Headers: {headers}", flush=True)
+    print("=" * 60, flush=True)
 
     try:
         start_time = time.time()
@@ -1845,7 +1890,11 @@ def get_hotel_response(message: str, url: str, user_id: str = None, session_id: 
         "accept": "application/json"
     }
 
-    print(f"[Hotel] Sending request to {url} with message: {message}")
+    print("=" * 60, flush=True)
+    print(f"[Hotel] URL: {url}", flush=True)
+    print(f"[Hotel] Request Payload:\n{json.dumps(payload, ensure_ascii=False, indent=2)}", flush=True)
+    print(f"[Hotel] Request Headers: {headers}", flush=True)
+    print("=" * 60, flush=True)
     
     try:
         start_time = time.time()
@@ -1964,7 +2013,11 @@ def get_dify_workflow_response(message: str, url: str, token: str = None, user_i
         "x-app-passport": app_passport,
     }
 
-    print(f"[DifyWorkflow] Sending request to {url} with message: {message}")
+    print("=" * 60, flush=True)
+    print(f"[DifyWorkflow] URL: {url}", flush=True)
+    print(f"[DifyWorkflow] Request Payload:\n{json.dumps(payload, ensure_ascii=False, indent=2)}", flush=True)
+    print(f"[DifyWorkflow] Request Headers: {headers}", flush=True)
+    print("=" * 60, flush=True)
 
     try:
         start_time = time.time()
@@ -2117,11 +2170,15 @@ def _portal_init_session(base_url: str, headers_base: dict, extra_params: dict) 
         "source": extra_params.get("source", ""),
         "channel": extra_params.get("channel", "JUPITA"),
     }
+    init_headers = {**headers_base, "Accept": "application/json"}
     try:
+        print(f"[Portal IM init] URL: {init_url}", flush=True)
+        print(f"[Portal IM init] Request Payload:\n{json.dumps(payload, ensure_ascii=False, indent=2)}", flush=True)
+        print(f"[Portal IM init] Request Headers: {init_headers}", flush=True)
         resp = requests.post(
             init_url,
             json=payload,
-            headers={**headers_base, "Accept": "application/json"},
+            headers=init_headers,
             timeout=60,
         )
         if not resp.ok:
@@ -2218,6 +2275,8 @@ def get_portal_im_response(message: str, url: str, token: str = None, user_id: s
     print("=" * 60, flush=True)
     print(f"[Portal IM] URL: {send_url}", flush=True)
     print(f"[Portal IM] Portal sessionId: {portal_sid} (local: {session_id})", flush=True)
+    print(f"[Portal IM] Request Payload:\n{json.dumps(payload, ensure_ascii=False, indent=2)}", flush=True)
+    print(f"[Portal IM] Request Headers: {headers}", flush=True)
     if coords:
         print(f"[Portal IM] coordinates: {coords}", flush=True)
     print("=" * 60, flush=True)

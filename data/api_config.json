@@ -63,7 +63,7 @@
         "url": "https://dc-portal-api-uk-uat.dragonpass.com",
         "description": "UAT 环境 - 公网 IM 门户统一接口（测试用）",
         "type": "portal_im",
-        "token": "eyJhbGciOiJIUzI1NiJ9.eyJpYXQiOjE3OTU0MjEwMTYsInN1YiI6IjYzZDllYjllLTAwYTgtNDkyMS04ZDIxLTI2Y2MwYzVmMGM4YSIsImp0aSI6IjYzZDllYjllLTAwYTgtNDkyMS04ZDIxLTI2Y2MwYzVmMGM4YSIsImV4cCI6MTc5NTU5MzgxNn0.KAmWDmhxdvxpScTTKDs3oaANa0UEaY7sDXDvshBr_jw",
+        "token": "eyJhbGciOiJIUzI1NiJ9.eyJpYXQiOjE3OTU1MDQ5MDgsInN1YiI6IjYyMWI3ODk3LWY0MmYtNDkyMy05NzJjLTk1MTNlZjg4NWU4ZSIsImp0aSI6IjYyMWI3ODk3LWY0MmYtNDkyMy05NzJjLTk1MTNlZjg4NWU4ZSIsImV4cCI6MTc5NTY3NzcwOH0.RCerdnSPj2ldHahN8GI7VcxstkSoZddsA1rAT_g7Wmw",
         "request_params": {
             "lang": "en-US",
             "source": "",
@@ -72,7 +72,7 @@
             "extra_args": {
                 "app_name": "Eleva Beyond"
             },
-            "session_id": "118963535096224"
+            "session_id": "122488364646016"
         }
     },
     "Supervisor Agent": {
@@ -140,10 +140,15 @@
         "description": "Supervisor",
         "type": "ai_engineering",
         "request_params": {
-            "lob": "dc",
+            "lang": "en-US",
+            "source": "",
+            "channel": "JUPITA",
+            "currency": "BRL",
             "extra_args": {
-                "app_name": "Eleva Beyond"
-            }
+                "app_name": "Eleva Beyond",
+                "session_id": "118963535096224"
+            },
+            "session_id": "118963535096224"
         }
     },
     "【UAT】TripIdea": {

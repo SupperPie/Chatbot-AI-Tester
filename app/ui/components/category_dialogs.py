@@ -13,11 +13,11 @@ def create_category_dialog(service, parent_id=None):
         
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("取消", use_container_width=True):
+        if st.button("取消", width="stretch"):
             st.session_state.show_create_dialog = False
             st.rerun()
     with col2:
-        if st.button("创建", type="primary", use_container_width=True):
+        if st.button("创建", type="primary", width="stretch"):
             if name.strip():
                 try:
                     service.create(name.strip(), parent_id)
@@ -44,11 +44,11 @@ def delete_category_dialog(service, cat_id):
     
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("取消", use_container_width=True):
+        if st.button("取消", width="stretch"):
             st.session_state.show_delete_dialog = False
             st.rerun()
     with col2:
-        if st.button("🗑️ 确认删除", type="primary", use_container_width=True):
+        if st.button("🗑️ 确认删除", type="primary", width="stretch"):
             try:
                 affected = service.delete(cat_id)
                 st.toast(f"✅ 已删除目录及 {affected} 个测试用例")
@@ -69,11 +69,11 @@ def rename_category_dialog(service, cat_id):
     
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("取消", use_container_width=True):
+        if st.button("取消", width="stretch"):
             st.session_state.show_rename_dialog = False
             st.rerun()
     with col2:
-        if st.button("保存", type="primary", use_container_width=True):
+        if st.button("保存", type="primary", width="stretch"):
             if name.strip() and name.strip() != category.name:
                 try:
                     service.update(cat_id, name.strip())

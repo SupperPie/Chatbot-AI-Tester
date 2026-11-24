@@ -1,155 +1,86 @@
-# DeepEval Test Management System
+<div align="center">
 
-A Streamlit-based application for managing and running automated tests against AI Agents (Bundle API, Airport Assistant, Skills API) using DeepEval.
+# TestMate · AI Testing Platform
 
-## Features
+**面向 AI Agent / LLM 接口的全链路自动化测试平台**
 
-*   **Test Case Management**: View, import, and manage test cases (Single-turn & Multi-turn).
-*   **Automated Execution**: Run tests in the background (Async) without blocking the UI.
-*   **Real-time Reporting**: View running job progress, success rates, and detailed logs.
-*   **Thinking Process Tracking**: Capture and display the "Reasoning" process from supported APIs.
-*   **Latency Monitoring**: Track response times for each API call.
-*   **PDF Export**: Generate PDF reports for test runs.
+*An end-to-end automated testing platform for AI agents and LLM APIs*
 
-## Changelog
+</div>
 
-### v3.7
+---
 
-*   **Description 列**: 测试用例表新增 Description 列，用于描述用例目的（对应产品需求中的验收标准 AC）。支持在表格中直接编辑、CSV/JSON 导入、AI 自动生成。
-*   **目录树子节点用例为空修复**: 修复 `sac.tree(return_index=True)` 扁平索引解析逻辑错误，点击展开/折叠箭头后选中节点不再跳错。
-*   **DB priority 列缺失修复**: 修复 `test_cases` 表缺失 `priority` 列导致 ORM 查询失败、回退到 JSON 文件（category_id 全为 root）的严重 bug。
-*   **关键词搜索修复**: `str.contains` 加 `regex=False` 避免特殊字符（`?`、`(` 等）报错；搜索范围增加 `id` 列；筛选条件变化时自动重置到第一页。
-*   **Management 布局优化**: Move / Priority / Assert / Delete 按钮移到 API Endpoint 下方独立一行。
+## 简介 · Overview
 
-### v3.6
+**中文**
 
-*   **Report 复选框/重跑修复**: 报告页选择与重跑逻辑修正。
-*   **Stop Job 评分中断**: 停止任务时正确中断评分流程。
-*   **Thinking/Result 拆分**: 将 `is_thinking` 拆分为 `thinking` 和 `result` 两列独立展示。
+TestMate 是一款专为 AI Agent 与 LLM 接口设计的全链路质量保障平台。传统接口测试工具（Postman / JMeter）面对大模型响应的**非确定性**与**流式 / 多模态**输出时无能为力，TestMate 采用 **「语义评分 + 结构化断言 + 多轮会话」** 三位一体的方案，覆盖用例管理、AI 生成、自动执行与评测的全流程，显著提升 AI 接口测试效率。
 
-## 1. Preparation for Git Upload
+**English**
 
-Before uploading your code to Git, ensure you have configured the `.gitignore` file to exclude sensitive information and unnecessary files.
+TestMate is an end-to-end quality assurance platform purpose-built for AI agents and LLM APIs. Conventional API testing tools (Postman / JMeter) fail to cope with the **non-deterministic** and **streaming / multimodal** responses of large-language models. TestMate combines **semantic scoring, structured assertions, and multi-turn conversation** to cover the full lifecycle of test-case management, AI generation, automated execution, and evaluation — dramatically improving AI API testing efficiency.
 
-A `.gitignore` file has been created for you, which excludes:
-*   `.env` (Environment variables/Keys)
-*   `__pycache__/`
-*   `.deepeval/`
-*   Virtual environment folders (`venv/`, `env/`)
+## 核心功能 · Core Features
 
-**Steps to Upload:**
+- **测试用例管理 · Test Case Management** — 分类树 + 批量勾选 + 优先级 / 模块 / 标签筛选，支持单轮与多轮用例
+- **AI 一键生成用例 · AI Test Case Generator** — 基于需求与知识库自动生成多语言测试用例
+- **自动执行 · Automated Execution** — 后台异步并行执行，进度实时可见，不阻塞界面
+- **测试报告 · Test Report** — 执行历史、通过率、耗时、逐条结果与失败原因
+- **组件化断言 · Componentized Assertions** — JSONPath + scope 过滤 + 字段断言，一次定义多处复用
+- **盲评 · Blind Review** — 多模型输出并排对比投票，进行无偏见评测
 
-```bash
-# 1. Initialize Git (if not already done)
-git init
+## 界面预览 · Screenshots
 
-# 2. Add files
-git add .
+### AI 用例生成 · AI Test Case Generator
 
-# 3. Commit
-git commit -m "Initial commit of DeepEval Test System"
+<img src="docs/images/ai-generator.png" width="760" alt="AI 用例生成">
 
-# 4. Add Remote (Update URL to your repo)
-git remote add origin <your-git-repo-url>
+### 测试用例管理 · Test Case Management
 
-# 5. Push
-git push -u origin master
-```
+<img src="docs/images/testcases.png" width="760" alt="测试用例管理">
 
-## 2. Server Deployment Guide
+### 测试报告 · Test Report
 
-You asked whether to use **Docker** or deploy directly. 
+<img src="docs/images/test-report.png" width="760" alt="测试报告">
 
-**Recommendation: Use Docker.**
-*   **Why?** Docker ensures the environment (Python version, dependencies, system libraries) is exactly the same on your server as it is on your local machine. It avoids "it works on my machine" issues.
+### 断言组件库 · Assertions
 
-### Option A: Docker Deployment (Recommended)
+<img src="docs/images/assertions.png" width="760" alt="断言组件库">
 
-1.  **Build the Image**:
-    ```bash
-    docker build -t deepeval-app .
-    ```
+### 盲评 · Blind Review
 
-2.  **Run the Container**:
-    ```bash
-    docker run -d -p 8501:8501 --name deepeval-container deepeval-app
-    ```
-    *   `-d`: Run in background (detached mode).
-    *   `-p 8501:8501`: Map port 8501 of the container to port 8501 on the server.
+<img src="docs/images/blind-review.png" width="760" alt="盲评">
 
-3.  **Access**:
-    Open `http://<your-server-ip>:8501` in your browser.
-
-### Option B: Direct Deployment (Manual)
-
-If you cannot use Docker, follow these steps on your server:
-
-1.  **Install Python 3.9+**.
-2.  **Clone the Repo**:
-    ```bash
-    git clone <your-git-repo-url>
-    cd <repo-folder>
-    ```
-3.  **Install Dependencies**:
-    ```bash
-    pip install -r requirements.txt
-    ```
-4.  **Run Application**:
-    ```bash
-    streamlit run streamlit_app.py --server.port 8501
-    ```
-    *   Use `nohup` or `systemd` to keep it running in the background.
-
-## Configuration
-
-*   **API Configuration**: Edit `data/api_config.json` to manage API endpoints.
-*   **Environment Variables**: Create a `.env` file for API keys if needed (e.g., `OPENAI_API_KEY`).
-
-## 3. Security: Deploying Secrets (API Keys) Safely
-
-If you follow security best practices and **exclude** `.env` from Git, here is how you deploy it to the server:
-
-### Method A: Manual File Copy (SCP)
-After cloning the code on the server, copy your local `.env` file directly to the server using a secure command:
+## 快速开始 · Quick Start
 
 ```bash
-# Run this on your LOCAL machine
-scp .env user@<your-server-ip>:/path/to/your/repo/.env
-```
-Or simply creating it on server:
-# Paste your keys -> Ctrl+O -> Enter -> Ctrl+X
+pip install -r requirements.txt
+streamlit run streamlit_app.py --server.port 8501
 ```
 
-### 6. Managing the Process (Start/Stop)
+浏览器访问 `http://localhost:8501`。
 
-**Start in Background:**
+## 部署 · Deployment
+
+### Docker（推荐）
+
 ```bash
-nohup streamlit run streamlit_app.py --server.port 8501 > app.log 2>&1 &
+docker build -t testmate .
+docker run -d -p 8501:8501 --name testmate-container testmate
 ```
 
-**View Logs:**
+### 直接部署
+
 ```bash
-tail -f app.log
+git clone <your-git-repo-url>
+cd <repo-folder>
+pip install -r requirements.txt
+streamlit run streamlit_app.py --server.port 8501
 ```
 
-**Stop the Application:**
-1. Find the Process ID (PID):
-   ```bash
-   ps -ef | grep streamlit
-   ```
-2. Kill the process (replace `12345` with the actual PID):
-   ```bash
-   kill 12345
-   ```
+使用 `nohup` 或 `systemd` 保持后台运行。
 
-### Method B: Docker Volume Mount (Recommended)
-If running with Docker, you don't need to rebuild the image to add keys. You can "mount" the file when running the container.
+## 配置 · Configuration
 
-1.  Create `.env` file on the server (as per Method A).
-2.  Run Docker with `-v` flag:
-    ```bash
-    docker run -d -p 8501:8501 \
-      -v $(pwd)/.env:/app/.env \
-      --name deepeval-app deepeval-app
-    ```
-    This maps the server's `.env` to `/app/.env` inside the container.
+- **API 配置**：编辑 `data/api_config.json` 管理接口端点、token 与请求参数
+- **环境变量**：创建 `.env` 配置 API Key（如 `OPENAI_API_KEY`）

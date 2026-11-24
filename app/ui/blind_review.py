@@ -167,7 +167,7 @@ def render_blind_review_page():
                 
                 # Buttons for voting
                 for k in opt_keys:
-                    if st.button(f"👍 Vote {k}", key=f"vote_{selected_session_name}_{real_idx}_{k}", use_container_width=True):
+                    if st.button(f"👍 Vote {k}", key=f"vote_{selected_session_name}_{real_idx}_{k}", width="stretch"):
                          item["votes"][k] = item["votes"].get(k, 0) + 1
                          save_reviews(reviews)
                          st.rerun()

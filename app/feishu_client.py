@@ -52,15 +52,6 @@ def save_feishu_config(app_id: str, app_secret: str) -> bool:
         return False
 
 
-def _json_escaped_bytes(val: str) -> int:
-    """计算字符串按 JSON 转义（ensure_ascii=False）后的 UTF-8 字节数。
-    飞书对单元格的 50000 bytes 限制是按 JSON payload 中该字段的实际字节计算的，
-    因此需要按 json.dumps 后的字节数判断，而不是原文 UTF-8 字节数。
-    """
-    if val is None:
-        return 2  # "" 两个引号
-    return len(json.dumps(val, ensure_ascii=False).encode("utf-8"))
-
 class FeishuClient:
     """飞书开放平台 API 客户端"""
     
@@ -345,36 +336,17 @@ def export_report_to_feishu(
             raise Exception("表格中没有工作表")
     
     # 转换报告数据为行格式（与 report 页面列一致）
-    # 飞书单元格限制 50000 bytes（按 JSON 转义后的字节数计），超长字段做截断
-    MAX_CELL_BYTES = 49500  # 留 buffer
+    # 飞书单元格限制：官方推荐每单元格不超过 40000 字符（按原文 UTF-8 字符数计），超长字段做截断
+    MAX_CELL_CHARS = 40000
 
     def _truncate_cell(val: str) -> str:
-        """截断超长单元格内容（按 JSON 转义后的字节数判断），避免飞书写入失败。
-
-        飞书对 cell 的字节限制是按 JSON payload 中该字段的字节计算的，
-        普通英文单字符在 JSON 中可能占 1 字节，但引号/反斜杠/控制字符
-        经过 JSON 转义后会膨胀为 \\" \\\\ \\n \\uXXXX 等，导致同一原文的
-        JSON 字节数远大于原文 UTF-8 字节数。这里使用二分收缩，
-        保证 json.dumps(result, ensure_ascii=False) 的字节数 <= MAX_CELL_BYTES。
-        """
+        """截断超长单元格内容（按原文字符数判断），保证不超过飞书推荐的 40000 字符。"""
         if not val:
             return val
-        suffix = " [...truncated]"
-        if _json_escaped_bytes(val) <= MAX_CELL_BYTES:
+        if len(val) <= MAX_CELL_CHARS:
             return val
-
-        # 二分查找最大可保留的原文字符数（按字符数，避免 UTF-8 半字符）
-        lo, hi = 0, len(val)
-        best = ""
-        while lo <= hi:
-            mid = (lo + hi) // 2
-            candidate = val[:mid] + suffix
-            if _json_escaped_bytes(candidate) <= MAX_CELL_BYTES:
-                best = candidate
-                lo = mid + 1
-            else:
-                hi = mid - 1
-        return best if best else (val[:1] + suffix)
+        suffix = " [...truncated]"
+        return val[: MAX_CELL_CHARS - len(suffix)] + suffix
 
     def _tags_str(tags_val):
         if not tags_val:
@@ -428,6 +400,7 @@ def export_report_to_feishu(
                     item.get("module", ""),
                     turn.get("ttft", 0),
                     turn.get("latency", 0),
+                    turn.get("eval_latency", 0),
                     _truncate_cell(assertion_result_str),
                     _truncate_cell(str(item.get("validation", ""))),
                     _truncate_cell(str(item.get("overall_criteria", ""))),
@@ -461,6 +434,7 @@ def export_report_to_feishu(
                 item.get("module", ""),
                 item.get("ttft", 0),
                 item.get("latency", 0),
+                item.get("eval_latency", 0),
                 _truncate_cell(assertion_result_str),
                 _truncate_cell(str(item.get("validation", ""))),
                 _truncate_cell(str(item.get("overall_criteria", ""))),
@@ -479,33 +453,33 @@ def export_report_to_feishu(
         "Actual_Output", "Actual_Output_CN",
         "Passed", "Reason", "Description", "Tags", "Retrieval_Context",
         "Score", "Priority", "Module",
-        "TTFT", "Latency",
+        "TTFT", "Latency", "Eval_Latency",
         "Assertions", "Validation", "Overall_Criteria", "Human Review Reason", "RAW"
     ]]
 
-    # 导出前预检：定位超出飞书单元格 50000 bytes（按 JSON 转义后计算）的具体列
-    MAX_CELL_BYTES = 50000
+    # 导出前预检：定位超出飞书单元格 40000 字符的具体列
+    MAX_CELL_CHARS = 40000
     oversized_cells = []
     for row_idx, row in enumerate(rows):
         case_id = str(row[0]) if len(row) > 0 else ""
         turn = str(row[2]) if len(row) > 2 else ""  # Turn_Index 在 index 2
         for col_idx, cell in enumerate(row):
             txt = "" if cell is None else str(cell)
-            b = _json_escaped_bytes(txt)
-            if b > MAX_CELL_BYTES:
+            b = len(txt)
+            if b > MAX_CELL_CHARS:
                 col_name = headers[0][col_idx] if col_idx < len(headers[0]) else f"col_{col_idx}"
                 oversized_cells.append({
                     "row_index": row_idx,
                     "case_id": case_id,
                     "turn": turn,
                     "column": col_name,
-                    "bytes": b
+                    "chars": b
                 })
 
     if oversized_cells:
-        top = sorted(oversized_cells, key=lambda x: x["bytes"], reverse=True)[:10]
+        top = sorted(oversized_cells, key=lambda x: x["chars"], reverse=True)[:10]
         detail = "\n".join(
-            [f"case_id={x['case_id']}, turn={x['turn']}, column={x['column']}, bytes={x['bytes']}" for x in top]
+            [f"case_id={x['case_id']}, turn={x['turn']}, column={x['column']}, chars={x['chars']}" for x in top]
         )
 
         # 终端日志
@@ -524,7 +498,7 @@ def export_report_to_feishu(
             print(f"[feishu-export-precheck] write log failed: {log_err}")
 
         raise Exception(
-            "导出前预检发现超长单元格（>50000 bytes），请先处理对应字段：\n" + detail
+            "导出前预检发现超长单元格（>40000 字符），请先处理对应字段：\n" + detail
         )
 
     client.append_rows_to_sheet(spreadsheet_token, sheet_id, headers)

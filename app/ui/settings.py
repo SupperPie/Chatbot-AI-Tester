@@ -69,7 +69,7 @@ def render_settings_page():
             "Token": st.column_config.TextColumn("Token (Dify/Workflow/Portal)", help="Dify: Bearer token (app-xxx); Workflow: x-app-code|x-app-passport; portal_im: JWT token（header: token，有效期约48h）。portal_im 支持多个 token 用 `|` 分隔组成 token 池，并发执行时轮转使用不同 token。"),
             "Request Params": st.column_config.TextColumn("Request Params (JSON)", help="自定义请求参数，JSON 格式。留空则使用 Type 默认值。", width="large"),
         },
-        use_container_width=True,
+        width="stretch",
         key="settings_api_editor"
     )
     

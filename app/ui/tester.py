@@ -84,6 +84,41 @@ def render_tester_page():
             key="tester_knowledge",
             on_change=sync_kb
         )
+
+        # 多格式文件上传：Markdown / 文本 / Excel / CSV / Word / PDF / 图片
+        uploaded_kb_files = st.file_uploader(
+            "上传知识文件（Markdown / Excel / CSV / Word / PDF / 图片）",
+            type=["md", "txt", "text", "markdown", "csv", "xlsx", "xlsm", "xls", "docx", "pdf", "png", "jpg", "jpeg", "webp", "gif", "bmp"],
+            accept_multiple_files=True,
+            key="tester_kb_upload",
+            help="支持多种格式：表格(xlsx/csv)、Word、PDF、图片均会被解析为文本，与上方粘贴内容合并后作为 Knowledge Base 注入生成 Prompt。",
+        )
+
+        # 解析上传文件，合并进 knowledge_base
+        if uploaded_kb_files:
+            from app.kb_loader import load_uploaded_file
+            if "kb_upload_cache" not in st.session_state:
+                st.session_state.kb_upload_cache = {}
+            upload_parts = []
+            for f in uploaded_kb_files:
+                cache_key = f"{getattr(f, 'file_id', f.name)}:{f.size}"
+                try:
+                    if cache_key in st.session_state.kb_upload_cache:
+                        parsed_text = st.session_state.kb_upload_cache[cache_key]
+                    else:
+                        parsed_text = load_uploaded_file(f)
+                        st.session_state.kb_upload_cache[cache_key] = parsed_text
+                    if parsed_text and parsed_text.strip():
+                        upload_parts.append(f"【文件：{f.name}】\n{parsed_text.strip()}")
+                except Exception as e:
+                    st.warning(f"⚠️ 解析 {f.name} 失败: {e}")
+            if upload_parts:
+                merged_uploads = "\n\n".join(upload_parts)
+                if knowledge_base.strip():
+                    knowledge_base = f"{knowledge_base.rstrip()}\n\n{merged_uploads}"
+                else:
+                    knowledge_base = merged_uploads
+                st.caption(f"✅ 已解析 {len(upload_parts)} 个知识文件，总长度约 {len(knowledge_base)} 字符")
     
     # Generator button
     gen_col1, gen_col2, gen_col3 = st.columns([1, 1, 2])
@@ -91,7 +126,7 @@ def render_tester_page():
         generate_clicked = st.button(
             "⚡ Generate Test Cases",
             type="primary",
-            use_container_width=True,
+            width="stretch",
             key="btn_generate_cases"
         )
     
@@ -217,7 +252,7 @@ def render_tester_page():
             },
             num_rows="dynamic",
             key="editor_generated",
-            use_container_width=True
+            width="stretch"
         )
         
         # 目录选择（必须在 save_clicked 判断之前获取）
@@ -238,7 +273,7 @@ def render_tester_page():
                     )
                 with save_col2:
                     st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
-                    save_clicked = st.button("💾 Save to Library", type="primary", use_container_width=True)
+                    save_clicked = st.button("💾 Save to Library", type="primary", width="stretch")
             else:
                 save_category = None  # 无目录时设为 None
                 save_clicked = st.button("💾 Save to Library", type="primary")

@@ -541,8 +541,6 @@ class TestEngine:
         # Call API
         try:
             start_time = time.time()
-            # Note: get_chat_response is synchronous.
-            start_time = time.time()
             raw_response = _call_chat_with_retry(input_text, api_name=api_name)
             end_time = time.time()
             latency = end_time - start_time
@@ -671,6 +669,8 @@ class TestEngine:
         assertion_detail = None
         score, reason, faith_score, faith_reason, passed = 0.0, "发生错误，评分已跳过。", None, None, False
 
+        # 纯评估耗时：仅统计断言引擎 + 语义评分的执行时间（不含被测服务响应耗时）
+        eval_start_time = time.time()
         with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
             futures = {}
             
@@ -710,6 +710,8 @@ class TestEngine:
             passed = passed and assertion_detail["passed"]
         # semantic mode: passed 已经在上面计算好了
 
+        eval_latency = round(time.time() - eval_start_time, 3)
+
         return {
             "case_id": case_data.get("id"),
             "input": input_text,
@@ -730,6 +732,7 @@ class TestEngine:
             "inform_base": inform_base,
             "raw": raw_data,
             "latency": latency,
+            "eval_latency": eval_latency,
             "ttft": ttft,
             "type": "single",
             "assertion_detail": assertion_detail,
@@ -762,8 +765,34 @@ class TestEngine:
             else:
                 single_cases.append(case)
         
-        # Calculate total tasks for progress bar
-        total_tasks = len(single_cases) + len(grouped_cases)
+        # 预先把每个多轮组构建成独立任务对象（不同会话之间无上下文依赖，可并行）
+        multi_turn_tasks = []
+        for case_id, group in grouped_cases.items():
+            try:
+                group.sort(key=lambda x: int(x.get("turn_index", 0)) if str(x.get("turn_index", "0")).isdigit() else 999)
+            except Exception:
+                pass
+            base_case = group[0].copy()
+            conversation_turns = []
+            for i, row in enumerate(group):
+                conversation_turns.append({
+                    "turn": row.get("turn_index", i + 1),
+                    "user": row.get("input", ""),
+                    "user_cn": row.get("input_cn", ""),
+                    "expected": row.get("expected_output", ""),
+                    "expected_cn": row.get("expected_output_cn", ""),
+                    "validation": row.get("validation", {"type": "semantic", "threshold": 0.5}),
+                    "retrieval_context": row.get("retrieval_context", []),
+                    "case_id": case_id,
+                })
+            base_case["conversation"] = conversation_turns
+            base_case["turn_index"] = None
+            base_case["input"] = group[0].get("input", "")
+            multi_turn_tasks.append(base_case)
+
+        # 统一任务列表：单轮 + 多轮会话，一起交给同一个线程池并发
+        tasks = [("single", c) for c in single_cases] + [("multi", c) for c in multi_turn_tasks]
+        total_tasks = len(tasks)
         completed_tasks = 0
         completed_lock = threading.Lock()
 
@@ -804,17 +833,38 @@ class TestEngine:
                     "overall_criteria": _stringify_field(case.get("overall_criteria")),
                 }
 
-        # Run single turn cases (并发或串行)
-        if max_workers and max_workers > 1 and len(single_cases) > 1:
+        def _run_multi_turn_case_safe(case):
+            """多轮会话执行兜底：会话内多轮保持串行，会话之间由线程池并发。"""
+            if should_stop and should_stop():
+                return None
+            try:
+                return self.run_multi_turn_case(case, api_name=api_name, should_stop=should_stop)
+            except Exception as e:
+                return {
+                    "case_id": case.get("id"),
+                    "type": "multi_turn",
+                    "error": f"执行异常：{e}",
+                    "passed": False,
+                    "score": 0,
+                }
+
+        def _run_task(task):
+            """按任务类型分发到单轮或多轮执行。"""
+            kind, case = task
+            if kind == "multi":
+                return _run_multi_turn_case_safe(case)
+            return _run_single_case_safe(case)
+
+        # 并发执行：max_workers > 1 且任务多于 1 个时走线程池；否则串行
+        if max_workers and max_workers > 1 and len(tasks) > 1:
             with concurrent.futures.ThreadPoolExecutor(
                 max_workers=max_workers,
                 thread_name_prefix="run_case",
             ) as pool:
-                futures = {pool.submit(_run_single_case_safe, c): c for c in single_cases}
+                futures = {pool.submit(_run_task, t): t for t in tasks}
                 try:
                     for fut in concurrent.futures.as_completed(futures):
                         if should_stop and should_stop():
-                            # 取消尚未开始的任务；正在执行的会自然结束
                             for f in futures:
                                 f.cancel()
                             break
@@ -831,63 +881,21 @@ class TestEngine:
                             except Exception:
                                 pass
                 except Exception:
-                    # 主循环异常，取消未启动任务后重抛
                     for f in futures:
                         f.cancel()
                     raise
         else:
-            for case in single_cases:
+            for task in tasks:
                 if should_stop and should_stop():
                     break
-                res = self.run_case(case, api_name=api_name, execution_mode=execution_mode, should_stop=should_stop)
+                res = _run_task(task)
+                if res is None:
+                    continue
                 results.append(res)
                 completed_tasks += 1
                 if on_step_complete:
                     on_step_complete(res, completed_tasks, total_tasks)
-            
-        # Run grouped multi-turn cases —— 保持串行（多轮上下文依赖顺序）
-        for case_id, group in grouped_cases.items():
-            if should_stop and should_stop():
-                break
-            # Aggregate group into one case object
-            # Sort by turn_index if available
-            try:
-                # Try to parse turn_index as int
-                group.sort(key=lambda x: int(x.get("turn_index", 0)) if str(x.get("turn_index", "0")).isdigit() else 999)
-            except:
-                pass # Already in list order
-            
-            # Base case data from first row
-            base_case = group[0].copy()
-            
-            # Construct conversation list from rows
-            conversation_turns = []
-            for i, row in enumerate(group):
-                conversation_turns.append({
-                "turn": row.get("turn_index", i + 1),
-                "user": row.get("input", ""),
-                "user_cn": row.get("input_cn", ""),
-                "expected": row.get("expected_output", ""),
-                "expected_cn": row.get("expected_output_cn", ""),
-                "validation": row.get("validation", {"type": "semantic", "threshold": 0.5}),
-                "retrieval_context": row.get("retrieval_context", []),
-                "case_id": case_id # pass along case id for report rendering matching
-            })
-            
-            base_case["conversation"] = conversation_turns
-            
-            # Remove any artifacts from the first row that don't apply to the whole group
-            base_case["turn_index"] = None
-            base_case["input"] = group[0].get("input", "") # For ID title purpose
-            
-            # Result depends on group execution
-            res = self.run_multi_turn_case(base_case, api_name=api_name, should_stop=should_stop)
-            results.append(res)
-            
-            completed_tasks += 1
-            if on_step_complete:
-                on_step_complete(res, completed_tasks, total_tasks)
-            
+
         return results
     
     def run_multi_turn_case(self, case_data: Dict[str, Any], api_name: str = "Skills", should_stop=None) -> Dict[str, Any]:
@@ -937,6 +945,7 @@ class TestEngine:
                     "error": "Empty user message",
                     "retrieval_context": "",
                     "latency": 0,
+                    "eval_latency": 0,
                     "ttft": 0
                 })
                 continue
@@ -995,6 +1004,7 @@ class TestEngine:
                     "inform_base": turn_inform_base,
                     "raw": turn_raw_data,
                     "latency": turn_latency,
+                    "eval_latency": 0,
                     "ttft": ttft
                 })
                 break  # Stop on error
@@ -1012,6 +1022,7 @@ class TestEngine:
                 "inform_base": turn_inform_base,
                 "raw": turn_raw_data,
                 "latency": turn_latency,
+                "eval_latency": 0,
                 "ttft": ttft
             })
         
@@ -1060,6 +1071,9 @@ class TestEngine:
         overall_score = 0.0
         overall_reason = ""
         overall_passed = False
+        
+        # 纯评估耗时：仅统计 ConversationalGEval 整体评分时间（不含被测服务响应耗时）
+        eval_start_time = time.time()
         
         # Check if ConversationalTestCase and Turn are available
         if ConversationalTestCase is not None and Turn is not None and self.conversational_metric is not None:
@@ -1115,6 +1129,10 @@ class TestEngine:
             f"T{t.get('turn', i+1)}: {t.get('actual', '')}"
             for i, t in enumerate(turn_results) if t.get("actual")
         )
+        # 整体评分完成后计算纯评估耗时，赋给最后一轮
+        total_eval_latency = round(time.time() - eval_start_time, 3)
+        if turn_results:
+            turn_results[-1]["eval_latency"] = total_eval_latency
         return {
             "case_id": case_data.get("id"),
             "input": input_text,

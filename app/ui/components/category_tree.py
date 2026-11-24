@@ -49,25 +49,25 @@ def render_category_tree(db_session):
         
         col_btn, col_menu = st.columns([5, 1])
         with col_btn:
-            if st.button(btn_label, key=f"cat_btn_{node['id']}", use_container_width=True, type=button_type):
+            if st.button(btn_label, key=f"cat_btn_{node['id']}", width="stretch", type=button_type):
                 st.session_state.selected_category = node['id']
                 st.rerun()
                 
         with col_menu:
             if node['id'] != 'root':
                 with st.popover("⋮"):
-                    if st.button("✏️ 重命名", key=f"rename_{node['id']}", use_container_width=True):
+                    if st.button("✏️ 重命名", key=f"rename_{node['id']}", width="stretch"):
                         st.session_state.show_rename_dialog = True
                         st.session_state.rename_category_id = node['id']
                         st.rerun()
                         
                     if node['level'] < 3:
-                        if st.button("➕ 添加子目录", key=f"addchild_{node['id']}", use_container_width=True):
+                        if st.button("➕ 添加子目录", key=f"addchild_{node['id']}", width="stretch"):
                             st.session_state.show_create_dialog = True
                             st.session_state.create_parent_id = node['id']
                             st.rerun()
                             
-                    if st.button("🗑️ 删除", key=f"delete_{node['id']}", use_container_width=True):
+                    if st.button("🗑️ 删除", key=f"delete_{node['id']}", width="stretch"):
                         st.session_state.show_delete_dialog = True
                         st.session_state.delete_category_id = node['id']
                         st.rerun()
