@@ -87,6 +87,12 @@ def _call_chat_with_retry(*args, max_retries: int = 3, base_delay: float = 1.0, 
 
 load_dotenv(override=True)
 
+# 必须在导入 deepeval 之前关闭其遥测：deepeval 3.x 的 telemetry 在 import 阶段会调用
+# sentry_sdk.init(profiles_sample_rate=...)，若容器内 sentry-sdk 未带 profiling 支持，
+# 会抛 "Unknown option 'profiles_sample_rate'" 导致整个应用启动失败；
+# 同时它还会请求 ipify/posthog，无外网环境下会阻塞启动。
+os.environ["DEEPEVAL_TELEMETRY_OPT_OUT"] = "YES"
+
 GEval = None
 FaithfulnessMetric = None
 ConversationalGEval = None
